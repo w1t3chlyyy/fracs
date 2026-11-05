@@ -1,0 +1,6 @@
+{
+  "name": "Fracs — Автоматизированная лидогенерация B2B",
+  "description": "Fracs: находим клиентов там, где их упускают конкуренты. Умный поиск бизнесов без сайтов в 2ГИС и прямой аутрич через Telegram.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
