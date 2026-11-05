@@ -1,20 +1,25 @@
 import { config, PLANS } from './config.ts';
-import { data, extendSubscription, newId, save, type PaymentRecord, type User } from './db.ts';
+import {
+  cancelPayment, claimPayment, extendSubscription, findPaymentByProviderId, getUser, insertPayment,
+  newId, revertPayment, setPaymentProviderId, type PaymentRecord, type User,
+} from './db.ts';
 import { notify } from './bot.ts';
 
 const YK = 'https://api.yookassa.ru/v3/payments';
 const ykAuth = () => 'Basic ' + Buffer.from(`${config.yookassaShopId}:${config.yookassaSecret}`).toString('base64');
 
-function activate(p: PaymentRecord) {
-  if (p.status === 'succeeded') return; // идемпотентность: повторный вебхук ничего не продлит
-  const user = data.users.find((u) => u.id === p.userId);
-  const plan = PLANS.find((x) => x.id === p.planId);
+async function activate(p: PaymentRecord) {
+  const [user, plan] = [await getUser(p.userId), PLANS.find((x) => x.id === p.planId)];
   if (!user || !plan) return;
-  p.status = 'succeeded';
-  p.paidAt = new Date().toISOString();
-  extendSubscription(user, plan.days);
-  save();
-  notify(user.tgId, `✅ Подписка активна до ${new Date(user.subscriptionUntil!).toLocaleDateString('ru-RU')}. Данные открыты в кабинете: ${config.appUrl}/app`);
+  // Идемпотентность: claim атомарно переводит pending → succeeded, повторный вебхук получит null и ничего не продлит.
+  if (!(await claimPayment(p.id))) return;
+  try {
+    const updated = await extendSubscription(user.id, plan.days);
+    await notify(user.tgId, `✅ Подписка активна до ${new Date(updated.subscriptionUntil!).toLocaleDateString('ru-RU')}. Данные открыты в кабинете: ${config.appUrl}/app`);
+  } catch (e) {
+    await revertPayment(p.id); // продление не удалось — вернём в pending, чтобы повторный вебхук мог добить
+    throw e;
+  }
 }
 
 export async function createPayment(user: User, planId: string): Promise<{ confirmationUrl?: string; activated?: boolean }> {
@@ -25,8 +30,7 @@ export async function createPayment(user: User, planId: string): Promise<{ confi
     id: newId(), userId: user.id, planId: plan.id, amountRub: plan.priceRub, status: 'pending',
     provider: config.paymentProvider, providerId: null, createdAt: new Date().toISOString(), paidAt: null,
   };
-  data.payments.push(rec);
-  save();
+  await insertPayment(rec);
 
   if (config.paymentProvider === 'yookassa') {
     if (!config.yookassaShopId || !config.yookassaSecret) throw new Error('ЮKassa не настроена');
@@ -44,13 +48,12 @@ export async function createPayment(user: User, planId: string): Promise<{ confi
     });
     const json: any = await resp.json();
     if (!resp.ok) throw new Error(`ЮKassa: ${json?.description || resp.status}`);
-    rec.providerId = json.id;
-    save();
+    await setPaymentProviderId(rec.id, json.id);
     return { confirmationUrl: json.confirmation?.confirmation_url };
   }
 
   if (!config.allowMockPayments) throw Object.assign(new Error('Оплата не настроена'), { status: 503 });
-  activate(rec); // тестовый режим: подписка выдаётся сразу
+  await activate(rec); // тестовый режим: подписка выдаётся сразу
   return { activated: true };
 }
 
@@ -58,15 +61,14 @@ export async function createPayment(user: User, planId: string): Promise<{ confi
 export async function handleYookassaWebhook(body: any) {
   const id = body?.object?.id;
   if (typeof id !== 'string') return;
-  const rec = data.payments.find((p) => p.providerId === id);
+  const rec = await findPaymentByProviderId(id);
   if (!rec || rec.status !== 'pending') return;
   const resp = await fetch(`${YK}/${encodeURIComponent(id)}`, { headers: { Authorization: ykAuth() }, signal: AbortSignal.timeout(15000) });
   if (!resp.ok) return;
   const real: any = await resp.json();
   if (real.status === 'canceled') {
-    rec.status = 'canceled';
-    save();
+    await cancelPayment(rec.id);
   } else if (real.status === 'succeeded' && Number(real.amount?.value) === rec.amountRub && real.metadata?.paymentId === rec.id) {
-    activate(rec);
+    await activate(rec);
   }
 }

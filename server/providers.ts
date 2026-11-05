@@ -52,29 +52,34 @@ export function mockMapsRow(rec: SearchRecord, i: number): MapsRow {
 
 // Реальный провайдер: Places API 2ГИС (как в saleshustlify, переменная GIS_API_KEY).
 // Реализован по описанию из README — сверьте поля ответа со своей подпиской 2ГИС.
+// Страницы грузим параллельно по 5: на Vercel функция ограничена по времени.
 async function gisSearch(niche: string, city: City): Promise<{ stats: MapsStats; rows: MapsRow[] }> {
   if (!config.gisKey) throw new Error('GIS_API_KEY не задан');
   const MAX_PAGES = 10;
+  const PAGE = 50;
   const rows: MapsRow[] = [];
   let scanned = 0;
   let total = 0;
-  for (let page = 1; page <= MAX_PAGES; page++) {
+
+  const fetchPage = async (page: number): Promise<any[] | null> => {
     const url = new URL('https://catalog.api.2gis.com/3.0/items');
     url.searchParams.set('q', `${niche} ${city.name}`);
     url.searchParams.set('type', 'branch');
     url.searchParams.set('page', String(page));
-    url.searchParams.set('page_size', '50');
+    url.searchParams.set('page_size', String(PAGE));
     url.searchParams.set('fields', 'items.contact_groups,items.reviews,items.address_name,items.rubrics');
     url.searchParams.set('key', config.gisKey);
     const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!resp.ok) {
       if (page === 1) throw new Error(`2ГИС ответил ${resp.status}`);
-      break;
+      return null;
     }
     const json: any = await resp.json();
-    const items: any[] = json?.result?.items ?? [];
     if (page === 1) total = Number(json?.result?.total ?? 0);
-    if (!items.length) break;
+    return json?.result?.items ?? [];
+  };
+
+  const take = (items: any[]) => {
     scanned += items.length;
     for (const it of items) {
       const contacts: any[] = (it.contact_groups ?? []).flatMap((g: any) => g.contacts ?? []);
@@ -91,7 +96,17 @@ async function gisSearch(niche: string, city: City): Promise<{ stats: MapsStats;
         url: `https://2gis.ru/firm/${String(it.id).split('_')[0]}`,
       });
     }
-    if (items.length < 50) break;
+  };
+
+  const first = (await fetchPage(1)) ?? [];
+  take(first);
+  if (first.length >= PAGE) {
+    const last = Math.min(MAX_PAGES, Math.max(2, Math.ceil(total / PAGE)));
+    for (let from = 2; from <= last; from += 5) {
+      const batch = await Promise.all(Array.from({ length: Math.min(5, last - from + 1) }, (_, i) => fetchPage(from + i).catch(() => null)));
+      for (const items of batch) if (items?.length) take(items);
+      if (batch.some((b) => !b || b.length < PAGE)) break;
+    }
   }
   return {
     stats: { total: Math.max(total, scanned), withoutSite: rows.length, withPhone: rows.filter((r) => r.phone).length },
@@ -146,15 +161,22 @@ async function tgHttpSearch(phrase: string, days: number): Promise<{ stats: TgSt
 
 /* ───────────────────────── Общий доступ к строкам ───────────────────────── */
 
-export function rowCount(rec: SearchRecord): number {
-  if (rec.rows) return rec.rows.length;
-  return Math.min(rec.kind === 'maps' ? rec.stats.withoutSite : rec.stats.people, DEMO_ROWS_CAP);
+/** Сколько строк у записи и первые 3 для превью — считаем один раз при сохранении. */
+export function summarize(kind: SearchRecord['kind'], stats: Record<string, number>, rows?: unknown[]) {
+  const rowsTotal = rows ? rows.length : Math.min(kind === 'maps' ? stats.withoutSite : stats.people, DEMO_ROWS_CAP);
+  return { rowsTotal, head: rows ? rows.slice(0, 3) : undefined };
 }
 
+export const rowCount = (rec: SearchRecord): number => rec.rowsTotal;
+
+/** Для реальных записей нужно, чтобы rec.rows был загружен (getSearch(..., true)). */
 export function getRows(rec: SearchRecord, offset: number, limit: number): (MapsRow | TgRow)[] {
-  if (rec.rows) return rec.rows.slice(offset, offset + limit) as (MapsRow | TgRow)[];
-  const end = Math.min(offset + limit, rowCount(rec));
+  if (!rec.demo) return ((rec.rows ?? []) as (MapsRow | TgRow)[]).slice(offset, offset + limit);
+  const end = Math.min(offset + limit, rec.rowsTotal);
   const out: (MapsRow | TgRow)[] = [];
   for (let i = offset; i < end; i++) out.push(rec.kind === 'maps' ? mockMapsRow(rec, i) : mockTgRow(rec, i));
   return out;
 }
+
+export const headRows = (rec: SearchRecord): (MapsRow | TgRow)[] =>
+  rec.demo ? getRows(rec, 0, 3) : ((rec.head ?? []) as (MapsRow | TgRow)[]);

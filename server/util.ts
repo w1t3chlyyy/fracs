@@ -34,18 +34,11 @@ export function cleanText(v: unknown, max: number): string {
   return v.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
-const buckets = new Map<string, { n: number; reset: number }>();
-/** true — можно, false — лимит исчерпан. Память процесса, для одного инстанса этого достаточно. */
-export function rateLimit(key: string, max: number, windowMs: number): boolean {
-  const now = Date.now();
-  if (buckets.size > 5000) for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k);
-  const b = buckets.get(key);
-  if (!b || b.reset < now) {
-    buckets.set(key, { n: 1, reset: now + windowMs });
-    return true;
-  }
-  b.n++;
-  return b.n <= max;
+/** Сравнение секретов без утечки по времени. */
+export function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

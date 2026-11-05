@@ -1,16 +1,24 @@
 import type { Request, Response } from 'express';
 import { config } from './config.ts';
-import { data, save, upsertTgUser } from './db.ts';
-import { sleep } from './util.ts';
+import { bindLoginToken, upsertTgUser } from './db.ts';
+import { safeEqual, sleep } from './util.ts';
 
-let botUsername = '';
-export const getBotUsername = () => botUsername;
+let botUsername = config.botUsername;
 
-async function tg(method: string, body: Record<string, unknown> = {}): Promise<any> {
+/** Username бота: из TELEGRAM_BOT_USERNAME, иначе один раз спрашиваем у Telegram и кэшируем. */
+export async function getBotUsername(): Promise<string> {
+  if (botUsername || !config.botToken) return botUsername;
+  const me = await tg('getMe');
+  if (me.ok) botUsername = me.result.username;
+  return botUsername;
+}
+
+async function tg(method: string, body: Record<string, unknown> = {}, timeoutMs = 10_000): Promise<any> {
   const r = await fetch(`https://api.telegram.org/bot${config.botToken}/${method}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   return r.json();
 }
@@ -36,31 +44,37 @@ export async function handleUpdate(update: any) {
     await notify(msg.chat.id, `Привет! Это бот Fracs. Чтобы войти, нажмите «Войти через Telegram» на странице ${config.appUrl}/app`);
     return;
   }
-  const t = data.loginTokens.find((x) => x.token === param);
-  if (!t || Date.now() - t.createdAt > 10 * 60_000 || t.userId) {
+  const user = await upsertTgUser(msg.from);
+  const ok = await bindLoginToken(param, user.id);
+  if (!ok) {
     await notify(msg.chat.id, 'Ссылка устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.');
     return;
   }
-  const user = upsertTgUser(msg.from);
-  t.userId = user.id;
-  save();
   await notify(msg.chat.id, `✅ Готово, ${user.firstName}! Вернитесь в браузер — вход выполнится автоматически.`);
 }
 
-export function webhookHandler(req: Request, res: Response) {
-  if (!config.webhookSecret || req.get('x-telegram-bot-api-secret-token') !== config.webhookSecret) {
+/** Webhook Telegram. На serverless работу нужно закончить ДО ответа, иначе функцию замораживают. */
+export async function webhookHandler(req: Request, res: Response) {
+  const got = req.get('x-telegram-bot-api-secret-token') || '';
+  if (!config.webhookSecret || !safeEqual(got, config.webhookSecret)) {
     res.sendStatus(403);
     return;
   }
-  handleUpdate(req.body).catch(console.error);
-  res.sendStatus(200);
+  try {
+    await handleUpdate(req.body);
+  } catch (e) {
+    console.error('[bot] handleUpdate', e);
+  }
+  res.sendStatus(200); // всегда 200, иначе Telegram будет слать апдейт повторно
 }
+
+/* ── ниже — только для постоянного сервера (локально / VPS), на Vercel не вызывается ── */
 
 async function poll() {
   let offset = 0;
   for (;;) {
     try {
-      const r = await tg('getUpdates', { offset, timeout: 30, allowed_updates: ['message'] });
+      const r = await tg('getUpdates', { offset, timeout: 30, allowed_updates: ['message'] }, 40_000);
       if (!r.ok) {
         await sleep(5000);
         continue;

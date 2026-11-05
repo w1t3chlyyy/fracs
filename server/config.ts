@@ -3,14 +3,22 @@ import 'dotenv/config';
 const env = process.env;
 const isProd = env.NODE_ENV === 'production';
 const port = Number(env.PORT || 3000);
+const vercelUrl = env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '';
 
 export const config = {
   isProd,
   port,
-  appUrl: (env.APP_URL || `http://localhost:${port}`).replace(/\/$/, ''),
+  appUrl: (env.APP_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ''),
   sessionSecret: env.SESSION_SECRET || (isProd ? '' : 'dev-secret-change-me'),
 
+  supabaseUrl: env.SUPABASE_URL || '',
+  supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '',
+  cronSecret: env.CRON_SECRET || '',
+  searchRetentionDays: Number(env.SEARCH_RETENTION_DAYS || 30),
+
   botToken: env.TELEGRAM_BOT_TOKEN || '',
+  botUsername: (env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, ''),
+  // На Vercel работает только webhook. polling — для локальной разработки.
   botMode: (env.TELEGRAM_BOT_MODE === 'webhook' ? 'webhook' : 'polling') as 'polling' | 'webhook',
   webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || '',
   // Вход без бота — только для локальной разработки (или если явно включено).
@@ -28,7 +36,6 @@ export const config = {
   yookassaSecret: env.YOOKASSA_SECRET_KEY || '',
 
   dailySearchLimit: Number(env.DAILY_SEARCH_LIMIT || 40),
-  dataFile: env.DATA_FILE || 'data/db.json',
 };
 
 if (isProd && !config.sessionSecret) {
