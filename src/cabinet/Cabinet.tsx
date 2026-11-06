@@ -48,6 +48,11 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
 
   return (
     <div className="max-w-md mx-auto bg-white rounded-3xl p-8 shadow-sm border border-gray-200/80 text-center">
+      <img
+        src="/assets/aistudio/image_a4a02fc4.png"
+        alt="Fracs"
+        className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover shadow-sm"
+      />
       <h1 className="font-heading text-3xl font-medium tracking-[-0.02em] text-gray-900">Личный кабинет</h1>
       <p className="text-[14px] text-gray-600 mt-2">Войдите через Telegram-бота — пароль и email не нужны.</p>
 
@@ -66,12 +71,7 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
         </button>
       )}
 
-      {error && <p className="text-[13px] text-red-600 mt-4">{error}</p>}
-      {config.devLogin && (
-        <button onClick={dev} className="block mx-auto mt-6 text-[12px] text-gray-400 hover:text-gray-700 underline cursor-pointer">
-          Войти без бота (только для разработки)
-        </button>
-      )}
+      
     </div>
   );
 }
@@ -124,8 +124,13 @@ export default function Cabinet() {
       <header className="max-w-[1100px] mx-auto p-2 sm:p-3">
         <nav className="bg-white rounded-full p-[5px] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <a href="/" aria-label="На сайт" className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center hover:bg-black transition-colors">
-              <span className="text-[11px] font-bold text-white font-heading">FR</span>
+            <a href="/" aria-label="На сайт" className="flex items-center gap-2 group">
+              <img
+                src="/assets/aistudio/image_a4a02fc4.png"
+                alt="Fracs"
+                className="w-10 h-10 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform shrink-0"
+              />
+              <span className="font-heading text-lg font-semibold tracking-tight text-gray-900 hidden sm:inline">Fracs</span>
             </a>
             <a href="/" className="hidden sm:inline-flex items-center gap-1.5 text-[13px] text-gray-600 hover:text-gray-900"><ArrowLeft className="w-3.5 h-3.5" /> На сайт</a>
           </div>

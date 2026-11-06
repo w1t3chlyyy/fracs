@@ -166,7 +166,14 @@ export default function App() {
         <header className="relative z-20 w-full max-w-[1440px] mx-auto p-2 sm:p-3">
           <nav className="bg-white rounded-full p-[5px] flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <a href="#" className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center text-[11px] font-bold text-white font-heading">FR</a>
+              <a href="#" className="flex items-center gap-2.5 group">
+                <img
+                  src="/assets/aistudio/image_a4a02fc4.png"
+                  alt="Fracs"
+                  className="w-10 h-10 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform shrink-0"
+                />
+                <span className="font-heading text-lg font-semibold tracking-tight text-gray-900">Fracs</span>
+              </a>
               <div className="hidden md:flex gap-6">{links.map(([l, h]) => <a key={h} href={h} className="text-[14px] font-medium hover:text-gray-500 transition-colors">{l}</a>)}</div>
             </div>
             <div className="hidden md:block pr-1"><a href="/app" className="rounded-full bg-gray-900 hover:bg-black text-white text-[13px] font-medium px-5 py-2.5 transition-colors">Личный кабинет</a></div>
@@ -257,7 +264,17 @@ export default function App() {
 
       <footer className="bg-gray-950 text-white py-14 px-5 sm:px-8 lg:px-12">
         <div className="max-w-[1200px] mx-auto flex flex-col sm:flex-row justify-between gap-8">
-          <div><p className="font-heading text-2xl font-semibold">Fracs</p><p className="text-[13px] text-gray-400 mt-2 max-w-xs">Поиск клиентов в 2ГИС и Telegram.</p></div>
+          <div className="flex items-center gap-3">
+            <img
+              src="/assets/aistudio/image_a4a02fc4.png"
+              alt="Fracs"
+              className="w-11 h-11 rounded-full object-cover shrink-0"
+            />
+            <div>
+              <p className="font-heading text-2xl font-semibold leading-none">Fracs</p>
+              <p className="text-[13px] text-gray-400 mt-1 max-w-xs">Поиск клиентов в 2ГИС и Telegram.</p>
+            </div>
+          </div>
           <Cta href="/app">Войти в кабинет</Cta>
         </div>
         <p className="max-w-[1200px] mx-auto mt-10 text-[12px] text-gray-500">© 2026 Fracs</p>

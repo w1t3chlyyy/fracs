@@ -1,7 +1,17 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type Response } from 'express';
 import { config } from './config.ts';
-import { createLoginToken, getLoginToken, getUser, takeLoginToken, upsertTgUser, rateLimit, type User } from './db.ts';
+import {
+  createLoginToken,
+  getLoginToken,
+  getUser,
+  takeLoginToken,
+  upsertTgUser,
+  rateLimit,
+  type User,
+  extendSubscription,
+  isSubscribed,
+} from './db.ts';
 import { getBotUsername } from './bot.ts';
 import { randomToken } from './util.ts';
 
@@ -98,7 +108,10 @@ authRouter.get('/status', h(async (req, res) => {
 
 authRouter.post('/dev', h(async (req, res) => {
   if (!config.devLogin) return void res.status(404).json({ error: 'not_found' });
-  const user = await upsertTgUser({ id: 1, username: 'dev_user', first_name: 'Разработчик' });
+  let user = await upsertTgUser({ id: 1, username: 'dev_user', first_name: 'Разработчик' });
+  if (!isSubscribed(user)) {
+    user = await extendSubscription(user.id, 30);
+  }
   setSession(req, res, user.id);
   res.json({ ok: true });
 }));
