@@ -6,7 +6,7 @@ import {
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
 import { findCity, searchCities } from './cities.ts';
-import { getRows, headRows, mapsIsDemo, searchMaps, searchTg, summarize, tgIsDemo } from './providers.ts';
+import { getRows, headRows, searchMaps, searchTg, summarize } from './providers.ts';
 import type { MapsRow, TgRow } from './providers.ts';
 import { createPayment, handleYookassaWebhook } from './payments.ts';
 import { cronHandler } from './cron.ts';
@@ -14,33 +14,24 @@ import { cleanText, norm } from './util.ts';
 
 export const api = Router();
 
-/** Express 4 не ловит ошибки async-обработчиков сам — пробрасываем их в error middleware. */
 const h = (fn: (req: Request, res: Response, next: NextFunction) => unknown): RequestHandler => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 api.use('/auth', authRouter);
 
-/* ── публичное ── */
-
 api.get('/health', h(async (_req, res) => {
   res.json({ ok: true, db: await ping().catch(() => false) });
 }));
 
 api.get('/config', (_req, res) => {
-  res.json({
-    devLogin: config.devLogin,
-    payment: config.paymentProvider,
-    plans: PLANS,
-    demo: { maps: mapsIsDemo(), tg: tgIsDemo() },
-  });
+  res.json({ devLogin: config.devLogin, payment: config.paymentProvider, plans: PLANS, demo: { maps: false, tg: false } });
 });
 
 api.get('/cities', (req, res) => {
   res.json({ items: searchCities(String(req.query.q || ''), 8) });
 });
 
-// Вебхук ЮKassa: на serverless работу нужно закончить до ответа. 500 заставит ЮKassa повторить запрос.
 api.post('/payments/yookassa/webhook', h(async (req, res) => {
   if (config.paymentProvider === 'yookassa') {
     try {
@@ -55,8 +46,6 @@ api.post('/payments/yookassa/webhook', h(async (req, res) => {
 
 api.all('/cron/cleanup', h(cronHandler));
 
-/* ── пользователь ── */
-
 const usedToday = (u: User) => countSearchesSince(u.id, 86400_000);
 
 api.get('/me', h(async (req, res) => {
@@ -69,13 +58,10 @@ api.get('/me', h(async (req, res) => {
   });
 }));
 
-/* ── поиск ── */
-
 const MASK = '•••';
 const maskPhone = (p: string | null) => (p ? p.slice(0, 7) + '•••-••-' + p.slice(-2) : null);
 const maskStart = (s: string, keep = 3) => s.slice(0, keep) + MASK;
 
-/** Что видит пользователь без подписки: цифры и три замаскированных строки. */
 function teaser(rec: SearchRecord) {
   const rows = headRows(rec);
   if (rec.kind === 'maps') {
@@ -108,8 +94,10 @@ async function gate(req: Request, res: Response): Promise<boolean> {
   return true;
 }
 
+/** Повтор за сутки берём из истории. Подписчику демо-записи не подходят: ему нужен реальный поиск. */
 async function findRecent(u: User, kind: SearchRecord['kind'], match: (r: SearchRecord) => boolean) {
-  return (await recentSearches(u.id, kind, 86400_000)).find(match);
+  const sub = isSubscribed(u);
+  return (await recentSearches(u.id, kind, 86400_000)).find((r) => match(r) && (!sub || !r.demo));
 }
 
 api.post('/search/maps', requireAuth, h(async (req, res) => {
@@ -118,24 +106,24 @@ api.post('/search/maps', requireAuth, h(async (req, res) => {
   if (niche.length < 2) return void res.status(400).json({ error: 'bad_niche', message: 'Укажите нишу — например, «автосервис».' });
   if (!city) return void res.status(400).json({ error: 'bad_city', message: 'Выберите город из списка.' });
 
-  // Повторный запрос за сутки отдаём из истории: не тратит лимит и не даёт «перебросить» цифры.
   const again = await findRecent(req.user!, 'maps', (s) => s.query.cityId === city.id && norm(s.query.niche || '') === norm(niche));
   if (again) return void res.json(view(again, req.user!));
   if (!(await gate(req, res))) return;
 
+  const real = isSubscribed(req.user!); // без подписки — демо, с подпиской — реальный поиск
   try {
-    const result = await searchMaps(niche, city);
+    const result = await searchMaps(niche, city, real);
     const stats = { ...result.stats };
     const rec: SearchRecord = {
-      id: newId(), userId: req.user!.id, kind: 'maps', createdAt: new Date().toISOString(), demo: mapsIsDemo(),
+      id: newId(), userId: req.user!.id, kind: 'maps', createdAt: new Date().toISOString(), demo: !real,
       seed: `${norm(niche)}|${city.id}`, query: { niche, cityId: city.id, cityLabel: `${city.name}, ${city.region}` },
       stats, rows: result.rows, ...summarize('maps', stats, result.rows),
     };
     await insertSearch(rec);
     res.json(view(rec, req.user!));
-  } catch (e) {
+  } catch (e: any) {
     console.error('[maps]', e);
-    res.status(502).json({ error: 'provider', message: 'Не удалось получить данные. Попробуйте позже.' });
+    res.status(502).json({ error: 'provider', message: `Не удалось получить данные: ${e?.message || 'ошибка источника'}` });
   }
 }));
 
@@ -148,18 +136,19 @@ api.post('/search/tg', requireAuth, h(async (req, res) => {
   if (again) return void res.json(view(again, req.user!));
   if (!(await gate(req, res))) return;
 
+  const real = isSubscribed(req.user!);
   try {
-    const result = await searchTg(phrase, days);
+    const result = await searchTg(phrase, days, real);
     const stats = { ...result.stats };
     const rec: SearchRecord = {
-      id: newId(), userId: req.user!.id, kind: 'tg', createdAt: new Date().toISOString(), demo: tgIsDemo(),
+      id: newId(), userId: req.user!.id, kind: 'tg', createdAt: new Date().toISOString(), demo: !real,
       seed: `${norm(phrase)}|${days}`, query: { phrase, days }, stats, rows: result.rows, ...summarize('tg', stats, result.rows),
     };
     await insertSearch(rec);
     res.json(view(rec, req.user!));
-  } catch (e) {
+  } catch (e: any) {
     console.error('[tg]', e);
-    res.status(502).json({ error: 'provider', message: 'Не удалось получить данные. Попробуйте позже.' });
+    res.status(502).json({ error: 'provider', message: `Не удалось получить данные: ${e?.message || 'ошибка источника'}` });
   }
 }));
 
@@ -190,7 +179,6 @@ api.get('/search/:id/rows', requireAuth, h(async (req, res) => {
   res.json({ rows: getRows(rec, offset, limit), total: rec.rowsTotal });
 }));
 
-// Защита от CSV-инъекций: ячейки, начинающиеся с = + - @, превращаем в текст.
 const csvCell = (v: unknown) => {
   let s = v == null ? '' : String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
@@ -207,15 +195,13 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
   const rows = getRows(rec, 0, rec.rowsTotal);
   const cols: [string, (r: any) => unknown][] =
     rec.kind === 'maps'
-      ? [['Название', (r) => r.name], ['Категория', (r) => r.category], ['Адрес', (r) => r.address], ['Телефон', (r) => r.phone], ['Рейтинг', (r) => r.rating], ['Отзывов', (r) => r.reviews], ['Ссылка 2ГИС', (r) => r.url]]
+      ? [['Название', (r) => r.name], ['Категория', (r) => r.category], ['Адрес', (r) => r.address], ['Телефон', (r) => r.phone], ['Рейтинг', (r) => r.rating], ['Отзывов', (r) => r.reviews], ['Ссылка', (r) => r.url]]
       : [['Username', (r) => r.username], ['Имя', (r) => r.name], ['Чат', (r) => r.chat], ['Сообщение', (r) => r.text], ['Дата', (r) => r.date], ['Ссылка', (r) => r.link]];
   const csv = '\uFEFF' + [cols.map((c) => csvCell(c[0])).join(';'), ...rows.map((r) => cols.map((c) => csvCell(c[1](r))).join(';'))].join('\r\n');
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="fracs-${rec.kind}-${rec.id.slice(0, 8)}.csv"`);
   res.send(csv);
 }));
-
-/* ── оплата ── */
 
 api.post('/payments/create', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`pay:${req.user!.id}`, 10, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited' });
