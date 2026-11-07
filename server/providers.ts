@@ -1,6 +1,7 @@
 import { config } from './config.ts';
 import type { SearchRecord } from './db.ts';
-import type { City } from './cities.ts';
+import { cityTier, type City } from './cities.ts';
+import { hashStr, mulberry32, pick, rint } from './util.ts';
 
 export interface MapsStats { total: number; withoutSite: number; withPhone: number }
 export interface MapsRow {
@@ -13,6 +14,48 @@ export interface TgRow { id: string; username: string; name: string; chat: strin
 /** Демо-данных больше нет: если источник не подключён, поиск честно отвечает ошибкой. */
 export const mapsIsDemo = () => false;
 export const tgIsDemo = () => false;
+
+/* ── Демо для тех, у кого нет подписки (детерминированно от запроса) ── */
+const PREFIX = ['Профи', 'Мастер', 'Центр', 'Эксперт', 'Альфа', 'Гарант', 'Лидер', 'Вектор', 'Союз', 'Норма'];
+const STREETS = ['Ленина', 'Мира', 'Советская', 'Гагарина', 'Промышленная', 'Центральная', 'Школьная', 'Заводская', 'Кирова', 'Победы'];
+const NAMES = ['Алексей', 'Мария', 'Дмитрий', 'Анна', 'Сергей', 'Ольга', 'Иван', 'Елена', 'Андрей', 'Наталья'];
+const DEMO_CAP = 300;
+
+function demoMaps(niche: string, city: City): { stats: MapsStats } {
+  const r = mulberry32(hashStr(`${niche.toLowerCase().trim()}|${city.id}`));
+  const [lo, hi] = { big: [900, 2600], mid: [300, 950], small: [40, 320] }[cityTier(city)];
+  const total = rint(r, lo, hi);
+  const withoutSite = Math.round(total * (0.28 + r() * 0.24));
+  return { stats: { total, withoutSite, withPhone: Math.round(withoutSite * (0.7 + r() * 0.22)) } };
+}
+
+function demoMapsRow(rec: SearchRecord, i: number): MapsRow {
+  const r = mulberry32(hashStr(`${rec.seed}:${i}`));
+  const niche = rec.query.niche || 'Компания';
+  const share = rec.stats.withPhone / Math.max(1, rec.stats.withoutSite);
+  const d2 = () => String(rint(r, 0, 99)).padStart(2, '0');
+  return {
+    id: `demo-${i}`, name: `${niche[0].toUpperCase()}${niche.slice(1)} «${pick(r, PREFIX)}-${rint(r, 1, 99)}»`, category: niche,
+    address: `${rec.query.cityLabel?.split(',')[0] ?? ''}, ул. ${pick(r, STREETS)}, ${rint(r, 1, 120)}`,
+    phone: r() < share ? `+7 (900) 000-${d2()}-${d2()}` : null,
+    rating: Math.round((3.8 + r() * 1.2) * 10) / 10, reviews: rint(r, 3, 250), url: null,
+  };
+}
+
+function demoTg(phrase: string, days: number): { stats: TgStats } {
+  const r = mulberry32(hashStr(`${phrase.toLowerCase().trim()}|${days}`));
+  return { stats: { people: rint(r, 8, 140) * days, chats: rint(r, 4, 40) } };
+}
+
+function demoTgRow(rec: SearchRecord, i: number): TgRow {
+  const r = mulberry32(hashStr(`${rec.seed}:${i}`));
+  const username = `demo_user_${rint(r, 1000, 9999)}`;
+  return {
+    id: `demo-${i}`, username, name: pick(r, NAMES), chat: `Демо-чат ${rint(r, 1, rec.stats.chats)}`,
+    text: `Ищу: ${rec.query.phrase}. Кто может помочь? Пишите в личные сообщения.`,
+    date: new Date(Date.now() - r() * (rec.query.days ?? 3) * 86400000).toISOString(), link: `https://t.me/${username}`,
+  };
+}
 
 const SERPER = () => process.env.SERPER_API_KEY || '';
 const MIN_REVIEWS = Number(process.env.MIN_REVIEWS) || 3;
@@ -71,7 +114,8 @@ async function hasOwnSite(c: Cand, city: string): Promise<boolean> {
 async function serperMaps(niche: string, city: City, deadline: number): Promise<{ stats: MapsStats; rows: MapsRow[] }> {
   const all = new Map<string, Cand>();
   const errors: string[] = [];
-  const queries = [niche, `${niche} адрес телефон`, `${niche} рядом`];
+  const first = niche.split(/\s+и\s+|,/)[0].trim();
+  const queries = [...new Set([niche, first, `${first} адрес телефон`])];
   const jobs = queries.flatMap((q) => [1, 2, 3].map((page) => ({ q: `${q} ${city.name}`, page })));
   for (let i = 0; i < jobs.length; i += 3) {
     if (Date.now() > deadline - 25000) break;
@@ -80,29 +124,35 @@ async function serperMaps(niche: string, city: City, deadline: number): Promise<
       const name = String(p.title || '').trim();
       const address = String(p.address || '').trim();
       const id = String(p.cid || p.placeId || '').trim();
-      const phone = phoneOf(p.phoneNumber || p.phone);
+      const phone = phoneOf(p.phoneNumber || p.phone) || null;
       if (!id || name.length < 2 || all.has(id) || NOT_IP.test(`${name} ${p.category || ''}`)) continue;
-      if (!norm(address).includes(norm(city.name)) || !/\d/.test(address) || !phone) continue;
+      if (!/\d/.test(address)) continue;
       if (!(Number(p.ratingCount) >= MIN_REVIEWS)) continue;
       const host = p.website ? hostOf(String(p.website)) : '';
       all.set(id, { id, name, category: String(p.category || niche), address, phone, rating: Number(p.rating) || null, reviews: Number(p.ratingCount) || null, url: `https://www.google.com/maps?cid=${encodeURIComponent(id)}`, site: !!host && !isAgg(host), key: norm(name) });
     }
   }
+  if (!all.size) console.error('[maps] Serper places: 0 кандидатов', errors[0] || '');
   if (!all.size && errors.length) throw new Error(errors[0]);
   // сети и дубли: одно название или телефон у нескольких точек
   const cnt = new Map<string, number>();
-  for (const c of all.values()) for (const k of [c.key, c.phone!]) cnt.set(k, (cnt.get(k) || 0) + 1);
-  const todo = [...all.values()].filter((c) => !c.site && cnt.get(c.key)! < 2 && cnt.get(c.phone!)! < 2);
+  for (const c of all.values()) for (const k of [c.key, c.phone || '']) cnt.set(k, (cnt.get(k) || 0) + 1);
+  const todo = [...all.values()].filter((c) => !c.site && cnt.get(c.key)! < 2 && (!c.phone || cnt.get(c.phone)! < 2));
   const rows: MapsRow[] = [];
+  let failed = 0, checked = 0;
   for (let i = 0; i < todo.length && Date.now() < deadline; i += 5) {
     const batch = todo.slice(i, i + 5);
-    const res = await Promise.all(batch.map((c) => hasOwnSite(c, city.name).catch(() => null)));
+    const res = await Promise.all(batch.map((c) => hasOwnSite(c, city.name).catch((e) => { failed++; console.error('[sitecheck]', e.message); return null; })));
+    checked += batch.length;
     batch.forEach((c, k) => { if (res[k] === false) { const { site, key, ...row } = c; rows.push(row); } }); // сомнение или ошибка проверки = не выдаём
   }
-  return { stats: { total: all.size, withoutSite: rows.length, withPhone: rows.length }, rows };
+  console.log(`[maps] ${niche} / ${city.name}: кандидатов ${all.size}, на проверку ${todo.length}, проверено ${checked}, ошибок проверки ${failed}, без сайта ${rows.length}`);
+  if (checked > 0 && failed === checked) throw new Error('Проверка сайтов недоступна (Serper search)');
+  return { stats: { total: all.size, withoutSite: rows.length, withPhone: rows.filter((r) => r.phone).length }, rows };
 }
 
-export async function searchMaps(niche: string, city: City): Promise<{ stats: MapsStats; rows: MapsRow[] }> {
+export async function searchMaps(niche: string, city: City, real: boolean): Promise<{ stats: MapsStats; rows?: MapsRow[] }> {
+  if (!real) return demoMaps(niche, city);
   const deadline = Date.now() + 50000;
   if (SERPER()) return serperMaps(niche, city, deadline);
   if (config.gisKey) return gisSearch(niche, city);
@@ -135,7 +185,8 @@ async function gisSearch(niche: string, city: City): Promise<{ stats: MapsStats;
   return { stats: { total, withoutSite: rows.length, withPhone: rows.length }, rows };
 }
 
-export async function searchTg(phrase: string, days: number): Promise<{ stats: TgStats; rows: TgRow[] }> {
+export async function searchTg(phrase: string, days: number, real: boolean): Promise<{ stats: TgStats; rows?: TgRow[] }> {
+  if (!real) return demoTg(phrase, days);
   if (config.tgProvider !== 'http' || !config.tgParserUrl) throw new Error('Парсер Telegram не подключён: задайте TG_PROVIDER=http и TG_PARSER_URL');
   const resp = await fetch(`${config.tgParserUrl}/search`, {
     method: 'POST',
@@ -151,15 +202,18 @@ export async function searchTg(phrase: string, days: number): Promise<{ stats: T
   };
 }
 
-/** Число строк и первые 3 для замаскированного превью — всё из реальных данных. */
-export function summarize(_kind: SearchRecord['kind'], _stats: Record<string, number>, rows: unknown[] = []) {
-  return { rowsTotal: rows.length, head: rows.slice(0, 3) };
+export function summarize(kind: SearchRecord['kind'], stats: Record<string, number>, rows?: unknown[]) {
+  const rowsTotal = rows ? rows.length : Math.min(kind === 'maps' ? stats.withoutSite : stats.people, DEMO_CAP);
+  return { rowsTotal, head: rows ? rows.slice(0, 3) : undefined };
 }
 
 export const rowCount = (rec: SearchRecord): number => rec.rowsTotal;
 
 export function getRows(rec: SearchRecord, offset: number, limit: number): (MapsRow | TgRow)[] {
-  return ((rec.rows ?? []) as (MapsRow | TgRow)[]).slice(offset, offset + limit);
+  if (!rec.demo) return ((rec.rows ?? []) as (MapsRow | TgRow)[]).slice(offset, offset + limit);
+  const out: (MapsRow | TgRow)[] = [];
+  for (let i = offset; i < Math.min(offset + limit, rec.rowsTotal); i++) out.push(rec.kind === 'maps' ? demoMapsRow(rec, i) : demoTgRow(rec, i));
+  return out;
 }
 
-export const headRows = (rec: SearchRecord): (MapsRow | TgRow)[] => (rec.head ?? []) as (MapsRow | TgRow)[];
+export const headRows = (rec: SearchRecord): (MapsRow | TgRow)[] => (rec.demo ? getRows(rec, 0, 3) : ((rec.head ?? []) as (MapsRow | TgRow)[]));
