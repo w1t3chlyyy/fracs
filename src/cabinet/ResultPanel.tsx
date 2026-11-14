@@ -104,7 +104,7 @@ export default function ResultPanel({ result, subscribed, onSubscribe }: Props) 
     <div className="mt-8">
       {result.demo && (
         <p className="mb-4 text-[12px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3.5 py-2">
-          Демо-режим: числа и строки сгенерированы для проверки интерфейса, это не реальные организации и люди.
+          Старт-режим: не все бизнесы на бесплатном тарифе будут без сайта
         </p>
       )}
 
