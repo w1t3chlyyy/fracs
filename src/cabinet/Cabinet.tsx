@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, Loader2, LogOut, Map, Send } from 'lucide-react';
 import { api } from './api';
-import MapsTool from './MapsTool';
+import AppPanel from './gis/AppPanel';
+import DemoTool from './gis/DemoTool';
 import PlansModal from './PlansModal';
 import TgTool from './TgTool';
 import type { AppConfig, Me } from './types';
@@ -76,10 +77,21 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
   );
 }
 
+function ProgramLocked({ onSubscribe }: { onSubscribe: () => void }) {
+  return (
+    <div className="rounded-2xl bg-[#F9F9F9] p-8 text-center">
+      <h2 className="font-heading text-2xl font-medium text-gray-900">Программа Fracs Parser</h2>
+      <p className="mx-auto mt-2 max-w-xl text-[14px] text-gray-600">Реальный парсинг 2ГИС на вашем компьютере: любые города и ниши, фильтры, выгрузка в HTML/CSV/XLSX/JSON, Яндекс Карты. Программа и ключ открываются после оформления подписки.</p>
+      <button onClick={onSubscribe} className="mt-5 px-6 py-2.5 rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[14px] font-medium transition-colors cursor-pointer">Оформить подписку</button>
+    </div>
+  );
+}
+
 export default function Cabinet() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [tab, setTab] = useState<'maps' | 'tg'>('maps');
+  const [mapsView, setMapsView] = useState<'program' | 'demo' | null>(null);
   const [plansOpen, setPlansOpen] = useState(false);
   const [paidBanner, setPaidBanner] = useState(false);
 
@@ -117,11 +129,12 @@ export default function Cabinet() {
   }
 
   const subscribed = !!me.subscription?.active;
+  const mapsViewNow = mapsView ?? (subscribed ? 'program' : 'demo');
   const logout = async () => { await api.logout(); setMe({ user: null }); };
 
   return (
     <div className="min-h-screen bg-[#EFEFEF] text-gray-900 font-sans antialiased">
-      <header className="max-w-[1100px] mx-auto p-2 sm:p-3">
+      <header className="max-w-[1400px] mx-auto p-2 sm:p-3">
         <nav className="bg-white rounded-full p-[5px] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <a href="/" aria-label="На сайт" className="flex items-center gap-2 group">
@@ -150,7 +163,7 @@ export default function Cabinet() {
         </nav>
       </header>
 
-      <main className="max-w-[1100px] mx-auto px-3 sm:px-4 pb-16 pt-6">
+      <main className="max-w-[1400px] mx-auto px-3 sm:px-4 pb-16 pt-6">
         {!me.user ? (
           <LoginCard config={config} onDone={refresh} />
         ) : (
@@ -163,11 +176,23 @@ export default function Cabinet() {
                 </button>
               ))}
             </div>
-            <section className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200/80 shadow-sm">
-              {tab === 'maps'
-                ? <MapsTool subscribed={subscribed} onSubscribe={() => setPlansOpen(true)} onSearched={() => refresh()} />
-                : <TgTool subscribed={subscribed} onSubscribe={() => setPlansOpen(true)} onSearched={() => refresh()} />}
-              {me.quota && <p className="text-[12px] text-gray-400 mt-8">Запросов за 24 часа: {me.quota.used} из {me.quota.limit}</p>}
+            <section className="bg-white rounded-3xl p-5 sm:p-8 border border-gray-200/80 shadow-sm">
+              {tab === 'maps' && (
+                <>
+                  <div className="inline-flex bg-[#F2F2F2] rounded-full p-1 mb-6">
+                    {([['program', 'Программа'], ['demo', 'Демо']] as const).map(([id, label]) => (
+                      <button key={id} onClick={() => setMapsView(id)} className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${mapsViewNow === id ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>{label}</button>
+                    ))}
+                  </div>
+                  {mapsViewNow === 'program' ? (
+                    subscribed ? <AppPanel /> : <ProgramLocked onSubscribe={() => setPlansOpen(true)} />
+                  ) : (
+                    <DemoTool subscribed={subscribed} onGetProgram={() => (subscribed ? setMapsView('program') : setPlansOpen(true))} />
+                  )}
+                </>
+              )}
+              {tab === 'tg' && <TgTool subscribed={subscribed} onSubscribe={() => setPlansOpen(true)} onSearched={() => refresh()} />}
+              {me.quota && tab === 'tg' && <p className="text-[12px] text-gray-400 mt-8">Запросов за 24 часа: {me.quota.used} из {me.quota.limit}</p>}
             </section>
           </>
         )}
