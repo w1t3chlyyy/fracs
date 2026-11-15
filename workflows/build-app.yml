@@ -1,0 +1,87 @@
+# Сборка программы Fracs Parser под Windows, macOS (M1+ и Intel) и Linux.
+# Запуск: вкладка Actions → «Build Fracs Parser» → Run workflow (или тег app-v1.0.0).
+# Результат: GitHub Release с четырьмя архивами; кабинет раздаёт их только подписчикам.
+name: Build Fracs Parser
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия, например 1.0.0'
+        required: true
+  push:
+    tags: ['app-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: windows }
+          - { os: macos-latest, name: macos-arm64 }
+          - { os: macos-13, name: macos-x64 }
+          - { os: ubuntu-22.04, name: linux }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Зависимости
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Адрес сайта для проверки лицензии
+        shell: bash
+        env:
+          FRACS_SITE_URL: ${{ vars.FRACS_SITE_URL }}
+        run: |
+          if [ -z "$FRACS_SITE_URL" ]; then echo "Задайте переменную репозитория FRACS_SITE_URL (Settings → Variables → Actions)"; exit 1; fi
+          python - <<'PY'
+          import os, pathlib
+          p = pathlib.Path('parser_2gis/license.py')
+          p.write_text(p.read_text(encoding='utf-8').replace('__FRACS_SITE_URL__', os.environ['FRACS_SITE_URL'].rstrip('/')), encoding='utf-8')
+          PY
+
+      - name: Сборка
+        run: pyinstaller --noconfirm fracs_parser.spec
+
+      - name: Архив
+        shell: bash
+        run: |
+          mkdir -p ../out
+          cp ../README_PROGRAM_USER.txt dist/FracsParser/README.txt 2>/dev/null || true
+          cd dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell Compress-Archive -Path FracsParser -DestinationPath ../../out/FracsParser-${{ matrix.name }}.zip
+          else
+            zip -qr ../../out/FracsParser-${{ matrix.name }}.zip FracsParser
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FracsParser-${{ matrix.name }}
+          path: out/FracsParser-${{ matrix.name }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version && format('app-v{0}', github.event.inputs.version) || github.ref_name }}
+          name: Fracs Parser ${{ github.event.inputs.version || github.ref_name }}
+          files: dist/*.zip
