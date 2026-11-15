@@ -89,7 +89,16 @@ export const newId = () => crypto.randomUUID();
 
 /* ── пользователи ── */
 
-const userOf = (r: any): User => ({
+const ADMIN_UNTIL = '2099-12-31T00:00:00.000Z';
+
+const isAdminTg = (tgId: number) => config.adminTgId > 0 && tgId === config.adminTgId;
+
+/** Админу (ADMIN_TG_ID) подписка не нужна: считаем её вечной. В базу это не пишется. */
+function withAdmin(u: User): User {
+  return isAdminTg(u.tgId) ? { ...u, subscriptionUntil: ADMIN_UNTIL } : u;
+}
+
+const userOf = (r: any): User => withAdmin({
   id: r.id,
   tgId: Number(r.tg_id),
   username: r.username,
@@ -105,7 +114,8 @@ export async function getUser(id: string): Promise<User | null> {
     const row = check(r, 'getUser');
     return row ? userOf(row) : null;
   }
-  return memUsers.get(id) ?? null;
+  const mu = memUsers.get(id);
+  return mu ? withAdmin({ ...mu }) : null;
 }
 
 export async function upsertTgUser(from: { id: number; username?: string; first_name?: string }): Promise<User> {
@@ -127,7 +137,7 @@ export async function upsertTgUser(from: { id: number; username?: string; first_
     const u = memUsers.get(existingId)!;
     if (from.username !== undefined) u.username = from.username ?? null;
     if (from.first_name) u.firstName = from.first_name;
-    return { ...u };
+    return withAdmin({ ...u });
   }
 
   const id = newId();
@@ -141,7 +151,7 @@ export async function upsertTgUser(from: { id: number; username?: string; first_
   };
   memUsers.set(id, newUser);
   memTgUsers.set(from.id, id);
-  return { ...newUser };
+  return withAdmin({ ...newUser });
 }
 
 export const isSubscribed = (u: User) => !!u.subscriptionUntil && Date.parse(u.subscriptionUntil) > Date.now();
@@ -149,6 +159,7 @@ export const isSubscribed = (u: User) => !!u.subscriptionUntil && Date.parse(u.s
 export async function extendSubscription(userId: string, days: number): Promise<User> {
   const u = await getUser(userId);
   if (!u) throw new Error('user not found');
+  if (isAdminTg(u.tgId)) return u; // админу продлевать нечего
   const base = isSubscribed(u) ? Date.parse(u.subscriptionUntil!) : Date.now();
   const until = new Date(base + days * 86400000).toISOString();
 
@@ -159,7 +170,7 @@ export async function extendSubscription(userId: string, days: number): Promise<
 
   const updated: User = { ...u, subscriptionUntil: until };
   memUsers.set(userId, updated);
-  return updated;
+  return withAdmin({ ...updated });
 }
 
 /* ── токены входа через бота ── */
@@ -448,18 +459,19 @@ export async function cleanup(retentionDays: number) {
   }
 }
 
-/** Подписки, которые кончаются в ближайшие 3 дня и по которым ещё не напоминали. */
+/** Подписки, которые кончаются в ближайшие 3 дня и по которым ещё не напоминали. Админ не в списке. */
 export async function usersToRemind(): Promise<(User & { notifiedFor: string | null })[]> {
   const now = new Date().toISOString();
   const soon = new Date(Date.now() + 3 * 86400_000).toISOString();
   if (useSupabase) {
     const r = await sb().from('users').select('*').gt('subscription_until', now).lt('subscription_until', soon);
     return (check(r, 'usersToRemind') || [])
-      .filter((x: any) => x.expiry_notified_for !== x.subscription_until)
+      .filter((x: any) => !isAdminTg(Number(x.tg_id)) && x.expiry_notified_for !== x.subscription_until)
       .map((x: any) => ({ ...userOf(x), notifiedFor: x.expiry_notified_for }));
   }
   const result: (User & { notifiedFor: string | null })[] = [];
   for (const u of memUsers.values()) {
+    if (isAdminTg(u.tgId)) continue;
     if (u.subscriptionUntil && u.subscriptionUntil > now && u.subscriptionUntil < soon) {
       const notified = memExpiryNotified.get(u.id) ?? null;
       if (notified !== u.subscriptionUntil) {

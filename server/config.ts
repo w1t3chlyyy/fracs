@@ -36,6 +36,9 @@ export const config = {
   yookassaSecret: env.YOOKASSA_SECRET_KEY || '',
 
   dailySearchLimit: Number(env.DAILY_SEARCH_LIMIT || 40),
+
+  // Telegram ID админа (число, не @username): подписка ему не нужна, всё открыто.
+  adminTgId: Number(env.ADMIN_TG_ID) || 0,
 };
 
 if (isProd && !config.sessionSecret) {
