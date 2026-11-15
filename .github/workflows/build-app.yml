@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-                include:
+        include:
           - { os: windows-latest, name: windows }
           - { os: macos-latest, name: macos-arm64 }
           - { os: macos-15-intel, name: macos-x64 }
