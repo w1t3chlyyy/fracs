@@ -27,10 +27,14 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
         <button onClick={onClose} aria-label="Закрыть" className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center cursor-pointer">
           <X className="w-4 h-4" />
         </button>
-        <h3 className="font-heading text-2xl font-medium text-gray-900">Подписка на данные</h3>
+        <h3 className="font-heading text-2xl font-medium text-gray-900">Подписка Fracs</h3>
         <ul className="mt-3 space-y-1.5 text-[14px] text-gray-600">
-          {['Контакты компаний и людей из всех ваших запросов', 'Выгрузка в CSV', 'Без ограничений по числу просмотров'].map((t) => (
-            <li key={t} className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />{t}</li>
+          {[
+            'Программа Fracs Parser для Windows, macOS и Linux: реальный парсинг 2ГИС на вашем ПК',
+            'Фильтры, шаблоны WhatsApp, выгрузка HTML / CSV / XLSX / JSON, Яндекс Карты',
+            'Контакты и выгрузки по Telegram-поискам в кабинете',
+          ].map((t) => (
+            <li key={t} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />{t}</li>
           ))}
         </ul>
 
@@ -51,7 +55,7 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
 
         {error && <p className="text-[13px] text-red-600 mt-3">{error}</p>}
         <p className="text-[12px] text-gray-400 mt-4">
-          {config.payment === 'yookassa' ? 'Оплата проходит на стороне ЮKassa. После оплаты вы вернётесь в кабинет.' : 'Тестовый режим: подписка выдаётся без реальной оплаты.'}
+          {config.payment === 'yookassa' ? 'Оплата проходит на стороне ЮKassa. После оплаты вы вернётесь в кабинет, где откроется загрузка программы.' : 'Тестовый режим: подписка выдаётся без реальной оплаты.'}
         </p>
       </div>
     </div>
