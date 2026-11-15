@@ -121,7 +121,7 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
         <p className="max-w-3xl text-[13px] leading-snug text-gray-700">
-          <b>Это демонстрация.</b> Компании, телефоны и рейтинги сгенерированы и не существуют. Реальный парсинг 2ГИС выполняет программа Fracs Parser на вашем компьютере — она открывается после оплаты.
+          <b>Free Trial.</b> Компании, телефоны и рейтинги отдаются в тестовом варианте. Качественный парсинг 2ГИС выполняет программа Fracs Parser на вашем компьютере — она открывается после оплаты подписки.
         </p>
         <button type="button" onClick={onGetProgram} className={btnOrange}>{subscribed ? 'Скачать программу' : 'Получить программу'}</button>
       </div>
