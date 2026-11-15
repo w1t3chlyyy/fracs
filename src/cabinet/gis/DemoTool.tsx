@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link2, Play, Search, Square, X } from 'lucide-react';
+import { Link2, Lock, Play, Search, Square, X } from 'lucide-react';
 import { gisApi } from './api';
 import LinkGenerator from './LinkGenerator';
 import RecordCard, { bizId, type Mark } from './RecordCard';
@@ -16,7 +16,7 @@ interface Props {
 }
 
 const DEMO_MAX = 60; // записей, которые демо «просматривает»
-const TOTAL_MS = 4500; // сколько длится имитация
+const TOTAL_MS = 60000; // сколько длится имитация: 1 минута
 
 const sorters: Record<string, (a: GisRecord, b: GisRecord) => number> = {
   name_asc: (a, b) => a.name.localeCompare(b.name, 'ru'),
@@ -67,7 +67,7 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
     const total = Math.min(Math.max(1, settings.max_records), DEMO_MAX);
     const pool = makePool(url, total, city, query);
     const filters = settings.filters;
-    const step = Math.max(35, Math.round(TOTAL_MS / total));
+    const step = Math.max(35, Math.round(TOTAL_MS / total)); // вся имитация занимает ~1 минуту
 
     setRecords([]); setScanned(0); setTerm('');
     setLogs(['Демо-режим: данные сгенерированы, к 2ГИС запросов нет.', `Парсинг ссылки ${url}`]);
@@ -80,9 +80,10 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
       setScanned(i);
       if (passes(rec, filters)) {
         setRecords((r) => [...r, rec]);
-        setLogs((l) => [...l, `Парсинг [${i}] > ${rec.name}`].slice(-300));
+        // Названия бизнесов в журнале скрыты
+        setLogs((l) => [...l, `Парсинг [${i}] > ${'•'.repeat(8)}`].slice(-300));
       }
-      if (i >= pool.length) finish('done', 'Демо завершено. В программе то же самое работает с реальными данными 2ГИС.');
+      if (i >= pool.length) finish('done', 'Демо завершено. Чтобы увидеть результаты, оформите подписку: в программе то же самое работает с реальными данными 2ГИС.');
     }, step);
   };
 
@@ -103,6 +104,8 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
 
   const [pillCls, pillKey] = PILL[status];
   const running = status === 'running';
+  // После парсинга без подписки карточки скрыты блюром
+  const locked = !subscribed && !running && status !== 'idle' && records.length > 0;
   const gridCls = cols === '1' ? 'grid-cols-1' : cols === '2' ? 'sm:grid-cols-2' : cols === '3' ? 'sm:grid-cols-2 xl:grid-cols-3' : 'sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]';
 
   return (
@@ -161,9 +164,9 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
             {status !== 'idle' && <span className="text-[13px] tabular-nums text-gray-500">{records.length} {running ? t('collected') : t('found')} · просмотрено {scanned}</span>}
             <div className="relative min-w-[160px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={t('search_ph')} className={`${inputCls} !pl-9`} />
+              <input value={term} onChange={(e) => setTerm(e.target.value)} disabled={locked} placeholder={t('search_ph')} className={`${inputCls} !pl-9 disabled:opacity-50`} />
             </div>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} title={t('sort_title')} className={`${inputCls} !w-auto`}>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} disabled={locked} title={t('sort_title')} className={`${inputCls} !w-auto disabled:opacity-50`}>
               {['default', 'name_asc', 'name_desc', 'rating_desc', 'rating_asc', 'reviews_desc', 'reviews_asc'].map((k) => <option key={k} value={k}>{t(`sort_${k}`)}</option>)}
             </select>
             <div className="flex gap-1 rounded-xl bg-gray-100 p-1">
@@ -191,8 +194,25 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
 
           <div className="mt-4">
             {shown.length > 0 ? (
-              <div className={`grid gap-4 ${gridCls}`}>
-                {shown.map((r, i) => <RecordCard key={`${bizId(r)}-${i}`} r={r} t={t} demo mark={marks[bizId(r)]} onMark={(p) => setMark(r, p)} waUrl={() => ''} />)}
+              <div className="relative">
+                <div className={`grid gap-4 ${gridCls} ${locked ? 'pointer-events-none select-none' : ''}`} aria-hidden={locked}>
+                  {shown.map((r, i) => (
+                    <RecordCard
+                      key={`${bizId(r)}-${i}`} r={r} t={t} demo blurred={locked}
+                      mark={marks[bizId(r)]} onMark={(p) => setMark(r, p)} waUrl={() => ''}
+                    />
+                  ))}
+                </div>
+                {locked && (
+                  <div className="absolute inset-0 flex items-start justify-center bg-gradient-to-b from-white/40 via-white/85 to-white pt-16">
+                    <div className="sticky top-24 max-w-sm px-4 text-center">
+                      <Lock className="mx-auto mb-2 h-5 w-5 text-gray-500" />
+                      <p className="font-heading text-lg font-medium text-gray-900">Данные скрыты</p>
+                      <p className="mb-4 mt-1 text-[13px] text-gray-600">Чтобы увидеть результаты, купите подписку и получите программу Fracs Parser.</p>
+                      <button type="button" onClick={onGetProgram} className={btnOrange}>Купить подписку</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="py-16 text-center text-[15px] leading-relaxed text-gray-500">
