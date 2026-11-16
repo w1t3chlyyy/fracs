@@ -105,7 +105,8 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
   const [pillCls, pillKey] = PILL[status];
   const running = status === 'running';
   // После парсинга без подписки карточки скрыты блюром
-  const locked = !subscribed && !running && status !== 'idle' && records.length > 0;
+  const locked = !subscribed && records.length > 0;      // карточки размыты всегда
+  const showPaywall = locked && !running && status !== 'idle'; // плашка — после окончания
   const gridCls = cols === '1' ? 'grid-cols-1' : cols === '2' ? 'sm:grid-cols-2' : cols === '3' ? 'sm:grid-cols-2 xl:grid-cols-3' : 'sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]';
 
   return (
