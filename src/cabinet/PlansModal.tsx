@@ -11,6 +11,15 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
     setBusy(planId);
     setError('');
     try {
+      // Оплата через админа: уведомляем его в боте и открываем чат с готовым текстом
+      if (config.adminUsername) {
+        const plan = config.plans.find((p) => p.id === planId)!;
+        await api.requestPlan(planId).catch(() => {});
+        const text = `Здравствуйте! Хочу оформить подписку Fracs: ${plan.title} (${plan.priceRub.toLocaleString('ru-RU')} ₽).`;
+        window.open(`https://t.me/${config.adminUsername}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+        setBusy('');
+        return;
+      }
       const r = await api.pay(planId);
       if (r.confirmationUrl) window.location.href = r.confirmationUrl;
       else if (r.activated) onActivated();
@@ -19,6 +28,12 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
       setBusy('');
     }
   };
+
+  const note = config.adminUsername
+    ? 'Выберите тариф: откроется чат с администратором в Telegram. После оплаты он активирует подписку, а бот пришлёт вам уведомление.'
+    : config.payment === 'yookassa'
+      ? 'Оплата проходит на стороне ЮKassa. После оплаты вы вернётесь в кабинет, где откроется загрузка программы.'
+      : 'Тестовый режим: подписка выдаётся без реальной оплаты.';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -54,9 +69,7 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
         </div>
 
         {error && <p className="text-[13px] text-red-600 mt-3">{error}</p>}
-        <p className="text-[12px] text-gray-400 mt-4">
-          {config.payment === 'yookassa' ? 'Оплата проходит на стороне ЮKassa. После оплаты вы вернётесь в кабинет, где откроется загрузка программы.' : 'Тестовый режим: подписка выдаётся без реальной оплаты.'}
-        </p>
+        <p className="text-[12px] text-gray-400 mt-4">{note}</p>
       </div>
     </div>
   );
