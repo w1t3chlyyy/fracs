@@ -1,5 +1,12 @@
 export interface Plan { id: string; title: string; days: number; priceRub: number; badge?: string }
-export interface AppConfig { devLogin: boolean; payment: 'mock' | 'yookassa'; plans: Plan[]; demo: { maps: boolean; tg: boolean } }
+export interface AppConfig {
+  devLogin: boolean;
+  payment: 'mock' | 'yookassa';
+  plans: Plan[];
+  demo: { maps: boolean; tg: boolean };
+  /** Если задан — оплата идёт через чат с админом в Telegram (t.me/<adminUsername>) */
+  adminUsername?: string;
+}
 export interface Me {
   user: { id: string; firstName: string; username: string | null } | null;
   subscription?: { active: boolean; until: string | null };
