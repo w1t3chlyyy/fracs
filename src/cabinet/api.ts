@@ -33,4 +33,6 @@ export const api = {
   search: (id: string) => req<SearchView>(`/search/${id}`),
   rows: <T,>(id: string, offset: number, limit = 50) => req<{ rows: T[]; total: number }>(`/search/${id}/rows?offset=${offset}&limit=${limit}`),
   pay: (planId: string) => post<{ confirmationUrl?: string; activated?: boolean }>('/payments/create', { planId }),
+  /** Заявка на подписку: админ получает уведомление в Telegram */
+  requestPlan: (planId: string) => post<{ ok: boolean }>('/payments/request', { planId }),
 };
