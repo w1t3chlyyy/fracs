@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { config } from './config.ts';
-import { bindLoginToken, upsertTgUser } from './db.ts';
+import {
+  bindLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
+} from './db.ts';
 import { safeEqual, sleep } from './util.ts';
 
 let botUsername = config.botUsername;
@@ -32,9 +34,81 @@ export async function notify(tgId: number, text: string) {
   }
 }
 
+/* ── админ-панель ── */
+
+const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ru-RU') : '—');
+const who = (u: { firstName: string; username: string | null; tgId: number }) =>
+  `${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})`;
+
+const ADMIN_HELP = `Админ-панель Fracs
+/grant <@username|id> [дней] — выдать или продлить подписку (по умолчанию 30)
+/revoke <@username|id> — снять подписку
+/user <@username|id> — статус пользователя
+/users — последние 10 пользователей
+Пользователь должен хотя бы раз войти в кабинет.`;
+
+const ADMIN_CMDS = ['/admin', '/grant', '/revoke', '/user', '/users'];
+
+/** Команды админа. true — команда обработана. */
+async function handleAdmin(chatId: number, text: string): Promise<boolean> {
+  const [raw, ...args] = text.trim().split(/\s+/);
+  const cmd = raw.split('@')[0].toLowerCase();
+  if (!ADMIN_CMDS.includes(cmd)) return false;
+
+  if (cmd === '/admin') {
+    await notify(chatId, ADMIN_HELP);
+    return true;
+  }
+
+  if (cmd === '/users') {
+    const list = await listRecentUsers(10);
+    await notify(
+      chatId,
+      list.length
+        ? list.map((u) => `${who(u)} — ${isSubscribed(u) ? 'до ' + fmt(u.subscriptionUntil) : 'нет подписки'}`).join('\n')
+        : 'Пользователей пока нет.',
+    );
+    return true;
+  }
+
+  const user = args[0] ? await findUser(args[0]) : null;
+  if (!user) {
+    await notify(chatId, args[0] ? 'Пользователь не найден. Он должен сначала войти в кабинет через бота.' : ADMIN_HELP);
+    return true;
+  }
+
+  if (cmd === '/user') {
+    await notify(chatId, `${who(user)}\nПодписка: ${isSubscribed(user) ? 'до ' + fmt(user.subscriptionUntil) : 'нет'}\nРегистрация: ${fmt(user.createdAt)}`);
+  } else if (cmd === '/grant') {
+    const days = Math.round(Number(args[1] ?? 30));
+    if (!(days > 0 && days <= 3650)) {
+      await notify(chatId, 'Укажите число дней от 1 до 3650.');
+      return true;
+    }
+    const u = await extendSubscription(user.id, days);
+    await notify(chatId, `✅ ${who(u)}: подписка до ${fmt(u.subscriptionUntil)}`);
+    await notify(u.tgId, `✅ Подписка Fracs активна до ${fmt(u.subscriptionUntil)}. Кабинет: ${config.appUrl}/app`);
+  } else if (cmd === '/revoke') {
+    const u = await setSubscription(user.id, null);
+    await notify(chatId, `🚫 ${who(u)}: подписка снята`);
+  }
+  return true;
+}
+
 export async function handleUpdate(update: any) {
   const msg = update?.message;
   if (!msg?.text || !msg.from || msg.chat?.type !== 'private') return;
+
+  if (config.adminTgId > 0 && msg.from.id === config.adminTgId) {
+    try {
+      if (await handleAdmin(msg.chat.id, msg.text)) return;
+    } catch (e: any) {
+      console.error('[bot] admin', e);
+      await notify(msg.chat.id, `Ошибка: ${e?.message || e}`);
+      return;
+    }
+  }
+
   const [cmd, param] = msg.text.trim().split(/\s+/);
   if (cmd !== '/start') {
     await notify(msg.chat.id, `Откройте личный кабинет: ${config.appUrl}/app`);
