@@ -39,6 +39,8 @@ export const config = {
 
   // Telegram ID админа (число, не @username): подписка ему не нужна, всё открыто.
   adminTgId: Number(env.ADMIN_TG_ID) || 0,
+  // @username админа: кнопка оплаты в кабинете ведёт в чат с ним (t.me/<username>).
+  adminUsername: (env.ADMIN_TG_USERNAME || '').replace(/^@/, ''),
 };
 
 if (isProd && !config.sessionSecret) {
