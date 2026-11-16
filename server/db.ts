@@ -173,6 +173,50 @@ export async function extendSubscription(userId: string, days: number): Promise<
   return withAdmin({ ...updated });
 }
 
+/* ── админ: поиск пользователей и ручное управление подпиской ── */
+
+/** Ищет по числовому Telegram ID или по @username (без учёта регистра). */
+export async function findUser(q: string): Promise<User | null> {
+  const s = q.trim().replace(/^@/, '');
+  if (!s) return null;
+  const byId = /^\d+$/.test(s);
+  if (useSupabase) {
+    const base = sb().from('users').select('*');
+    const r = byId
+      ? await base.eq('tg_id', Number(s)).maybeSingle()
+      : await base.ilike('username', s.replace(/[%_]/g, '\\$&')).limit(1).maybeSingle();
+    const row = check(r as any, 'findUser');
+    return row ? userOf(row) : null;
+  }
+  for (const u of memUsers.values()) {
+    if (byId ? String(u.tgId) === s : (u.username || '').toLowerCase() === s.toLowerCase()) return withAdmin({ ...u });
+  }
+  return null;
+}
+
+/** Задаёт срок подписки напрямую (null — снять). */
+export async function setSubscription(userId: string, until: string | null): Promise<User> {
+  if (useSupabase) {
+    const r = await sb().from('users').update({ subscription_until: until }).eq('id', userId).select('*').single();
+    return userOf(check(r, 'setSubscription'));
+  }
+  const u = memUsers.get(userId);
+  if (!u) throw new Error('user not found');
+  u.subscriptionUntil = until;
+  return withAdmin({ ...u });
+}
+
+export async function listRecentUsers(limit = 10): Promise<User[]> {
+  if (useSupabase) {
+    const r = await sb().from('users').select('*').order('created_at', { ascending: false }).limit(limit);
+    return (check(r, 'listRecentUsers') || []).map(userOf);
+  }
+  return [...memUsers.values()]
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .slice(0, limit)
+    .map((u) => withAdmin({ ...u }));
+}
+
 /* ── токены входа через бота ── */
 
 const TOKEN_MS = 10 * 60_000;
