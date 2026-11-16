@@ -5,6 +5,7 @@ import {
   type SearchRecord, type User,
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
+import { notify } from './bot.ts';
 import { findCity, searchCities } from './cities.ts';
 import { getRows, headRows, searchMaps, searchTg, summarize } from './providers.ts';
 import type { MapsRow, TgRow } from './providers.ts';
@@ -25,7 +26,13 @@ api.get('/health', h(async (_req, res) => {
 }));
 
 api.get('/config', (_req, res) => {
-  res.json({ devLogin: config.devLogin, payment: config.paymentProvider, plans: PLANS, demo: { maps: false, tg: false } });
+  res.json({
+    devLogin: config.devLogin,
+    payment: config.paymentProvider,
+    plans: PLANS,
+    demo: { maps: false, tg: false },
+    adminUsername: config.adminUsername || undefined,
+  });
 });
 
 api.get('/cities', (req, res) => {
@@ -201,6 +208,21 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="fracs-${rec.kind}-${rec.id.slice(0, 8)}.csv"`);
   res.send(csv);
+}));
+
+/** Заявка на подписку: уведомляем админа в Telegram, клиент затем сам открывает чат с ним. */
+api.post('/payments/request', requireAuth, h(async (req, res) => {
+  if (!(await rateLimit(`payreq:${req.user!.id}`, 5, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
+  const plan = PLANS.find((p) => p.id === String(req.body?.planId || ''));
+  if (!plan) return void res.status(400).json({ error: 'bad_plan', message: 'Неизвестный тариф' });
+  const u = req.user!;
+  if (config.adminTgId > 0) {
+    await notify(
+      config.adminTgId,
+      `🧾 Заявка на подписку\n${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})\nТариф: ${plan.title}, ${plan.priceRub} ₽\n\nВыдать: /grant ${u.tgId} ${plan.days}`,
+    );
+  }
+  res.json({ ok: true });
 }));
 
 api.post('/payments/create', requireAuth, h(async (req, res) => {
