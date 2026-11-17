@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { config } from './config.ts';
 import {
   bindLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
+  getPlans, updatePlan, resetPlans,
 } from './db.ts';
 import { safeEqual, sleep } from './util.ts';
 
@@ -41,22 +42,127 @@ const who = (u: { firstName: string; username: string | null; tgId: number }) =>
   `${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})`;
 
 const ADMIN_HELP = `Админ-панель Fracs
+
+Пользователи:
 /grant <@username|id> [дней] — выдать или продлить подписку (по умолчанию 30)
 /revoke <@username|id> — снять подписку
 /user <@username|id> — статус пользователя
 /users — последние 10 пользователей
-Пользователь должен хотя бы раз войти в кабинет.`;
 
-const ADMIN_CMDS = ['/admin', '/grant', '/revoke', '/user', '/users'];
+Тарифы и цены:
+/plans — список текущих тарифов
+/setprice <id|1|2> <цена> — изменить цену (₽)
+/setdesc <id|1|2> <описание|-> — изменить описание (- чтобы убрать)
+/settitle <id|1|2> <название> — изменить название
+/setbadge <id|1|2> <текст|-> — изменить бейдж (- чтобы убрать)
+/setdays <id|1|2> <дней> — изменить длительность
+/resetplans — сбросить тарифы к стандартным
+
+Примеры:
+/setprice month 1800
+/setdesc quarter Выгодный доступ на 3 месяца`;
+
+const ADMIN_CMDS = [
+  '/admin', '/grant', '/revoke', '/user', '/users',
+  '/plans', '/setprice', '/setdesc', '/settitle', '/setbadge', '/setdays', '/resetplans',
+];
+
+function formatPlans(plans: Awaited<ReturnType<typeof getPlans>>) {
+  return plans
+    .map(
+      (p, i) =>
+        `${i + 1}. [${p.id}] ${p.title} — ${p.priceRub.toLocaleString('ru-RU')} ₽ (${p.days} дн.)` +
+        (p.badge ? `\n   Бейдж: ${p.badge}` : '') +
+        `\n   Описание: ${p.description || '—'}`,
+    )
+    .join('\n\n');
+}
 
 /** Команды админа. true — команда обработана. */
 async function handleAdmin(chatId: number, text: string): Promise<boolean> {
-  const [raw, ...args] = text.trim().split(/\s+/);
+  const trimmed = text.trim();
+  const [raw, ...args] = trimmed.split(/\s+/);
   const cmd = raw.split('@')[0].toLowerCase();
   if (!ADMIN_CMDS.includes(cmd)) return false;
 
   if (cmd === '/admin') {
     await notify(chatId, ADMIN_HELP);
+    return true;
+  }
+
+  if (cmd === '/plans') {
+    const plans = await getPlans();
+    await notify(
+      chatId,
+      `Тарифы:\n\n${formatPlans(plans)}\n\nИзменить цену: /setprice <id|номер> <сумма>\nИзменить описание: /setdesc <id|номер> <текст>`,
+    );
+    return true;
+  }
+
+  if (cmd === '/resetplans') {
+    const plans = await resetPlans();
+    await notify(chatId, `♻️ Тарифы сброшены к стандартным:\n\n${formatPlans(plans)}`);
+    return true;
+  }
+
+  if (cmd === '/setprice') {
+    const targetId = args[0];
+    const price = Math.round(Number(args[1]));
+    if (!targetId || !Number.isFinite(price) || price < 1 || price > 10_000_000) {
+      await notify(chatId, 'Использование: /setprice <id|1|2> <цена в ₽>\nПример: /setprice month 1800');
+      return true;
+    }
+    const updated = await updatePlan(targetId, { priceRub: price });
+    if (!updated) {
+      await notify(chatId, 'Тариф не найден. Посмотрите список командой /plans');
+      return true;
+    }
+    await notify(chatId, `✅ Цена обновлена: [${updated.id}] ${updated.title} — ${updated.priceRub.toLocaleString('ru-RU')} ₽`);
+    return true;
+  }
+
+  if (cmd === '/setdays') {
+    const targetId = args[0];
+    const days = Math.round(Number(args[1]));
+    if (!targetId || !Number.isFinite(days) || days < 1 || days > 3650) {
+      await notify(chatId, 'Использование: /setdays <id|1|2> <дней от 1 до 3650>');
+      return true;
+    }
+    const updated = await updatePlan(targetId, { days });
+    if (!updated) {
+      await notify(chatId, 'Тариф не найден. Посмотрите список командой /plans');
+      return true;
+    }
+    await notify(chatId, `✅ Длительность обновлена: [${updated.id}] ${updated.title} — ${updated.days} дн.`);
+    return true;
+  }
+
+  if (cmd === '/setdesc' || cmd === '/settitle' || cmd === '/setbadge') {
+    const m = trimmed.match(/^\/\S+\s+(\S+)\s+([\s\S]+)$/);
+    const targetId = m?.[1];
+    const value = m?.[2]?.trim();
+    if (!targetId || !value) {
+      await notify(chatId, `Использование: ${cmd} <id|1|2> <текст>${cmd === '/settitle' ? '' : ' (или - чтобы очистить)'}`);
+      return true;
+    }
+    const cleanVal = value === '-' ? '' : value;
+    const patch =
+      cmd === '/setdesc'
+        ? { description: cleanVal }
+        : cmd === '/setbadge'
+          ? { badge: cleanVal }
+          : { title: value };
+    const updated = await updatePlan(targetId, patch);
+    if (!updated) {
+      await notify(chatId, 'Тариф не найден. Посмотрите список командой /plans');
+      return true;
+    }
+    await notify(
+      chatId,
+      `✅ Тариф [${updated.id}] обновлён:\n${updated.title} — ${updated.priceRub.toLocaleString('ru-RU')} ₽ (${updated.days} дн.)` +
+        (updated.badge ? `\nБейдж: ${updated.badge}` : '') +
+        `\nОписание: ${updated.description || '—'}`,
+    );
     return true;
   }
 

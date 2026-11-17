@@ -59,8 +59,9 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
               <div>
                 <p className="font-medium text-gray-900">{p.title}</p>
                 {p.badge && <p className="text-[12px] text-[#F26522] mt-0.5">{p.badge}</p>}
+                {p.description && <p className="text-[12.5px] text-gray-500 mt-1 leading-snug">{p.description}</p>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <span className="font-heading text-xl font-semibold text-gray-900">{p.priceRub.toLocaleString('ru-RU')} ₽</span>
                 {busy === p.id && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
               </div>
@@ -70,6 +71,12 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
 
         {error && <p className="text-[13px] text-red-600 mt-3">{error}</p>}
         <p className="text-[12px] text-gray-400 mt-4">{note}</p>
+        <p className="text-[12px] text-gray-400 mt-2">
+          Оплачивая подписку, вы принимаете условия{' '}
+          <a href="/offer" target="_blank" rel="noreferrer" className="text-gray-600 underline underline-offset-2 hover:text-gray-900">
+            публичной оферты
+          </a>.
+        </p>
       </div>
     </div>
   );

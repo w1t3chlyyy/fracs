@@ -1,4 +1,4 @@
-export interface Plan { id: string; title: string; days: number; priceRub: number; badge?: string }
+export interface Plan { id: string; title: string; days: number; priceRub: number; badge?: string; description?: string }
 export interface AppConfig {
   devLogin: boolean;
   payment: 'mock' | 'yookassa';

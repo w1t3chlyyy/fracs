@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { config } from './config.ts';
+import { config, PLANS, type Plan } from './config.ts';
 
 export interface User {
   id: string;
@@ -540,4 +542,99 @@ export async function ping(): Promise<boolean> {
     return !r.error;
   }
   return true;
+}
+
+/* ── тарифы (редактируются через админку в Telegram) ── */
+
+const clonePlans = (list: Plan[]): Plan[] => list.map((p) => ({ ...p }));
+const PLANS_FILE = path.join(process.cwd(), 'data', 'plans.json');
+
+let memPlans: Plan[] | null = null;
+
+function loadLocalPlans(): Plan[] {
+  if (memPlans) return clonePlans(memPlans);
+  try {
+    if (fs.existsSync(PLANS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(PLANS_FILE, 'utf-8'));
+      if (Array.isArray(parsed) && parsed.length) {
+        memPlans = parsed;
+        return clonePlans(parsed);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  memPlans = clonePlans(PLANS);
+  return clonePlans(memPlans);
+}
+
+function saveLocalPlans(plans: Plan[]) {
+  memPlans = clonePlans(plans);
+  try {
+    fs.mkdirSync(path.dirname(PLANS_FILE), { recursive: true });
+    fs.writeFileSync(PLANS_FILE, JSON.stringify(plans, null, 2), 'utf-8');
+  } catch {
+    /* read-only fs (e.g. serverless) — остаётся в памяти */
+  }
+}
+
+export async function getPlans(): Promise<Plan[]> {
+  if (useSupabase) {
+    try {
+      const r = await sb().from('app_settings').select('value').eq('key', 'plans').maybeSingle();
+      if (!r.error && Array.isArray(r.data?.value) && r.data.value.length) {
+        memPlans = clonePlans(r.data.value as Plan[]);
+        return clonePlans(memPlans);
+      }
+    } catch {
+      /* таблица может быть ещё не создана — используем кэш/дефолт */
+    }
+  }
+  return loadLocalPlans();
+}
+
+export async function savePlans(plans: Plan[]): Promise<void> {
+  saveLocalPlans(plans);
+  if (useSupabase) {
+    const r = await sb()
+      .from('app_settings')
+      .upsert({ key: 'plans', value: plans, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (r.error) {
+      console.warn('[db] savePlans supabase:', r.error.message);
+    }
+  }
+}
+
+export async function findPlan(idOrIndex: string): Promise<Plan | null> {
+  const plans = await getPlans();
+  const s = idOrIndex.trim().toLowerCase();
+  if (/^\d+$/.test(s)) {
+    const idx = Number(s) - 1;
+    if (idx >= 0 && idx < plans.length) return plans[idx];
+  }
+  return plans.find((p) => p.id.toLowerCase() === s) ?? null;
+}
+
+export async function updatePlan(
+  idOrIndex: string,
+  patch: Partial<Pick<Plan, 'priceRub' | 'description' | 'title' | 'badge' | 'days'>>,
+): Promise<Plan | null> {
+  const plans = await getPlans();
+  const target = await findPlan(idOrIndex);
+  if (!target) return null;
+  const next = plans.map((p) => {
+    if (p.id !== target.id) return p;
+    const updated: Plan = { ...p, ...patch };
+    if (!updated.description) delete updated.description;
+    if (!updated.badge) delete updated.badge;
+    return updated;
+  });
+  await savePlans(next);
+  return next.find((p) => p.id === target.id) ?? null;
+}
+
+export async function resetPlans(): Promise<Plan[]> {
+  const defaults = clonePlans(PLANS);
+  await savePlans(defaults);
+  return defaults;
 }

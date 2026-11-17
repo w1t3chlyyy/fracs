@@ -72,7 +72,12 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
         </button>
       )}
 
-      
+      {error && <p className="text-[13px] text-red-600 mt-4">{error}</p>}
+      {config.devLogin && (
+        <button onClick={dev} type="button" className="mt-4 block mx-auto text-[13px] text-gray-500 hover:text-gray-900 underline underline-offset-4 cursor-pointer">
+          Войти без бота (dev-режим)
+        </button>
+      )}
     </div>
   );
 }

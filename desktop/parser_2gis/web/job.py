@@ -11,8 +11,12 @@ from ..writer import FilterWriter, get_writer
 from ..writer.filters import any_filter_enabled
 from ..writer.record import extract_record
 from ..writer.writers import FileWriter
+from .. import license as fracs_license
 from ..yandex import YandexCaptcha, YandexMaps
 from .history import History
+
+class LicenseExpiredError(RuntimeError):
+    """Подписка закончилась во время выполнения задачи."""
 
 # Keep at most this many log lines in memory for the live progress panel.
 _MAX_LOG_LINES = 5000
@@ -39,6 +43,8 @@ class CollectorWriter(FileWriter):
         pass
 
     def write(self, catalog_doc: Any) -> None:
+        if not fracs_license.check().get('ok'):
+            raise LicenseExpiredError('Подписка закончилась. Работа программы остановлена.')
         if not self._check_catalog_doc(catalog_doc):
             return
         self.docs.append(catalog_doc)
@@ -141,9 +147,25 @@ class ParseJob:
             assert self.collector is not None
             enricher = YandexMaps(config.chrome)
             self._parser = enricher  # `stop()` closes it
+            expired = False
+
+            def _should_stop() -> bool:
+                nonlocal expired
+                if self._cancelled:
+                    return True
+                if not fracs_license.check().get('ok'):
+                    expired = True
+                    return True
+                return False
+
             stats = enricher.enrich(self.collector.docs, only_missing_website,
-                                    lambda: self._cancelled, config.chrome.headless,
+                                    _should_stop, config.chrome.headless,
                                     add_site_to_record=not remove_with_website)
+            if expired:
+                self.error = 'Подписка закончилась. Работа программы остановлена.'
+                self.status = 'error'
+                logger.error('%s', self.error)
+                return
             # Drop what should not stay in the final list (docs and district labels stay aligned):
             #  - businesses that DO have a website on Yandex Maps,
             #  - businesses Yandex says are permanently closed,
@@ -227,6 +249,8 @@ class ParseJob:
                 for url in urls:
                     if self._cancelled:
                         break
+                    if not fracs_license.check().get('ok'):
+                        raise LicenseExpiredError('Подписка закончилась. Работа программы остановлена.')
                     # Tag documents from this URL with its district sheet label.
                     self.collector.current_label = labels.get(url)
                     logger.info('Парсинг ссылки %s', url)
@@ -236,6 +260,8 @@ class ParseJob:
                         with self._parser:
                             if not self._cancelled:
                                 self._parser.parse(writer)
+                    except LicenseExpiredError:
+                        raise
                     except Exception as e:
                         # A single URL failing (e.g. 2GIS anti-bot timeout) must not
                         # abort the whole run — log it, keep what it collected, and
@@ -255,6 +281,10 @@ class ParseJob:
                 logger.info('Парсинг завершён.')
             else:
                 logger.info('Парсинг завершён.')
+        except LicenseExpiredError as e:
+            self.error = str(e)
+            self.status = 'error'
+            logger.error('%s', self.error)
         except Exception as e:
             if self._cancelled:
                 # Stopping closes the browser tab mid-request, surfacing as

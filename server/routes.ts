@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { config, PLANS } from './config.ts';
+import { config } from './config.ts';
 import {
-  countSearchesSince, getSearch, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
+  countSearchesSince, getPlans, getSearch, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
   type SearchRecord, type User,
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
@@ -25,15 +25,15 @@ api.get('/health', h(async (_req, res) => {
   res.json({ ok: true, db: await ping().catch(() => false) });
 }));
 
-api.get('/config', (_req, res) => {
+api.get('/config', h(async (_req, res) => {
   res.json({
     devLogin: config.devLogin,
     payment: config.paymentProvider,
-    plans: PLANS,
+    plans: await getPlans(),
     demo: { maps: false, tg: false },
     adminUsername: config.adminUsername || undefined,
   });
-});
+}));
 
 api.get('/cities', (req, res) => {
   res.json({ items: searchCities(String(req.query.q || ''), 8) });
@@ -213,7 +213,8 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
 /** Заявка на подписку: уведомляем админа в Telegram, клиент затем сам открывает чат с ним. */
 api.post('/payments/request', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`payreq:${req.user!.id}`, 5, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
-  const plan = PLANS.find((p) => p.id === String(req.body?.planId || ''));
+  const plans = await getPlans();
+  const plan = plans.find((p) => p.id === String(req.body?.planId || ''));
   if (!plan) return void res.status(400).json({ error: 'bad_plan', message: 'Неизвестный тариф' });
   const u = req.user!;
   if (config.adminTgId > 0) {

@@ -1040,7 +1040,7 @@
     offline:'Нет связи с сервером Fracs. Проверьте интернет и повторите.',not_configured:'Эта сборка не настроена на сайт Fracs (нет адреса для проверки лицензии).'};
   function show(st){
     if(st.site){var a=document.getElementById('lic-site');a.href=st.site+'/app';}
-    if(st.reason==='expired')txt.textContent=MSG.expired;
+    txt.textContent=st.reason==='expired'?MSG.expired:'Вставьте ключ лицензии из личного кабинета Fracs: раздел «Карты 2ГИС» → «Программа».';
     err.textContent=(st.reason&&st.reason!=='expired'&&MSG[st.reason])||'';
     box.style.display='flex';
   }
@@ -1052,7 +1052,7 @@
       .then(function(r){return r.json()}).then(function(st){if(st.ok){location.reload();}else{show(st);if(!st.reason||st.reason==='no_key')err.textContent=MSG.invalid;}});
   };
   var of=window.fetch;window.fetch=function(){return of.apply(this,arguments).then(function(r){if(r.status===402){check();}return r;});};
-  check();setInterval(check,600000);
+  check();setInterval(check,60000);
 })();
 </script>
 </body>

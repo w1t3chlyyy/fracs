@@ -1,6 +1,6 @@
-import { config, PLANS } from './config.ts';
+import { config } from './config.ts';
 import {
-  cancelPayment, claimPayment, extendSubscription, findPaymentByProviderId, getUser, insertPayment,
+  cancelPayment, claimPayment, extendSubscription, findPaymentByProviderId, getPlans, getUser, insertPayment,
   newId, revertPayment, setPaymentProviderId, type PaymentRecord, type User,
 } from './db.ts';
 import { notify } from './bot.ts';
@@ -9,7 +9,8 @@ const YK = 'https://api.yookassa.ru/v3/payments';
 const ykAuth = () => 'Basic ' + Buffer.from(`${config.yookassaShopId}:${config.yookassaSecret}`).toString('base64');
 
 async function activate(p: PaymentRecord) {
-  const [user, plan] = [await getUser(p.userId), PLANS.find((x) => x.id === p.planId)];
+  const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
+  const plan = plans.find((x) => x.id === p.planId);
   if (!user || !plan) return;
   // Идемпотентность: claim атомарно переводит pending → succeeded, повторный вебхук получит null и ничего не продлит.
   if (!(await claimPayment(p.id))) return;
@@ -23,7 +24,8 @@ async function activate(p: PaymentRecord) {
 }
 
 export async function createPayment(user: User, planId: string): Promise<{ confirmationUrl?: string; activated?: boolean }> {
-  const plan = PLANS.find((p) => p.id === planId);
+  const plans = await getPlans();
+  const plan = plans.find((p) => p.id === planId);
   if (!plan) throw Object.assign(new Error('Неизвестный тариф'), { status: 400 });
 
   const rec: PaymentRecord = {

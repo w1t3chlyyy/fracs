@@ -3,15 +3,16 @@ import { ArrowRight, ChevronDown, CheckCircle2, MapPin, Menu, X, Send, Search, D
 import { Shader, Swirl, ChromaFlow, FlutedGlass, FilmGrain } from 'shaders/react';
 
 const IMG = {
-  maps: 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=80',
-  tg: 'https://images.unsplash.com/photo-1611746872915-64382b5c76da?auto=format&fit=crop&w=1200&q=80',
+  maps: '/assets/aistudio/image_27a85a5c.png',
+  tg: '/assets/aistudio/image_504e11d1.png',
   work: 'https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1400&q=80',
-  shop: 'https://images.unsplash.com/photo-1556740738-b6a63e27c4df?auto=format&fit=crop&w=1200&q=80',
+  shop: '/assets/aistudio/image_5fa4b296.png',
 };
 
 function Photo({ src, alt, className = '' }: { src: string; alt: string; className?: string }) {
   const [ok, setOk] = useState(true);
-  return ok ? <img src={src} alt={alt} loading="lazy" onError={() => setOk(false)} className={`w-full h-full object-cover ${className}`} /> : <div className="w-full h-full bg-gray-200" />;
+  const fit = className.includes('object-') ? '' : 'object-cover';
+  return ok ? <img src={src} alt={alt} loading="lazy" onError={() => setOk(false)} className={`w-full h-full ${fit} ${className}`} /> : <div className="w-full h-full bg-gray-200" />;
 }
 
 const Cta = ({ children, dark = false, href = '/app' }: { children: React.ReactNode; dark?: boolean; href?: string }) => (
@@ -148,7 +149,7 @@ const FAQ = [
 export default function App() {
   const [menu, setMenu] = useState(false);
   const [faq, setFaq] = useState<number | null>(0);
-  const [plans, setPlans] = useState<{ id: string; title: string; days: number; priceRub: number; badge?: string }[]>([]);
+  const [plans, setPlans] = useState<{ id: string; title: string; days: number; priceRub: number; badge?: string; description?: string }[]>([]);
   useEffect(() => { fetch('/api/config').then((r) => r.json()).then((j) => setPlans(j.plans || [])).catch(() => {}); }, []);
 
   const links = [['Как это работает', '#start'], ['Расчёт', '#calc'], ['Тарифы', '#pricing'], ['Вопросы', '#faq']];
@@ -208,7 +209,7 @@ export default function App() {
             [IMG.shop, 'Выгрузка CSV', 'Всё, что нашли, забираете в таблицу и передаёте менеджерам или загружаете в свою CRM.'],
           ].map(([src, t, d]) => (
             <article key={t}>
-              <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-gray-100"><Photo src={src} alt={t} className="hover:scale-105 transition-transform duration-700" /></div>
+              <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-white border border-gray-100"><Photo src={src} alt={t} className="object-contain p-4 hover:scale-105 transition-transform duration-700" /></div>
               <h3 className="font-heading text-xl font-semibold mt-4">{t}</h3>
               <p className="text-[14px] text-gray-600 mt-1 leading-relaxed">{d}</p>
             </article>
@@ -233,6 +234,11 @@ export default function App() {
                   <p className="font-heading text-2xl font-semibold">{p.title}</p>
                   {p.badge && <p className="text-[13px] text-[#F26522] mt-1">{p.badge}</p>}
                   <p className="font-heading text-4xl font-bold mt-5">{p.priceRub.toLocaleString('ru-RU')} ₽</p>
+                  {p.description && (
+                    <p className={`text-[13.5px] mt-3 leading-relaxed ${i === plans.length - 1 ? 'text-gray-300' : 'text-gray-600'}`}>
+                      {p.description}
+                    </p>
+                  )}
                   <ul className="mt-5 space-y-2.5 text-[14px]">
                     {[['Контакты компаний и людей', CheckCircle2], ['Выгрузка CSV', Download], ['Вход через Telegram, без паролей', Lock]].map(([t, I]: any) => <li key={t} className="flex items-center gap-2.5"><I className="w-4 h-4 text-[#F26522] shrink-0" />{t}</li>)}
                   </ul>
@@ -277,7 +283,10 @@ export default function App() {
           </div>
           <Cta href="/app">Войти в кабинет</Cta>
         </div>
-        <p className="max-w-[1200px] mx-auto mt-10 text-[12px] text-gray-500">© 2026 Fracs</p>
+        <div className="max-w-[1200px] mx-auto mt-10 flex flex-wrap items-center justify-between gap-4 text-[12px] text-gray-500">
+          <p>© 2026 Fracs</p>
+          <a href="/offer" className="hover:text-white underline underline-offset-4 transition-colors">Публичная оферта</a>
+        </div>
       </footer>
     </div>
   );

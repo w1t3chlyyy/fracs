@@ -1,11 +1,12 @@
 """Проверка лицензии Fracs Parser: программа работает, пока в кабинете Fracs активна подписка.
 
 Ключ лицензии пользователь копирует в кабинете (раздел «Карты 2ГИС» → «Программа») и вводит один раз.
-При запуске программа спрашивает у сайта, активна ли подписка. Нет интернета — работает по
-последней успешной проверке до 72 часов.
+При запуске и каждые 60 секунд программа проверяет подписку на сайте. После окончания срока подписки
+или её отзыва работа программы немедленно блокируется (в том числе при отсутствии интернета).
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 import os
 import threading
@@ -18,8 +19,8 @@ from .paths import user_path
 
 # Подставляется при сборке (см. .github/workflows/build-app.yml); для разработки — переменная окружения.
 SITE_URL = os.environ.get('FRACS_SITE_URL') or '__FRACS_SITE_URL__'
-OFFLINE_GRACE_S = 72 * 3600
-RECHECK_S = 10 * 60
+OFFLINE_GRACE_S = 3600
+RECHECK_S = 60
 
 _lock = threading.Lock()
 _cache: dict[str, Any] = {'at': 0.0, 'state': None}
@@ -49,6 +50,26 @@ def _save(data: dict) -> None:
         pass
 
 
+def _parse_until(until: Any) -> float | None:
+    if not until or not isinstance(until, str):
+        return None
+    try:
+        s = until.strip()
+        if s.endswith('Z'):
+            s = s[:-1] + '+00:00'
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.timestamp()
+    except ValueError:
+        return None
+
+
+def _is_until_active(until: Any, now: float) -> bool:
+    ts = _parse_until(until)
+    return ts is not None and ts > now
+
+
 def _verify_online(key: str) -> dict:
     """Возвращает {'ok': bool, 'until': str|None, 'name': str} или бросает requests.RequestException."""
     r = requests.post(_site() + '/api/app/verify', json={'key': key}, timeout=10)
@@ -64,8 +85,11 @@ def check(force: bool = False) -> dict:
     """Текущее состояние лицензии: {'ok', 'reason', 'until', 'name', 'offline', 'site'}."""
     with _lock:
         now = time.time()
-        if not force and _cache['state'] and now - _cache['at'] < RECHECK_S:
-            return _cache['state']
+        cached = _cache['state']
+        if not force and cached and now - _cache['at'] < RECHECK_S:
+            # Даже в пределах кэша сразу блокируем, если срок подписки истёк.
+            if not cached.get('ok') or _is_until_active(cached.get('until'), now):
+                return cached
 
         data = _load()
         key = data.get('key')
@@ -75,15 +99,26 @@ def check(force: bool = False) -> dict:
         elif key:
             try:
                 res = _verify_online(key)
-                if res.get('ok'):
+                if res.get('ok') and _is_until_active(res.get('until'), now):
                     data.update(checked_at=now, until=res.get('until'), name=res.get('name'))
                     _save(data)
                     state.update(ok=True, reason='', until=res.get('until'), name=res.get('name'))
                 else:
-                    state.update(reason=res.get('reason') or 'expired')
+                    reason = res.get('reason') or 'expired'
+                    # Сбрасываем кэшированное подтверждение, чтобы оффлайн-режим не обходил блокировку.
+                    _save({'key': key} if reason == 'expired' else {})
+                    state.update(reason=reason)
             except requests.RequestException:
-                if data.get('checked_at') and now - float(data['checked_at']) < OFFLINE_GRACE_S:
-                    state.update(ok=True, reason='', until=data.get('until'), name=data.get('name'), offline=True)
+                checked_at = data.get('checked_at')
+                try:
+                    checked_ts = float(checked_at) if checked_at is not None else None
+                except (TypeError, ValueError):
+                    checked_ts = None
+                until = data.get('until')
+                if not _is_until_active(until, now):
+                    state.update(reason='expired' if until else 'offline')
+                elif checked_ts is not None and 0 <= now - checked_ts < OFFLINE_GRACE_S:
+                    state.update(ok=True, reason='', until=until, name=data.get('name'), offline=True)
                 else:
                     state.update(reason='offline')
         _cache.update(at=now, state=state)
@@ -100,9 +135,14 @@ def activate(key: str) -> dict:
         res = _verify_online(key)
     except requests.RequestException:
         return {'ok': False, 'reason': 'offline'}
-    if not res.get('ok'):
-        return {'ok': False, 'reason': res.get('reason') or 'invalid'}
-    _save({'key': key, 'checked_at': time.time(), 'until': res.get('until'), 'name': res.get('name')})
+    now = time.time()
+    if not res.get('ok') or not _is_until_active(res.get('until'), now):
+        reason = res.get('reason') or ('expired' if res.get('ok') else 'invalid')
+        _save({'key': key} if reason == 'expired' else {})
+        with _lock:
+            _cache.update(at=0.0, state=None)
+        return {'ok': False, 'reason': reason}
+    _save({'key': key, 'checked_at': now, 'until': res.get('until'), 'name': res.get('name')})
     return check(force=True)
 
 
@@ -111,4 +151,5 @@ def reset() -> None:
         _file().unlink()
     except OSError:
         pass
-    _cache.update(at=0.0, state=None)
+    with _lock:
+        _cache.update(at=0.0, state=None)

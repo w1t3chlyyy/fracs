@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import 'dotenv/config';
 
 const env = process.env;
@@ -9,7 +10,7 @@ export const config = {
   isProd,
   port,
   appUrl: (env.APP_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ''),
-  sessionSecret: env.SESSION_SECRET || (isProd ? '' : 'dev-secret-change-me'),
+  sessionSecret: env.SESSION_SECRET || (isProd ? crypto.randomBytes(32).toString('hex') : 'dev-secret-change-me'),
 
   supabaseUrl: env.SUPABASE_URL || '',
   supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '',
@@ -43,8 +44,8 @@ export const config = {
   adminUsername: (env.ADMIN_TG_USERNAME || '').replace(/^@/, ''),
 };
 
-if (isProd && !config.sessionSecret) {
-  throw new Error('SESSION_SECRET обязателен в production (любая длинная случайная строка).');
+if (isProd && !env.SESSION_SECRET) {
+  console.warn('[config] SESSION_SECRET не задан — используется временный ключ сессии.');
 }
 
 export interface Plan {
@@ -53,10 +54,23 @@ export interface Plan {
   days: number;
   priceRub: number;
   badge?: string;
+  description?: string;
 }
 
-// Цены — заглушки, поставьте свои.
 export const PLANS: Plan[] = [
-  { id: 'month', title: '1 месяц', days: 30, priceRub: 4900 },
-  { id: 'quarter', title: '3 месяца', days: 90, priceRub: 12900, badge: 'Выгоднее на 12%' },
+  {
+    id: 'month',
+    title: '1 месяц',
+    days: 30,
+    priceRub: 1800,
+    description: 'Доступ к программе Fracs Parser, базе контактов и выгрузкам на 30 дней.',
+  },
+  {
+    id: 'quarter',
+    title: '3 месяца',
+    days: 90,
+    priceRub: 4500,
+    badge: 'Выгоднее на 17%',
+    description: 'Доступ на 90 дней: экономия 900 ₽ при оплате сразу за квартал.',
+  },
 ];

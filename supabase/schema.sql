@@ -50,6 +50,12 @@ create table if not exists public.rate_limits (
   reset_at timestamptz not null
 );
 
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
 -- Атомарный счётчик лимитов: true — можно, false — лимит исчерпан.
 create or replace function public.rate_limit(p_key text, p_max int, p_window_ms int)
 returns boolean
@@ -74,6 +80,7 @@ alter table public.login_tokens enable row level security;
 alter table public.searches enable row level security;
 alter table public.payments enable row level security;
 alter table public.rate_limits enable row level security;
+alter table public.app_settings enable row level security;
 
 revoke all on function public.rate_limit(text, int, int) from public, anon, authenticated;
 grant execute on function public.rate_limit(text, int, int) to service_role;

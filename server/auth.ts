@@ -57,9 +57,15 @@ function cookies(header = ''): Record<string, string> {
   );
 }
 
+function cookieOpts(req: Request) {
+  const secure = req.secure || req.get('x-forwarded-proto') === 'https' || config.isProd;
+  const sameSite = secure ? 'None' : 'Lax';
+  return { secure, sameSite };
+}
+
 function setSession(req: Request, res: Response, uid: string) {
-  const secure = req.secure || config.isProd;
-  res.append('Set-Cookie', `${COOKIE}=${makeSession(uid)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure ? '; Secure' : ''}`);
+  const { secure, sameSite } = cookieOpts(req);
+  res.append('Set-Cookie', `${COOKIE}=${makeSession(uid)}; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=${SESSION_MS / 1000}${secure ? '; Secure' : ''}`);
 }
 
 export async function attachUser(req: Request, _res: Response, next: NextFunction) {
@@ -116,7 +122,8 @@ authRouter.post('/dev', h(async (req, res) => {
   res.json({ ok: true });
 }));
 
-authRouter.post('/logout', (_req, res) => {
-  res.append('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+authRouter.post('/logout', (req, res) => {
+  const { secure, sameSite } = cookieOpts(req);
+  res.append('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure ? '; Secure' : ''}`);
   res.json({ ok: true });
 });

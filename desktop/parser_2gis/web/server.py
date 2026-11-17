@@ -204,6 +204,8 @@ def create_app():
 
     @app.route('/api/start', methods=['POST'])
     def api_start():
+        if not fracs_license.check(force=True).get('ok'):
+            return jsonify({'ok': False, 'error': 'license'}), 402
         data = request.get_json(force=True, silent=True) or {}
         urls = [u.strip() for u in (data.get('urls') or []) if u and u.strip()]
         if not urls:
@@ -221,6 +223,8 @@ def create_app():
     @app.route('/api/yandex', methods=['POST'])
     def api_yandex():
         """Second pass: enrich collected records from Yandex Maps (no API)."""
+        if not fracs_license.check(force=True).get('ok'):
+            return jsonify({'ok': False, 'error': 'license'}), 402
         data = request.get_json(force=True, silent=True) or {}
         try:
             config = _build_config(data)
@@ -288,6 +292,8 @@ def create_app():
 
     @app.route('/api/download')
     def api_download():
+        if not fracs_license.check(force=True).get('ok'):
+            return jsonify({'ok': False, 'error': 'license'}), 402
         fmt = request.args.get('format', 'csv')
         if fmt not in _DOWNLOAD_NAMES:
             return jsonify({'ok': False, 'error': 'Неизвестный формат'}), 400
@@ -315,6 +321,8 @@ def create_app():
 
     @app.route('/api/history/<hid>/download')
     def api_history_download(hid):
+        if not fracs_license.check(force=True).get('ok'):
+            return jsonify({'ok': False, 'error': 'license'}), 402
         fmt = request.args.get('format', 'csv')
         if fmt not in _DOWNLOAD_NAMES:
             return jsonify({'ok': False, 'error': 'Неизвестный формат'}), 400
