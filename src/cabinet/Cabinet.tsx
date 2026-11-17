@@ -203,6 +203,13 @@ export default function Cabinet() {
         )}
       </main>
 
+      <footer className="max-w-[1400px] mx-auto px-3 sm:px-4 pb-8 flex flex-wrap items-center justify-between gap-3 text-[12px] text-gray-500">
+        <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="hover:text-gray-900 underline underline-offset-4">
+          Поддержка: @HelpManage
+        </a>
+        <a href="/offer" className="hover:text-gray-900 underline underline-offset-4">Публичная оферта</a>
+      </footer>
+
       {plansOpen && (
         <PlansModal
           config={config}

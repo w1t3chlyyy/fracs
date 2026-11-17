@@ -1,7 +1,6 @@
 import {Suspense, lazy} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
-import CabinetFab from './cabinet/CabinetFab.tsx';
 import './index.css';
 
 const Cabinet = lazy(() => import('./cabinet/Cabinet.tsx'));
@@ -21,10 +20,7 @@ createRoot(document.getElementById('root')!).render(
         <Offer />
       </Suspense>
     ) : (
-      <>
-        <App />
-        <CabinetFab />
-      </>
+      <App />
     )}
   </>,
 );

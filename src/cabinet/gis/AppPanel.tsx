@@ -61,7 +61,13 @@ export default function AppPanel() {
               </div>
             ))}
           </div>
-          {!anyBuilt && <p className="mt-3 text-[12.5px] text-amber-700">Сборки ещё не опубликованы. Напишите в поддержку — пришлём файл вручную.</p>}
+          {!anyBuilt && (
+            <p className="mt-3 text-[12.5px] text-amber-700">
+              Сборки ещё не опубликованы. Напишите в поддержку{' '}
+              <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="underline font-medium hover:text-amber-900">@HelpManage</a>{' '}
+              — пришлём файл вручную.
+            </p>
+          )}
           <p className="mt-4 text-[12px] leading-snug text-gray-500">Windows может показать предупреждение SmartScreen («Подробнее» → «Выполнить в любом случае»). На macOS: правый клик по программе → «Открыть».</p>
         </div>
 

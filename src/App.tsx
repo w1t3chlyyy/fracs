@@ -284,8 +284,13 @@ export default function App() {
           <Cta href="/app">Войти в кабинет</Cta>
         </div>
         <div className="max-w-[1200px] mx-auto mt-10 flex flex-wrap items-center justify-between gap-4 text-[12px] text-gray-500">
-          <p>© 2026 Fracs</p>
-          <a href="/offer" className="hover:text-white underline underline-offset-4 transition-colors">Публичная оферта</a>
+          <p>© 2026 Fracs · Самозанятый Бенаи Тимур Рустамович · ИНН: 920159216794</p>
+          <div className="flex flex-wrap items-center gap-5">
+            <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="hover:text-white underline underline-offset-4 transition-colors">
+              Поддержка: @HelpManage
+            </a>
+            <a href="/offer" className="hover:text-white underline underline-offset-4 transition-colors">Публичная оферта</a>
+          </div>
         </div>
       </footer>
     </div>
