@@ -75,6 +75,13 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
           Оплачивая подписку, вы принимаете условия{' '}
           <a href="/offer" target="_blank" rel="noreferrer" className="text-gray-600 underline underline-offset-2 hover:text-gray-900">
             публичной оферты
+          </a>,{' '}
+          <a href="/terms" target="_blank" rel="noreferrer" className="text-gray-600 underline underline-offset-2 hover:text-gray-900">
+            пользовательского соглашения
+          </a>{' '}
+          и{' '}
+          <a href="/privacy" target="_blank" rel="noreferrer" className="text-gray-600 underline underline-offset-2 hover:text-gray-900">
+            политики конфиденциальности
           </a>.
         </p>
       </div>

@@ -289,6 +289,8 @@ export default function App() {
             <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="hover:text-white underline underline-offset-4 transition-colors">
               Поддержка: @HelpManage
             </a>
+            <a href="/privacy" className="hover:text-white underline underline-offset-4 transition-colors">Политика конфиденциальности</a>
+            <a href="/terms" className="hover:text-white underline underline-offset-4 transition-colors">Пользовательское соглашение</a>
             <a href="/offer" className="hover:text-white underline underline-offset-4 transition-colors">Публичная оферта</a>
           </div>
         </div>

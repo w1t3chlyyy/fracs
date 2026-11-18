@@ -3,6 +3,8 @@ import { Router, type NextFunction, type Request, type RequestHandler, type Resp
 import { config } from './config.ts';
 import { getUser, isSubscribed, rateLimit } from './db.ts';
 import { requireAuth } from './auth.ts';
+import { searchTg } from './providers.ts';
+import { cleanText } from './util.ts';
 
 /**
  * Программа Fracs Parser: ключ лицензии, проверка подписки и выдача файлов только платным пользователям.
@@ -103,4 +105,25 @@ appRouter.post('/verify', h(async (req, res) => {
   if (!user) return void res.json({ ok: false, reason: 'invalid' });
   if (!isSubscribed(user)) return void res.json({ ok: false, reason: 'expired' });
   res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName });
+}));
+
+/** Telegram-поиск для программы: ключ лицензии вместо cookie. Сам парсинг делает TG-сервис (tg-service/). */
+appRouter.post('/tg-search', h(async (req, res) => {
+  if (!(await rateLimit(`app-tg-ip:${req.ip}`, 60, 10 * 60_000))) return void res.status(429).json({ ok: false, error: 'Слишком часто. Подождите.' });
+  const uid = parseKey(req.body?.key);
+  const user = uid ? await getUser(uid) : null;
+  if (!user) return void res.status(401).json({ ok: false, reason: 'invalid', error: 'Неверный ключ лицензии' });
+  if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: 'expired', error: 'Подписка закончилась' });
+  if (!(await rateLimit(`app-tg-user:${user.id}`, 20, 10 * 60_000))) return void res.status(429).json({ ok: false, error: 'Лимит: 20 поисков за 10 минут' });
+
+  const phrase = cleanText(req.body?.phrase, 120);
+  const days = Math.min(3, Math.max(1, Math.round(Number(req.body?.days) || 3)));
+  if (phrase.length < 3) return void res.status(400).json({ ok: false, error: 'Опишите, что ищут: например, «нужен сайт»' });
+  try {
+    const r = await searchTg(phrase, days, true);
+    res.json({ ok: true, rows: r.rows ?? [], stats: r.stats });
+  } catch (e: any) {
+    console.error('[app tg-search]', e);
+    res.status(502).json({ ok: false, error: e?.message || 'Ошибка источника' });
+  }
 }));

@@ -26,13 +26,27 @@ async function tg(method: string, body: Record<string, unknown> = {}, timeoutMs 
   return r.json();
 }
 
-export async function notify(tgId: number, text: string) {
+export async function notify(tgId: number, text: string, extra: Record<string, unknown> = {}) {
   if (!config.botToken) return;
   try {
-    await tg('sendMessage', { chat_id: tgId, text });
+    await tg('sendMessage', { chat_id: tgId, text, ...extra });
   } catch (e) {
     console.error('[bot] sendMessage', e);
   }
+}
+
+const publicUrl = () =>
+  /^https:\/\/(?!localhost\b|127\.0\.0\.1\b)/i.test(config.appUrl) ? config.appUrl : 'https://fracs.cc.cd';
+
+function docsMarkup(includeCabinet = true) {
+  const base = publicUrl();
+  const rows = [
+    ...(includeCabinet ? [[{ text: '🌐 Личный кабинет', url: `${base}/app` }]] : []),
+    [{ text: '🔒 Политика конфиденциальности', url: `${base}/privacy` }],
+    [{ text: '📄 Пользовательское соглашение', url: `${base}/terms` }],
+    [{ text: '📑 Публичная оферта', url: `${base}/offer` }],
+  ];
+  return { inline_keyboard: rows };
 }
 
 /* ── админ-панель ── */
@@ -215,22 +229,64 @@ export async function handleUpdate(update: any) {
     }
   }
 
-  const [cmd, param] = msg.text.trim().split(/\s+/);
+  const [rawCmd, param] = msg.text.trim().split(/\s+/);
+  const cmd = rawCmd.split('@')[0].toLowerCase();
+  const base = publicUrl();
+
+  if (cmd === '/privacy') {
+    await notify(msg.chat.id, `🔒 Политика конфиденциальности Fracs:\n${base}/privacy`, {
+      reply_markup: docsMarkup(false),
+    });
+    return;
+  }
+  if (cmd === '/terms') {
+    await notify(msg.chat.id, `📄 Пользовательское соглашение Fracs:\n${base}/terms`, {
+      reply_markup: docsMarkup(false),
+    });
+    return;
+  }
+  if (cmd === '/offer') {
+    await notify(msg.chat.id, `📑 Публичная оферта Fracs:\n${base}/offer`, {
+      reply_markup: docsMarkup(false),
+    });
+    return;
+  }
+  if (cmd === '/docs') {
+    await notify(msg.chat.id, 'Правовые документы сервиса Fracs:', {
+      reply_markup: docsMarkup(true),
+    });
+    return;
+  }
+
   if (cmd !== '/start') {
-    await notify(msg.chat.id, `Откройте личный кабинет: ${config.appUrl}/app`);
+    await notify(msg.chat.id, `Откройте личный кабинет: ${base}/app`, {
+      reply_markup: docsMarkup(true),
+    });
     return;
   }
   if (!param) {
-    await notify(msg.chat.id, `Привет! Это бот Fracs. Чтобы войти, нажмите «Войти через Telegram» на странице ${config.appUrl}/app`);
+    await notify(
+      msg.chat.id,
+      `Привет! Это бот Fracs.\n\nЧтобы войти, нажмите «Войти через Telegram» на странице ${base}/app.\n\nПеред началом работы вы можете ознакомиться с правовыми документами по кнопкам ниже:`,
+      { reply_markup: docsMarkup(true) },
+    );
     return;
   }
   const user = await upsertTgUser(msg.from);
   const ok = await bindLoginToken(param, user.id);
   if (!ok) {
-    await notify(msg.chat.id, 'Ссылка устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.');
+    await notify(
+      msg.chat.id,
+      'Ссылка устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.',
+      { reply_markup: docsMarkup(true) },
+    );
     return;
   }
-  await notify(msg.chat.id, `✅ Готово, ${user.firstName}! Вернитесь в браузер — вход выполнится автоматически.`);
+  await notify(
+    msg.chat.id,
+    `✅ Готово, ${user.firstName}! Вернитесь в браузер — вход выполнится автоматически.\n\nПравовые документы сервиса доступны по кнопкам ниже:`,
+    { reply_markup: docsMarkup(false) },
+  );
 }
 
 /** Webhook Telegram. На serverless работу нужно закончить ДО ответа, иначе функцию замораживают. */
@@ -278,6 +334,15 @@ export async function startBot() {
   if (!me.ok) throw new Error(`Telegram getMe: ${me.description}`);
   botUsername = me.result.username;
   console.log(`[bot] @${botUsername}, режим: ${config.botMode}`);
+
+  await tg('setMyCommands', {
+    commands: [
+      { command: 'start', description: 'Запуск бота и вход в кабинет' },
+      { command: 'privacy', description: 'Политика конфиденциальности' },
+      { command: 'terms', description: 'Пользовательское соглашение' },
+      { command: 'offer', description: 'Публичная оферта' },
+    ],
+  }).catch(() => {});
 
   if (config.botMode === 'webhook') {
     if (!config.webhookSecret) throw new Error('Для webhook-режима задайте TELEGRAM_WEBHOOK_SECRET');

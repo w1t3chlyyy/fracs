@@ -191,10 +191,13 @@ export async function searchTg(phrase: string, days: number, real: boolean): Pro
   const resp = await fetch(`${config.tgParserUrl}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.tgParserKey}` },
-    body: JSON.stringify({ phrase, days }),
-    signal: AbortSignal.timeout(25000),
+    body: JSON.stringify({ phrase, days, budget: 35 }),
+    signal: AbortSignal.timeout(55000),
   });
-  if (!resp.ok) throw new Error(`TG-парсер ответил ${resp.status}`);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => null);
+    throw new Error(err?.detail || `TG-парсер ответил ${resp.status}`);
+  }
   const rows: TgRow[] = ((await resp.json()) as any).rows ?? [];
   return {
     stats: { people: new Set(rows.map((x) => x.username || x.id)).size, chats: new Set(rows.map((x) => x.chat)).size },

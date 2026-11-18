@@ -78,6 +78,12 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
           Войти без бота (dev-режим)
         </button>
       )}
+      <p className="mt-6 pt-4 border-t border-gray-100 text-[12px] text-gray-400 leading-relaxed">
+        Входя в кабинет, вы принимаете{' '}
+        <a href="/terms" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">пользовательское соглашение</a>{' '}
+        и{' '}
+        <a href="/privacy" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">политику конфиденциальности</a>.
+      </p>
     </div>
   );
 }
@@ -207,7 +213,11 @@ export default function Cabinet() {
         <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="hover:text-gray-900 underline underline-offset-4">
           Поддержка: @HelpManage
         </a>
-        <a href="/offer" className="hover:text-gray-900 underline underline-offset-4">Публичная оферта</a>
+        <div className="flex flex-wrap items-center gap-4">
+          <a href="/privacy" className="hover:text-gray-900 underline underline-offset-4">Политика конфиденциальности</a>
+          <a href="/terms" className="hover:text-gray-900 underline underline-offset-4">Пользовательское соглашение</a>
+          <a href="/offer" className="hover:text-gray-900 underline underline-offset-4">Публичная оферта</a>
+        </div>
       </footer>
 
       {plansOpen && (

@@ -18,7 +18,13 @@ export default function Offer() {
               <ArrowLeft className="w-3.5 h-3.5" /> На сайт
             </a>
           </div>
-          <div className="pr-1">
+          <div className="flex items-center gap-2 pr-1">
+            <a href="/privacy" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+              Конфиденциальность
+            </a>
+            <a href="/terms" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+              Соглашение
+            </a>
             <a href="/app" className="rounded-full bg-gray-900 hover:bg-black text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
               Личный кабинет
             </a>
@@ -35,6 +41,10 @@ export default function Offer() {
             <p className="font-heading text-base sm:text-lg font-medium text-gray-700 mt-1">
               о заключении договора об оказании услуг
             </p>
+            <div className="mt-4 flex flex-wrap justify-center gap-3 text-[13px] md:hidden">
+              <a href="/privacy" className="text-[#F26522] underline underline-offset-4">Политика конфиденциальности</a>
+              <a href="/terms" className="text-gray-600 underline underline-offset-4">Пользовательское соглашение</a>
+            </div>
           </div>
 
           <section className="space-y-3">

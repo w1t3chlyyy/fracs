@@ -15,6 +15,7 @@ from ..writer.writers import write_multisheet_xlsx
 from .. import license as fracs_license
 from .history import History
 from .job import ParseJob
+from . import tg_routes
 
 # Sheet name for documents that carry no district label (manual URLs, etc.).
 _DEFAULT_SHEET = 'Прочее'
@@ -355,6 +356,7 @@ def create_app():
     def api_history_delete(hid):
         return jsonify({'ok': history.delete(hid)})
 
+    tg_routes.register(app)
     return app
 
 
