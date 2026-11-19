@@ -154,8 +154,12 @@ async function serperMaps(niche: string, city: City, deadline: number): Promise<
 export async function searchMaps(niche: string, city: City, real: boolean): Promise<{ stats: MapsStats; rows?: MapsRow[] }> {
   if (!real) return demoMaps(niche, city);
   const deadline = Date.now() + 50000;
-  if (SERPER()) return serperMaps(niche, city, deadline);
+  if (config.mapsProvider === '2gis') {
+    if (!config.gisKey) throw new Error('MAPS_PROVIDER=2gis требует GIS_API_KEY');
+    return gisSearch(niche, city);
+  }
   if (config.gisKey) return gisSearch(niche, city);
+  if (SERPER()) return serperMaps(niche, city, deadline);
   throw new Error('Источник данных не подключён: задайте SERPER_API_KEY (или GIS_API_KEY)');
 }
 

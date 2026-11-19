@@ -1362,8 +1362,12 @@ async function serperMaps(niche, city, deadline) {
 async function searchMaps(niche, city, real) {
   if (!real) return demoMaps(niche, city);
   const deadline = Date.now() + 5e4;
-  if (SERPER()) return serperMaps(niche, city, deadline);
+  if (config.mapsProvider === "2gis") {
+    if (!config.gisKey) throw new Error("MAPS_PROVIDER=2gis \u0442\u0440\u0435\u0431\u0443\u0435\u0442 GIS_API_KEY");
+    return gisSearch(niche, city);
+  }
   if (config.gisKey) return gisSearch(niche, city);
+  if (SERPER()) return serperMaps(niche, city, deadline);
   throw new Error("\u0418\u0441\u0442\u043E\u0447\u043D\u0438\u043A \u0434\u0430\u043D\u043D\u044B\u0445 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D: \u0437\u0430\u0434\u0430\u0439\u0442\u0435 SERPER_API_KEY (\u0438\u043B\u0438 GIS_API_KEY)");
 }
 async function gisSearch(niche, city) {

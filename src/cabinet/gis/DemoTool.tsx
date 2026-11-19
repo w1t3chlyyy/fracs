@@ -83,20 +83,43 @@ export default function DemoTool({ subscribed, trialAvailable, onGetProgram, onS
     if (!subscribed && trialAvailable) {
       setStatus('running');
       setTrialLoading(true);
-      setLogs(['Пробный поиск: реальные компании без сайта.', `Парсинг ссылки ${url}`]);
+      setLogs([`Пробный поиск: проверяю ${lines.length} ссылок на реальные компании без сайта.`]);
       try {
-        if (city === 'Ваш город' || query === 'Компания') {
-          throw new Error('Для реального поиска нужна ссылка 2ГИС с городом и поисковой категорией.');
+        let emptyResult: SearchView | null = null;
+        const failures: string[] = [];
+        for (const searchUrl of lines) {
+          try {
+            const { city, query } = parseSearchUrl(searchUrl, data?.cities ?? []);
+            if (city === 'Ваш город' || query === 'Компания') {
+              failures.push(`Не удалось разобрать ссылку: ${searchUrl}`);
+              continue;
+            }
+            const { items } = await api.cities(city);
+            const normalizedCity = city.trim().toLocaleLowerCase('ru');
+            const cityItem = items.find((item) => item.name.trim().toLocaleLowerCase('ru') === normalizedCity);
+            if (!cityItem) {
+              failures.push(`Не удалось определить город «${city}».`);
+              continue;
+            }
+            const result = await api.searchMaps(query, cityItem.id);
+            if (result.rowsTotal > 0) {
+              setTrialResult(result);
+              setScanned(result.rowsTotal);
+              setStatus('done');
+              setLogs([`Реальные результаты найдены по ссылке: ${searchUrl}`, `Найдено карточек без сайта: ${result.rowsTotal}. Контакты доступны по подписке.`]);
+              onSearched();
+              return;
+            }
+            emptyResult = result;
+          } catch (e: unknown) {
+            failures.push(e instanceof Error ? e.message : 'Не удалось выполнить поиск по ссылке.');
+          }
         }
-        const { items } = await api.cities(city);
-        const normalizedCity = city.trim().toLocaleLowerCase('ru');
-        const cityItem = items.find((item) => item.name.trim().toLocaleLowerCase('ru') === normalizedCity);
-        if (!cityItem) throw new Error(`Не удалось определить город «${city}» из ссылки 2ГИС.`);
-        const result = await api.searchMaps(query, cityItem.id);
-        setTrialResult(result);
-        setScanned(result.rowsTotal);
+        if (!emptyResult) throw new Error(failures.join(' ') || 'Не удалось найти результаты по указанным ссылкам.');
+        setTrialResult(emptyResult);
+        setScanned(emptyResult.rowsTotal);
         setStatus('done');
-        setLogs([`Пробный поиск по реальным данным: ${url}`, `Найдено карточек без сайта: ${result.rowsTotal}. Контакты доступны по подписке.`]);
+        setLogs([`Проверено ссылок: ${lines.length}. Реальных компаний без сайта не найдено; пробная попытка не списана.`]);
         onSearched();
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : 'Не удалось выполнить пробный поиск.';
@@ -169,7 +192,7 @@ export default function DemoTool({ subscribed, trialAvailable, onGetProgram, onS
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
         <p className="max-w-3xl text-[13px] leading-snug text-gray-700">
           {!subscribed && trialAvailable ? (
-            <><b>Пробный запуск.</b> Первый поиск по ссылке покажет реальные бизнесы без сайта. После него демо будет использовать вымышленные данные, а полные контакты доступны по подписке.</>
+            <><b>Пробный запуск.</b> Первый поиск проверит ссылки по очереди и покажет реальные бизнесы без сайта. После успешного поиска демо будет использовать вымышленные данные, а полные контакты доступны по подписке.</>
           ) : !subscribed ? (
             <><b>Демо-режим.</b> Пробный реальный поиск уже использован. Следующие запуски показывают вымышленные бизнесы; реальные данные и контакты доступны по подписке.</>
           ) : (
@@ -189,7 +212,7 @@ export default function DemoTool({ subscribed, trialAvailable, onGetProgram, onS
               placeholder={'https://2gis.ru/moscow/search/Кафе\nhttps://2gis.ru/kazan/search/Аптеки'}
               className={`${inputCls} min-h-[92px] resize-y leading-snug ${urlsInvalid ? '!border-red-500' : ''}`}
             />
-            <p className={`text-[12px] leading-snug ${urlsInvalid ? 'font-semibold text-red-600' : 'text-gray-500'}`}>{urlsInvalid ? t('a_need_url') : 'В демо обрабатывается первая ссылка. В программе — любое количество.'}</p>
+            <p className={`text-[12px] leading-snug ${urlsInvalid ? 'font-semibold text-red-600' : 'text-gray-500'}`}>{urlsInvalid ? t('a_need_url') : !subscribed && trialAvailable ? 'Пробный поиск проверит ссылки по очереди до первого результата.' : 'В демо обрабатывается первая ссылка. В программе — любое количество.'}</p>
           </div>
 
           <Section title={t('gen_title')} icon={<Link2 className="h-4 w-4" />}>
