@@ -1,7 +1,7 @@
-"""Fracs TG-сервис: глобальный поиск СВЕЖИХ сообщений по публичным чатам Telegram (Telethon SearchGlobal).
+"""Fracs Telegram parser: global search for fresh messages in public Telegram chats.
 
-Контракт (его ждёт server/providers.ts и программа Fracs Parser через сайт):
-  POST /search  {phrase, days(1-3), budget(сек)}  +  Authorization: Bearer <TG_PARSER_KEY>
+Контракт сайта:
+  POST /api/tg  {phrase, days(1-3), budget(сек)}  +  Authorization: Bearer <TG_PARSER_KEY>
   ->  {rows: [{id, username, name, chat, text, date, link}], scanned: N}
 """
 import asyncio
@@ -148,6 +148,8 @@ async def health():
     return {'ok': True, 'configured': bool(API_ID and API_HASH and SESSION)}
 
 
+@app.post('/')
+@app.post('/api/tg')
 @app.post('/search')
 async def search(body: Req, authorization: Optional[str] = Header(None)):
     got = (authorization or '').removeprefix('Bearer ').strip()

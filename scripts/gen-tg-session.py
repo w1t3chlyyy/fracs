@@ -1,4 +1,7 @@
-"""Один раз локально: python tools/gen_session.py -> строка TG_SESSION_STRING. Используйте ОТДЕЛЬНЫЙ аккаунт."""
+"""One-time local setup: python scripts/gen-tg-session.py -> TG_SESSION_STRING.
+
+Use a separate Telegram account for the parser.
+"""
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 

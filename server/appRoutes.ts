@@ -107,7 +107,7 @@ appRouter.post('/verify', h(async (req, res) => {
   res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName });
 }));
 
-/** Telegram-поиск для программы: ключ лицензии вместо cookie. Сам парсинг делает TG-сервис (tg-service/). */
+/** Telegram-поиск для программы: ключ лицензии вместо cookie. */
 appRouter.post('/tg-search', h(async (req, res) => {
   if (!(await rateLimit(`app-tg-ip:${req.ip}`, 60, 10 * 60_000))) return void res.status(429).json({ ok: false, error: 'Слишком часто. Подождите.' });
   const uid = parseKey(req.body?.key);

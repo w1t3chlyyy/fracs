@@ -4,9 +4,11 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/index.js": { "maxDuration": 60 }
+    "api/index.js": { "maxDuration": 60 },
+    "api/tg.py": { "maxDuration": 60 }
   },
   "rewrites": [
+    { "source": "/api/tg", "destination": "/api/tg?via=telegram-parser" },
     { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/app", "destination": "/index.html" },
     { "source": "/app/(.*)", "destination": "/index.html" },
