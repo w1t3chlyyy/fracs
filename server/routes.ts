@@ -108,7 +108,7 @@ async function gate(req: Request, res: Response): Promise<boolean> {
 
 /** Повтор за сутки берём из истории, но старые демо-записи не заменяют реальный пробный поиск. */
 async function findRecent(u: User, kind: SearchRecord['kind'], match: (r: SearchRecord) => boolean) {
-  return (await recentSearches(u.id, kind, 86400_000)).find((r) => match(r) && !r.demo);
+  return (await recentSearches(u.id, kind, 86400_000)).find((r) => match(r) && !r.demo && r.rowsTotal > 0);
 }
 
 api.post('/search/maps', requireAuth, h(async (req, res) => {
@@ -125,14 +125,14 @@ api.post('/search/maps', requireAuth, h(async (req, res) => {
   if (!subscribed && await hasUsedTrial(req.user!.id, 'maps')) return void trialUsed(res);
   try {
     const result = await searchMaps(niche, city, true);
-    const claimed = await claimTrial(req.user!.id, 'maps');
-    if (!subscribed && !claimed) return void trialUsed(res);
     const stats = { ...result.stats };
+    const summary = summarize('maps', stats, result.rows);
     const rec: SearchRecord = {
       id: newId(), userId: req.user!.id, kind: 'maps', createdAt: new Date().toISOString(), demo: false,
       seed: `${norm(niche)}|${city.id}`, query: { niche, cityId: city.id, cityLabel: `${city.name}, ${city.region}` },
-      stats, rows: result.rows, ...summarize('maps', stats, result.rows),
+      stats, rows: result.rows, ...summary,
     };
+    if (!subscribed && rec.rowsTotal > 0 && !(await claimTrial(req.user!.id, 'maps'))) return void trialUsed(res);
     await insertSearch(rec);
     res.json(view(rec, req.user!));
   } catch (e: any) {
@@ -154,13 +154,13 @@ api.post('/search/tg', requireAuth, h(async (req, res) => {
   if (!subscribed && await hasUsedTrial(req.user!.id, 'tg')) return void trialUsed(res);
   try {
     const result = await searchTg(phrase, days, true);
-    const claimed = await claimTrial(req.user!.id, 'tg');
-    if (!subscribed && !claimed) return void trialUsed(res);
     const stats = { ...result.stats };
+    const summary = summarize('tg', stats, result.rows);
     const rec: SearchRecord = {
       id: newId(), userId: req.user!.id, kind: 'tg', createdAt: new Date().toISOString(), demo: false,
-      seed: `${norm(phrase)}|${days}`, query: { phrase, days }, stats, rows: result.rows, ...summarize('tg', stats, result.rows),
+      seed: `${norm(phrase)}|${days}`, query: { phrase, days }, stats, rows: result.rows, ...summary,
     };
+    if (!subscribed && rec.rowsTotal > 0 && !(await claimTrial(req.user!.id, 'tg'))) return void trialUsed(res);
     await insertSearch(rec);
     res.json(view(rec, req.user!));
   } catch (e: any) {

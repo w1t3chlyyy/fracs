@@ -38,7 +38,7 @@ create table if not exists public.trial_usage (
   primary key (user_id, kind)
 );
 insert into public.trial_usage (user_id, kind)
-select distinct user_id, kind from public.searches where demo = false
+select distinct user_id, kind from public.searches where demo = false and rows_total > 0
 on conflict (user_id, kind) do nothing;
 
 create table if not exists public.payments (
