@@ -70,6 +70,7 @@ const memSearches = new Map<string, SearchRecord>();
 const memPayments = new Map<string, PaymentRecord>();
 const memLimits = new Map<string, { count: number; resetAt: number }>();
 const memExpiryNotified = new Map<string, string>();
+const memTrialUsage = new Set<string>();
 
 export function initDb() {
   if (useSupabase) {
@@ -331,6 +332,28 @@ export async function countSearchesSince(userId: string, sinceMs: number): Promi
     if (s.userId === userId && Date.parse(s.createdAt) > threshold) count++;
   }
   return count;
+}
+
+export async function hasUsedTrial(userId: string, kind: SearchRecord['kind']): Promise<boolean> {
+  if (useSupabase) {
+    const r = await sb().from('trial_usage').select('user_id').eq('user_id', userId).eq('kind', kind).maybeSingle();
+    return !!check(r, 'hasUsedTrial');
+  }
+  return memTrialUsage.has(`${userId}:${kind}`);
+}
+
+/** Атомарно резервирует одноразовый пробный поиск. false означает, что он уже использован. */
+export async function claimTrial(userId: string, kind: SearchRecord['kind']): Promise<boolean> {
+  if (useSupabase) {
+    const r = await sb().from('trial_usage').insert({ user_id: userId, kind }).select('user_id');
+    if (r.error?.code === '23505') return false;
+    if (r.error) throw new Error(`[db] claimTrial: ${r.error.message}`);
+    return (r.data || []).length > 0;
+  }
+  const key = `${userId}:${kind}`;
+  if (memTrialUsage.has(key)) return false;
+  memTrialUsage.add(key);
+  return true;
 }
 
 export async function recentSearches(userId: string, kind: SearchRecord['kind'], sinceMs: number): Promise<SearchRecord[]> {

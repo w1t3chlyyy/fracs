@@ -31,6 +31,16 @@ create table if not exists public.searches (
 );
 create index if not exists searches_user_kind_created on public.searches (user_id, kind, created_at desc);
 
+create table if not exists public.trial_usage (
+  user_id uuid not null references public.users(id) on delete cascade,
+  kind text not null check (kind in ('maps', 'tg')),
+  created_at timestamptz not null default now(),
+  primary key (user_id, kind)
+);
+insert into public.trial_usage (user_id, kind)
+select distinct user_id, kind from public.searches where demo = false
+on conflict (user_id, kind) do nothing;
+
 create table if not exists public.payments (
   id uuid primary key,
   user_id uuid not null references public.users(id) on delete cascade,
@@ -78,6 +88,7 @@ end $$;
 alter table public.users enable row level security;
 alter table public.login_tokens enable row level security;
 alter table public.searches enable row level security;
+alter table public.trial_usage enable row level security;
 alter table public.payments enable row level security;
 alter table public.rate_limits enable row level security;
 alter table public.app_settings enable row level security;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { ArrowRight, Loader2, Lock } from 'lucide-react';
 import { api } from './api';
 import History from './History';
 import ResultPanel from './ResultPanel';
@@ -7,16 +7,18 @@ import type { SearchView } from './types';
 
 const SUGGESTIONS = ['нужен сайт', 'ищу бухгалтера', 'нужна реклама', 'ищу подрядчика на ремонт'];
 
-export default function TgTool({ subscribed, onSubscribe, onSearched }: { subscribed: boolean; onSubscribe: () => void; onSearched: () => void }) {
+export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSearched }: { subscribed: boolean; trialAvailable: boolean; onSubscribe: () => void; onSearched: () => void }) {
   const [phrase, setPhrase] = useState('');
   const [days, setDays] = useState(3);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<SearchView | null>(null);
+  const locked = !subscribed && !trialAvailable;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (locked) return onSubscribe();
     if (phrase.trim().length < 3) return setError('Опишите, кому и что нужно — например, «нужен сайт».');
     setLoading(true);
     try {
@@ -33,6 +35,12 @@ export default function TgTool({ subscribed, onSubscribe, onSearched }: { subscr
     <div>
       <h2 className="font-heading text-2xl sm:text-3xl font-medium tracking-[-0.02em] text-gray-900">Люди в Telegram, которым это нужно</h2>
       <p className="text-[14px] text-gray-600 mt-2 max-w-2xl">Напишите, что ищет ваш клиент, — найдём свежие сообщения в публичных чатах.</p>
+      {locked && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
+          <p className="flex items-center gap-2 text-[13px] text-gray-700"><Lock className="h-4 w-4 shrink-0" /> Пробный поиск в Telegram использован. Оформите подписку, чтобы искать дальше.</p>
+          <button type="button" onClick={onSubscribe} className="rounded-full bg-[#F26522] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#e05a1a]">Оформить подписку</button>
+        </div>
+      )}
 
       <form onSubmit={submit} className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3 items-start">
         <div>
@@ -56,7 +64,7 @@ export default function TgTool({ subscribed, onSubscribe, onSearched }: { subscr
           <option value={2}>За 2 дня</option>
           <option value={3}>За 3 дня</option>
         </select>
-        <button type="submit" disabled={loading} className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[14px] font-medium transition-colors cursor-pointer">
+        <button type="submit" disabled={loading || locked} className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[14px] font-medium transition-colors cursor-pointer">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
           {loading ? 'Ищем…' : 'Найти людей'}
         </button>

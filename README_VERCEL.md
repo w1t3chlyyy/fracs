@@ -17,6 +17,10 @@
 
 Telegram-парсер разворачивается отдельной Python-функцией `/api/tg` в этом же Vercel-проекте. Для включения поиска добавьте в Environment Variables `TG_PROVIDER=http`, `TG_PARSER_KEY`, `TG_API_ID`, `TG_API_HASH` и `TG_SESSION_STRING`, затем сделайте Redeploy. Получить `TG_API_ID` и `TG_API_HASH` можно на `my.telegram.org`; `TG_SESSION_STRING` сгенерируйте один раз локально скриптом `scripts/gen-tg-session.py`. `TG_PARSER_URL` задавать не нужно.
 
+### Пробный поиск
+
+Новый пользователь может один раз запустить реальный поиск по картам и один раз — в Telegram. Для уже работающего Supabase-проекта перед деплоем выполните SQL из `supabase/trial_usage.sql`; для новой базы таблица создаётся через `supabase/schema.sql`. Каждый поиск доступен повторно из истории, но новый запрос после использованного пробного запуска требует подписку.
+
 ## Важно
 - Функция `api/index.js` — готовый бандл серверного кода. После любых правок в `server/` выполните `npm run build:api` и закоммитьте обновлённый `api/index.js`.
 - Локально: `npm run dev` (нужны SUPABASE_*; бот работает через polling).

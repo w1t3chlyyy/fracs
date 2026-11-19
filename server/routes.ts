@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config } from './config.ts';
 import {
-  countSearchesSince, getPlans, getSearch, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
+  claimTrial, countSearchesSince, getPlans, getSearch, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
   type SearchRecord, type User,
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
@@ -58,9 +58,14 @@ const usedToday = (u: User) => countSearchesSince(u.id, 86400_000);
 api.get('/me', h(async (req, res) => {
   const u = req.user;
   if (!u) return void res.json({ user: null });
+  const [mapsTrialUsed, tgTrialUsed] = await Promise.all([
+    hasUsedTrial(u.id, 'maps'),
+    hasUsedTrial(u.id, 'tg'),
+  ]);
   res.json({
     user: { id: u.id, firstName: u.firstName, username: u.username },
     subscription: { active: isSubscribed(u), until: u.subscriptionUntil },
+    trial: { maps: !mapsTrialUsed, tg: !tgTrialUsed },
     quota: { used: await usedToday(u), limit: config.dailySearchLimit },
   });
 }));
@@ -101,10 +106,9 @@ async function gate(req: Request, res: Response): Promise<boolean> {
   return true;
 }
 
-/** Повтор за сутки берём из истории. Подписчику демо-записи не подходят: ему нужен реальный поиск. */
+/** Повтор за сутки берём из истории, но старые демо-записи не заменяют реальный пробный поиск. */
 async function findRecent(u: User, kind: SearchRecord['kind'], match: (r: SearchRecord) => boolean) {
-  const sub = isSubscribed(u);
-  return (await recentSearches(u.id, kind, 86400_000)).find((r) => match(r) && (!sub || !r.demo));
+  return (await recentSearches(u.id, kind, 86400_000)).find((r) => match(r) && !r.demo);
 }
 
 api.post('/search/maps', requireAuth, h(async (req, res) => {
@@ -117,12 +121,15 @@ api.post('/search/maps', requireAuth, h(async (req, res) => {
   if (again) return void res.json(view(again, req.user!));
   if (!(await gate(req, res))) return;
 
-  const real = isSubscribed(req.user!); // без подписки — демо, с подпиской — реальный поиск
+  const subscribed = isSubscribed(req.user!);
+  if (!subscribed && await hasUsedTrial(req.user!.id, 'maps')) return void trialUsed(res);
   try {
-    const result = await searchMaps(niche, city, real);
+    const result = await searchMaps(niche, city, true);
+    const claimed = await claimTrial(req.user!.id, 'maps');
+    if (!subscribed && !claimed) return void trialUsed(res);
     const stats = { ...result.stats };
     const rec: SearchRecord = {
-      id: newId(), userId: req.user!.id, kind: 'maps', createdAt: new Date().toISOString(), demo: !real,
+      id: newId(), userId: req.user!.id, kind: 'maps', createdAt: new Date().toISOString(), demo: false,
       seed: `${norm(niche)}|${city.id}`, query: { niche, cityId: city.id, cityLabel: `${city.name}, ${city.region}` },
       stats, rows: result.rows, ...summarize('maps', stats, result.rows),
     };
@@ -143,12 +150,15 @@ api.post('/search/tg', requireAuth, h(async (req, res) => {
   if (again) return void res.json(view(again, req.user!));
   if (!(await gate(req, res))) return;
 
-  const real = isSubscribed(req.user!);
+  const subscribed = isSubscribed(req.user!);
+  if (!subscribed && await hasUsedTrial(req.user!.id, 'tg')) return void trialUsed(res);
   try {
-    const result = await searchTg(phrase, days, real);
+    const result = await searchTg(phrase, days, true);
+    const claimed = await claimTrial(req.user!.id, 'tg');
+    if (!subscribed && !claimed) return void trialUsed(res);
     const stats = { ...result.stats };
     const rec: SearchRecord = {
-      id: newId(), userId: req.user!.id, kind: 'tg', createdAt: new Date().toISOString(), demo: !real,
+      id: newId(), userId: req.user!.id, kind: 'tg', createdAt: new Date().toISOString(), demo: false,
       seed: `${norm(phrase)}|${days}`, query: { phrase, days }, stats, rows: result.rows, ...summarize('tg', stats, result.rows),
     };
     await insertSearch(rec);
@@ -167,6 +177,8 @@ api.get('/searches', requireAuth, h(async (req, res) => {
 
 const needSub = (res: Response) =>
   res.status(402).json({ error: 'subscription_required', message: 'Данные доступны по подписке.' });
+const trialUsed = (res: Response) =>
+  res.status(402).json({ error: 'trial_used', message: 'Пробный поиск использован. Оформите подписку для нового поиска.' });
 
 api.get('/search/:id', requireAuth, h(async (req, res) => {
   const rec = await getSearch(String(req.params.id), req.user!.id);

@@ -10,6 +10,7 @@ export interface AppConfig {
 export interface Me {
   user: { id: string; firstName: string; username: string | null } | null;
   subscription?: { active: boolean; until: string | null };
+  trial?: { maps: boolean; tg: boolean };
   quota?: { used: number; limit: number };
 }
 export interface CityItem { id: string; name: string; region: string }
