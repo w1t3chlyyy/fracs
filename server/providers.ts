@@ -189,7 +189,10 @@ export async function searchTg(phrase: string, days: number, real: boolean): Pro
   if (!real) return demoTg(phrase, days);
   if (config.tgProvider !== 'http') throw new Error('Парсер Telegram не подключён: задайте TG_PROVIDER=http');
   const deploymentUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : config.appUrl;
-  const parserUrl = config.tgParserUrl ? `${config.tgParserUrl}/search` : `${deploymentUrl}/api/tg`;
+  let parserUrl = `${deploymentUrl}/api/tg`;
+  if (!process.env.VERCEL_URL && config.tgParserUrl) {
+    parserUrl = config.tgParserUrl.endsWith('/api/tg') ? config.tgParserUrl : `${config.tgParserUrl}/search`;
+  }
   const resp = await fetch(parserUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.tgParserKey}` },

@@ -31,7 +31,7 @@ npm run dev          # http://localhost:3000
 
 - `MAPS_PROVIDER=mock` — цифры генерируются случайно, но детерминированно от «ниша + город». В интерфейсе стоит плашка «Демо-режим».
 - `MAPS_PROVIDER=2gis` — реальный поиск через Places API 2ГИС (`GIS_API_KEY`), берёт до 500 карточек и оставляет те, где нет сайта. Написан по описанию из README saleshustlify, исходники репозитория мне были недоступны — сверьте поля ответа с вашей подпиской.
-- `TG_PROVIDER=http` — включает Telegram-поиск в Python-функции того же Vercel-проекта. Задайте `TG_API_ID`, `TG_API_HASH`, `TG_SESSION_STRING` и `TG_PARSER_KEY`; отдельный проект и `TG_PARSER_URL` не нужны. `TG_PARSER_URL` оставлен как необязательный override для внешнего или локального сервиса.
+- `TG_PROVIDER=http` — включает Telegram-поиск в Python-функции того же Vercel-проекта. Задайте `TG_API_ID`, `TG_API_HASH`, `TG_SESSION_STRING` и `TG_PARSER_KEY`; отдельный проект и `TG_PARSER_URL` не нужны. На Vercel запрос всегда идёт к локальной функции; `TG_PARSER_URL` используется только для локального запуска с внешним сервисом.
 
 ## Что поменять под себя
 
