@@ -188,8 +188,7 @@ async function gisSearch(niche: string, city: City): Promise<{ stats: MapsStats;
 export async function searchTg(phrase: string, days: number, real: boolean): Promise<{ stats: TgStats; rows?: TgRow[] }> {
   if (!real) return demoTg(phrase, days);
   if (config.tgProvider !== 'http') throw new Error('Парсер Telegram не подключён: задайте TG_PROVIDER=http');
-  const deploymentUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : config.appUrl;
-  let parserUrl = `${deploymentUrl}/api/tg`;
+  let parserUrl = `${config.appUrl}/api/tg`;
   if (!process.env.VERCEL_URL && config.tgParserUrl) {
     parserUrl = config.tgParserUrl.endsWith('/api/tg') ? config.tgParserUrl : `${config.tgParserUrl}/search`;
   }
