@@ -1,0 +1,15 @@
+Удалите эти файлы из репозитория (они либо замещены, либо публично раздаются сайтом
+и не должны там лежать). Картинки public/assets/aistudio/image_*.png оставьте.
+
+1. server.ts                                  (корень) — заменён на dev-server.ts + server/app.ts;
+                                               README_VERCEL прямо просит его удалить, иначе Vercel
+                                               может принять его за Express-приложение.
+2. public/assets/aistudio/app_8a6cf0b8.py
+3. public/assets/aistudio/tg_a6dd18fd.py
+4. public/assets/aistudio/tg_routes_b6a4b90d.py
+5. public/assets/aistudio/gen_session_ddb14f08.py
+6. public/assets/aistudio/tg_1bd0e3d5.js
+7. public/assets/aistudio/vercel_0cdefa91.json
+
+Проверьте также, что в public/ нет .env, бэкапов (*.bak, *~) и *.map с исходниками —
+в текущем репозитории таких файлов нет (проверено find).

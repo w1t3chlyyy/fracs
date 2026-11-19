@@ -573,15 +573,16 @@
   function saveContacts(){try{localStorage.setItem('p2gis_contacts',JSON.stringify(CONTACTS));}catch(_){}}
   function bizId(r){var u=r.url||''; var m=u.split('/firm/')[1]; return m||u;}
 
+  function safeUrl(u){u=(u==null?"":String(u)).trim();return /^(https?:\/\/|tg:\/\/)/i.test(u)?u:"#";}
   function renderCard(r){
     var c=r.contacts||{}, b=[];
     if(c.whatsapp) b.push('<a class="b wa" href="#" data-wa="'+esc(digits(c.whatsapp))+'">WhatsApp</a>');
     if(c.phone) b.push('<a class="b" href="tel:'+digits(c.phone)+'">📞 '+esc(c.phone)+'</a>');
-    if(c.telegram) b.push('<a class="b tg" target="_blank" rel="noopener" href="'+esc(c.telegram)+'">Telegram</a>');
-    if(c.instagram) b.push('<a class="b ig" target="_blank" rel="noopener" href="'+esc(c.instagram)+'">Instagram</a>');
-    if(c.website) b.push('<a class="b" target="_blank" rel="noopener" href="'+esc(c.website)+'">🌐 Сайт</a>');
+    if(c.telegram) b.push('<a class="b tg" target="_blank" rel="noopener" href="'+esc(safeUrl(c.telegram))+'">Telegram</a>');
+    if(c.instagram) b.push('<a class="b ig" target="_blank" rel="noopener" href="'+esc(safeUrl(c.instagram))+'">Instagram</a>');
+    if(c.website) b.push('<a class="b" target="_blank" rel="noopener" href="'+esc(safeUrl(c.website))+'">🌐 Сайт</a>');
     if(c.email) b.push('<a class="b" href="mailto:'+esc(c.email)+'">✉️ E-mail</a>');
-    if(r.url) b.push('<a class="b gis" target="_blank" rel="noopener" href="'+esc(r.url)+'">2GIS</a>');
+    if(r.url) b.push('<a class="b gis" target="_blank" rel="noopener" href="'+esc(safeUrl(r.url))+'">2GIS</a>');
     var rating=''; if(r.rating){var rv=r.review_count?(' · '+r.review_count+' отз.'):''; rating='<span class="rating">★ '+esc(r.rating)+esc(rv)+'</span>';}
     var rub=r.rubrics&&r.rubrics.length?'<div class="rubrics">'+esc(r.rubrics.join(' · '))+'</div>':'';
     var meta=[]; if(r.address)meta.push(esc(r.address)); if(r.city)meta.push(esc(r.city));

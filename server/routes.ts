@@ -20,6 +20,31 @@ const h = (fn: (req: Request, res: Response, next: NextFunction) => unknown): Re
   Promise.resolve(fn(req, res, next)).catch(next);
 };
 
+/** Ограничивает число из пользовательского ввода диапазоном [min, max]; fallback d. */
+const num = (v: unknown, min: number, max: number, d: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : d; };
+/** Булев флаг только при строгом true — прочее (строка «true»/число) не проходит. */
+const flag = (v: unknown) => v === true;
+
+/** Белый список опций, которые пересылаем Chrome-worker'у: остальное из req.body
+ *  игнорируем, чтобы клиент не мог протолкнуть произвольные поля/filters/advanced. */
+function trialOptions(body: any) {
+  const f = body?.filters || {}, a = body?.advanced || {};
+  return {
+    filters: {
+      dedup_franchises: flag(f.dedup_franchises), dedup_across_niches: f.dedup_across_niches !== false,
+      require_phone: flag(f.require_phone), require_whatsapp: flag(f.require_whatsapp),
+      require_social: flag(f.require_social), require_email: flag(f.require_email),
+      require_website: false, require_no_website: true,
+      min_rating: num(f.min_rating, 0, 5, 0), min_reviews: num(f.min_reviews, 0, 100000, 0),
+    },
+    advanced: {
+      disable_images: true, skip_404_response: a.skip_404_response !== false,
+      delay_between_clicks: num(a.delay_between_clicks, 0, 5000, 0),
+      columns_per_entity: num(a.columns_per_entity, 1, 5, 3),
+    },
+  };
+}
+
 api.use('/auth', authRouter);
 
 api.get('/health', h(async (_req, res) => {
@@ -37,7 +62,7 @@ api.get('/config', h(async (_req, res) => {
 }));
 
 api.get('/cities', (req, res) => {
-  res.json({ items: searchCities(String(req.query.q || ''), 8) });
+  res.json({ items: searchCities(String(req.query.q || '').slice(0, 40), 8) });
 });
 
 api.post('/payments/yookassa/webhook', h(async (req, res) => {
@@ -89,7 +114,7 @@ interface TrialTicket {
 
 function signTrialTicket(ticket: TrialTicket): string {
   const payload = Buffer.from(JSON.stringify(ticket)).toString('base64url');
-  const signature = crypto.createHmac('sha256', config.sessionSecret).update(payload).digest('base64url');
+  const signature = crypto.createHmac('sha256', config.sessionSecret).update('trial-ticket:' + payload).digest('base64url');
   return `${payload}.${signature}`;
 }
 
@@ -99,7 +124,7 @@ function verifyTrialTicket(value: unknown, userId: string): TrialTicket | null {
   if (separator <= 0) return null;
   const payload = value.slice(0, separator);
   const supplied = Buffer.from(value.slice(separator + 1));
-  const expected = Buffer.from(crypto.createHmac('sha256', config.sessionSecret).update(payload).digest('base64url'));
+  const expected = Buffer.from(crypto.createHmac('sha256', config.sessionSecret).update('trial-ticket:' + payload).digest('base64url'));
   if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
   try {
     const ticket = JSON.parse(Buffer.from(payload, 'base64url').toString()) as TrialTicket;
@@ -111,9 +136,10 @@ function verifyTrialTicket(value: unknown, userId: string): TrialTicket | null {
 }
 
 function parse2gisUrl(value: unknown): { url: string; cityKey: string; city: string; niche: string } | null {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== 'string' || value.length > 2000) return null;
   try {
     const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
     const parts = parsed.pathname.split('/').filter(Boolean);
     const domain = parsed.hostname.startsWith('2gis.') ? parsed.hostname.slice('2gis.'.length) : '';
     if (!MAPS_DOMAINS.has(domain) || parts.length < 3 || parts[1] !== 'search') return null;
@@ -236,15 +262,10 @@ api.post('/search/maps/trial/start', requireAuth, h(async (req, res) => {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.mapsWorkerToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        ...trialOptions(req.body),
         urls: uniqueUrls,
         max_records: Math.min(60, Math.max(1, Number(req.body?.maxRecords) || 20)),
         clean: true,
-        filters: {
-          ...(req.body?.filters || {}),
-          require_website: false,
-          require_no_website: true,
-        },
-        advanced: req.body?.advanced || {},
         directions: uniqueUrls.map((url) => ({ url, label: String(req.body?.labels?.[url] || '') })),
       }),
       signal: AbortSignal.timeout(10_000),

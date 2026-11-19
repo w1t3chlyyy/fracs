@@ -168,7 +168,8 @@ def create_app():
     def _worker_authorized() -> bool:
         token = os.environ.get('MAPS_WORKER_TOKEN', '')
         supplied = request.headers.get('Authorization', '')
-        return bool(token and hmac.compare_digest(supplied, f'Bearer {token}'))
+        # Сравниваем байты: не-ASCII в заголовке Authorization иначе даёт TypeError.
+        return bool(token and hmac.compare_digest(supplied.encode(), f'Bearer {token}'.encode()))
 
     def _city_keys(urls: list[str]) -> set[str] | None:
         keys = set()
@@ -206,6 +207,23 @@ def create_app():
                     writer.write(doc)
         return send_file(out_path, as_attachment=True, download_name=_DOWNLOAD_NAMES[fmt])
 
+    @app.before_request
+    def _local_guard():
+        # Локальный дашборд открыт только с 127.0.0.1/localhost; /api/internal/trial/*
+        # обращается воркер за reverse proxy со своим Bearer-токеном — их не трогаем.
+        if request.path.startswith('/api/internal/trial/'):
+            return None
+        host = (request.host or '').rsplit(':', 1)[0].lower()
+        if host not in ('127.0.0.1', 'localhost'):
+            return jsonify({'ok': False, 'error': 'bad_host'}), 403   # DNS-rebinding
+        if request.method not in ('GET', 'HEAD', 'OPTIONS'):
+            origin = request.headers.get('Origin')
+            if origin and urlsplit(origin).netloc != request.host:
+                return jsonify({'ok': False, 'error': 'bad_origin'}), 403   # CSRF
+            if request.headers.get('Sec-Fetch-Site') == 'cross-site':
+                return jsonify({'ok': False, 'error': 'bad_origin'}), 403
+        return None
+
     # ── Лицензия Fracs: без активной подписки API дашборда закрыт ──
     @app.before_request
     def _license_gate():
@@ -216,6 +234,13 @@ def create_app():
             if not fracs_license.check().get('ok'):
                 return jsonify({'ok': False, 'error': 'license'}), 402
         return None
+
+    @app.after_request
+    def _headers(resp):
+        resp.headers['X-Content-Type-Options'] = 'nosniff'
+        resp.headers['X-Frame-Options'] = 'DENY'
+        resp.headers['Referrer-Policy'] = 'no-referrer'
+        return resp
 
     @app.route('/api/license', methods=['GET'])
     def license_status():

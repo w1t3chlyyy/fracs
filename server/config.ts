@@ -46,8 +46,14 @@ export const config = {
   adminUsername: (env.ADMIN_TG_USERNAME || '').replace(/^@/, ''),
 };
 
-if (isProd && !env.SESSION_SECRET) {
-  console.warn('[config] SESSION_SECRET не задан — используется временный ключ сессии.');
+// Намеренное поведение: при отсутствии обязательных переменных функция не стартует,
+// а не работает с дырой. Секрет сгенерируйте так: openssl rand -hex 32.
+if (isProd) {
+  const missing = ['SESSION_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'].filter((k) => !env[k]);
+  if (missing.length) throw new Error(`[config] В production обязательны: ${missing.join(', ')}`);
+  if (env.SESSION_SECRET!.length < 32) throw new Error('[config] SESSION_SECRET должен быть ≥ 32 символов');
+  if (env.ALLOW_DEV_LOGIN === 'true') throw new Error('[config] ALLOW_DEV_LOGIN запрещён в production');
+  if (env.ALLOW_MOCK_PAYMENTS === 'true') throw new Error('[config] ALLOW_MOCK_PAYMENTS запрещён в production');
 }
 
 export interface Plan {

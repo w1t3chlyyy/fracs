@@ -39,7 +39,7 @@ class XLSXWriter(CSVWriter):
             return
 
         tmp_xlsx_name = os.path.splitext(self._file_path)[0] + '.converted.xlsx'
-        with Workbook(tmp_xlsx_name, {'strings_to_urls': False}) as workbook:
+        with Workbook(tmp_xlsx_name, {'strings_to_urls': False, 'strings_to_formulas': False}) as workbook:
             _render_sheet(workbook, workbook.add_worksheet(), rows)
 
         shutil.move(tmp_xlsx_name, self._file_path)
@@ -151,7 +151,7 @@ def write_multisheet_xlsx(file_path: str, groups: list[tuple[str, list[Any]]],
     """
     tmp_xlsx = os.path.splitext(file_path)[0] + '.converted.xlsx'
     used: set[str] = set()
-    with Workbook(tmp_xlsx, {'strings_to_urls': False}) as workbook:
+    with Workbook(tmp_xlsx, {'strings_to_urls': False, 'strings_to_formulas': False}) as workbook:
         wrote_any = False
         for name, docs in groups:
             rows = _docs_to_rows(docs, writer_options)

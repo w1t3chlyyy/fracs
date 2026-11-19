@@ -3,16 +3,13 @@ import { attachUser } from './auth.ts';
 import { webhookHandler } from './bot.ts';
 import { appRouter } from './appRoutes.ts';
 import { api } from './routes.ts';
+import { csrfGuard, limit, noStoreApi, securityHeaders } from './security.ts';
 
 export function buildApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use((_req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    next();
-  });
+  app.use(securityHeaders);
 
   // Vercel может уже прочитать тело запроса сам; тогда повторно парсить поток нельзя (иначе 500).
   app.use((req, _res, next) => {
@@ -27,6 +24,9 @@ export function buildApp() {
   app.use(express.json({ limit: '100kb' }));
 
   app.post('/api/bot/webhook', webhookHandler);
+  app.use('/api', noStoreApi, csrfGuard);
+  app.use('/api/cities', limit('cities', 60, 60_000));
+  app.use('/api/config', limit('config', 60, 60_000));
   // Программа Fracs Parser: ключ, скачивание, проверка лицензии.
   app.use('/api/app', attachUser, appRouter);
   app.use('/api', attachUser, api);

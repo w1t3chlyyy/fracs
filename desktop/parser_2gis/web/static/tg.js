@@ -3,6 +3,7 @@
   var content = document.querySelector('.content');
   if (!content) return;
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var safeUrl = function (u) { u = (u == null ? '' : String(u)).trim(); return /^(https?:\/\/|tg:\/\/)/i.test(u) ? u : '#'; };
   var rows = [];
 
   var box = document.createElement('details');
@@ -28,7 +29,7 @@
         '<span class="meta">' + esc(d) + '</span></div>' +
         '<div class="meta">' + esc(r.chat) + '</div>' +
         '<div style="font-size:13.5px;line-height:1.45;white-space:pre-wrap">' + esc(r.text.length > 400 ? r.text.slice(0, 400) + '…' : r.text) + '</div>' +
-        '<div class="acts"><a class="b tg" target="_blank" rel="noopener" href="' + esc(r.link) + '">Написать</a></div></article>';
+        '<div class="acts"><a class="b tg" target="_blank" rel="noopener" href="' + esc(safeUrl(r.link)) + '">Написать</a></div></article>';
     }).join('');
     $('tgCsv').style.display = rows.length ? '' : 'none';
   }

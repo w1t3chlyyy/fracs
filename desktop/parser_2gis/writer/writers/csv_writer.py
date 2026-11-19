@@ -82,6 +82,14 @@ class CSVWriter(FileWriter):
         if self._options.verbose:
             logger.info('Парсинг [%d] > %s', self._wrote_count + 1, row['name'])
 
+        # CSV-injection guard: prefix formula-trigger characters on free-text
+        # fields so Excel/LibreOffice does not interpret them as a formula.
+        # Phones (which legitimately start with '+') are intentionally left alone.
+        for k in ('name', 'description', 'address', 'address_comment', 'rubrics'):
+            v = row.get(k)
+            if isinstance(v, str) and v[:1] in ('=', '+', '-', '@', '\t', '\r'):
+                row[k] = "'" + v
+
         try:
             self._writer.writerow(row)
         except Exception as e:

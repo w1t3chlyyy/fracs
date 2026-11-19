@@ -27,7 +27,10 @@ declare global {
 const COOKIE = 'fracs_session';
 const SESSION_MS = 30 * 86400_000;
 
-const sign = (p: string) => crypto.createHmac('sha256', config.sessionSecret).update(p).digest('base64url');
+// Разделение назначений ключа: сессия подписывается с префиксом 'session:'.
+// Это не даёт переиспользовать подпись сессии как trial-ticket или лицензию
+// (те используют свои префиксы и, где нужно, отдельный секрет).
+const sign = (p: string) => crypto.createHmac('sha256', config.sessionSecret).update('session:' + p).digest('base64url');
 
 function makeSession(uid: string) {
   const payload = Buffer.from(JSON.stringify({ u: uid, e: Date.now() + SESSION_MS })).toString('base64url');
@@ -49,17 +52,21 @@ function readSession(raw?: string): string | null {
 }
 
 function cookies(header = ''): Record<string, string> {
-  return Object.fromEntries(
-    header.split(';').map((p) => {
-      const i = p.indexOf('=');
-      return [p.slice(0, i).trim(), decodeURIComponent(p.slice(i + 1).trim())];
-    }),
-  );
+  const out: Record<string, string> = {};
+  for (const part of header.split(';')) {
+    const i = part.indexOf('=');
+    if (i < 1) continue;
+    try { out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim()); } catch { /* битая cookie */ }
+  }
+  return out;
 }
 
 function cookieOpts(req: Request) {
   const secure = req.secure || req.get('x-forwarded-proto') === 'https' || config.isProd;
-  const sameSite = secure ? 'None' : 'Lax';
+  // SameSite=None нужен только если кабинет встраивается в iframe (AI Studio):
+  // включайте явно через COOKIE_SAMESITE=None. Возврат с ЮKassa (/app?paid=1) идёт
+  // обычной навигацией, поэтому с Lax cookie доезжает.
+  const sameSite = secure && process.env.COOKIE_SAMESITE === 'None' ? 'None' : 'Lax';
   return { secure, sameSite };
 }
 
@@ -93,7 +100,8 @@ const h = (fn: (req: Request, res: Response) => Promise<unknown>) => (req: Reque
 export const authRouter = Router();
 
 authRouter.post('/start', h(async (req, res) => {
-  if (!(await rateLimit(`auth:${req.ip}`, 20, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited' });
+  // failClosed=true: при сбое Supabase не пропускаем перебор токенов входа.
+  if (!(await rateLimit(`auth:${req.ip}`, 20, 10 * 60_000, true))) return void res.status(429).json({ error: 'rate_limited' });
   const username = await getBotUsername();
   if (!username) return void res.status(503).json({ error: 'bot_not_configured', message: 'Бот не настроен' });
   const token = randomToken(24);

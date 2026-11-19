@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from 'react';
 import { Download, ExternalLink, Lock, Star } from 'lucide-react';
 import { api } from './api';
+import { safeHref } from './gis/lib';
 import type { MapsRow, SearchView, TgRow } from './types';
 
 interface Props {
@@ -37,8 +38,8 @@ function MapsItem({ r, blurred }: { r: MapsRow; blurred?: boolean }) {
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <span className={`text-[13px] font-mono text-gray-700 ${blurred ? 'blur-[3px] select-none' : ''}`}>{r.phone ?? 'телефон не указан'}</span>
-        {r.url && !blurred && (
-          <a href={r.url} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-gray-900" aria-label="Открыть в 2ГИС">
+        {safeHref(r.url) && !blurred && (
+          <a href={safeHref(r.url)} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-gray-900" aria-label="Открыть в 2ГИС">
             <ExternalLink className="w-4 h-4" />
           </a>
         )}
@@ -60,8 +61,8 @@ function TgItem({ r, blurred }: { r: TgRow; blurred?: boolean }) {
       <p className={`text-[14px] text-gray-700 mt-2 ${blurred ? 'blur-[3px] select-none' : ''}`}>{r.text}</p>
       <div className="flex items-center justify-between mt-2 text-[12px] text-gray-400">
         <span className={blurred ? 'blur-[3px] select-none' : ''}>{r.chat}</span>
-        {r.link && !blurred && (
-          <a href={r.link} target="_blank" rel="noreferrer" className="text-[#F26522] hover:underline inline-flex items-center gap-1">
+        {safeHref(r.link) && !blurred && (
+          <a href={safeHref(r.link)} target="_blank" rel="noreferrer" className="text-[#F26522] hover:underline inline-flex items-center gap-1">
             Написать <ExternalLink className="w-3 h-3" />
           </a>
         )}

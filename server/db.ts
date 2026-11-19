@@ -483,13 +483,18 @@ export async function revertPayment(id: string) {
 
 /* ── лимиты ── */
 
-/** true — можно, false — лимит исчерпан. */
-export async function rateLimit(key: string, max: number, windowMs: number): Promise<boolean> {
+/** true — можно, false — лимит исчерпан.
+ *
+ * `failClosed=true` переводит сбой счётчика (например, падение Supabase) в «запретить»,
+ * а не в «пропустить». Используется для чувствительных лимитов: `auth:*` (перебор
+ * токенов входа) и `app-verify:*` (перебор ключей лицензии). Для прочих оставляем
+ * `failClosed=false`, чтобы не блокировать пользователей из-за временного сбоя БД. */
+export async function rateLimit(key: string, max: number, windowMs: number, failClosed = false): Promise<boolean> {
   if (useSupabase) {
     const r = await sb().rpc('rate_limit', { p_key: key, p_max: max, p_window_ms: windowMs });
     if (r.error) {
       console.error('[db] rateLimit:', r.error.message);
-      return true; // не блокируем пользователей из-за сбоя счётчика
+      return !failClosed;
     }
     return r.data === true;
   }

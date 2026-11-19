@@ -14,6 +14,16 @@ def _digits(value: str) -> str:
     return re.sub(r'\D', '', value or '')
 
 
+def _safe_url(u: str) -> str:
+    """Drop URLs whose scheme is not http(s)/tg (blocks javascript:, data:, …).
+
+    Used on every contact/2GIS link before it lands in an ``href`` so a poisoned
+    record cannot run script in the exported HTML page.
+    """
+    u = (u or '').strip()
+    return u if re.match(r'^(https?://|tg://)', u, re.I) else '#'
+
+
 class HTMLWriter(FileWriter):
     """Writer to a self-contained, searchable HTML page.
 
@@ -73,20 +83,20 @@ class HTMLWriter(FileWriter):
 
         buttons = []
         if 'whatsapp' in c:
-            wa = esc(c['whatsapp'])
+            wa = esc(_safe_url(c['whatsapp']))
             buttons.append(f'<a class="btn wa" href="{wa}" target="_blank" rel="noopener">WhatsApp</a>')
         if 'phone' in c:
             buttons.append(f'<a class="btn" href="tel:{_digits(c["phone"])}">📞 {esc(c["phone"])}</a>')
         if 'telegram' in c:
-            buttons.append(f'<a class="btn tg" href="{esc(c["telegram"])}" target="_blank" rel="noopener">Telegram</a>')
+            buttons.append(f'<a class="btn tg" href="{esc(_safe_url(c["telegram"]))}" target="_blank" rel="noopener">Telegram</a>')
         if 'instagram' in c:
-            buttons.append(f'<a class="btn ig" href="{esc(c["instagram"])}" target="_blank" rel="noopener">Instagram</a>')
+            buttons.append(f'<a class="btn ig" href="{esc(_safe_url(c["instagram"]))}" target="_blank" rel="noopener">Instagram</a>')
         if 'website' in c:
-            buttons.append(f'<a class="btn" href="{esc(c["website"])}" target="_blank" rel="noopener">🌐 Сайт</a>')
+            buttons.append(f'<a class="btn" href="{esc(_safe_url(c["website"]))}" target="_blank" rel="noopener">🌐 Сайт</a>')
         if 'email' in c:
             buttons.append(f'<a class="btn" href="mailto:{esc(c["email"])}">✉️ E-mail</a>')
         if r['url']:
-            buttons.append(f'<a class="btn gis" href="{esc(r["url"])}" target="_blank" rel="noopener">2GIS</a>')
+            buttons.append(f'<a class="btn gis" href="{esc(_safe_url(r["url"]))}" target="_blank" rel="noopener">2GIS</a>')
 
         # Stable per-firm id (2GIS firm id, else the URL, else the name) so the
         # "Позвонил" flag and comment persist per business in the browser.

@@ -30,7 +30,7 @@ MAX_PAGES_PER_QUERY = 3
 MAX_QUERIES = 20
 MAX_ROWS = 20
 
-app = FastAPI(title='Fracs TG service')
+app = FastAPI(title='Fracs TG service', docs_url=None, redoc_url=None, openapi_url=None)
 _lock = asyncio.Lock()  # одна сессия не должна работать из двух запросов одновременно
 
 # Человек ищет исполнителя / задаёт вопрос

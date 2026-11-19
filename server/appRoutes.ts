@@ -29,7 +29,9 @@ const h = (fn: (req: Request, res: Response, next: NextFunction) => unknown): Re
 
 /* ── ключ лицензии: подписанный id пользователя (без хранения в базе) ── */
 
-const mac = (uid: string) => crypto.createHmac('sha256', config.sessionSecret).update('fracs-app-license:' + uid).digest('base64url').slice(0, 24);
+// Ключ лицензии подписывается отдельным секретом (LICENSE_SECRET), если он задан,
+// чтобы утечка sessionSecret не позволяла подделывать лицензии, и наоборот.
+const mac = (uid: string) => crypto.createHmac('sha256', process.env.LICENSE_SECRET || config.sessionSecret).update('fracs-app-license:' + uid).digest('base64url').slice(0, 24);
 
 export const licenseKey = (uid: string) => `fracs.${Buffer.from(uid).toString('base64url')}.${mac(uid)}`;
 
@@ -98,7 +100,8 @@ appRouter.get('/download/:platform', requireAuth, h(async (req, res) => {
 
 /** Вызывается самой программой: активна ли подписка у владельца ключа. */
 appRouter.post('/verify', h(async (req, res) => {
-  if (!(await rateLimit(`app-verify:${req.ip}`, 60, 10 * 60_000))) return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  // failClosed=true: при сбое Supabase не пропускаем перебор ключей лицензии.
+  if (!(await rateLimit(`app-verify:${req.ip}`, 60, 10 * 60_000, true))) return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   const uid = parseKey(req.body?.key);
   if (!uid) return void res.json({ ok: false, reason: 'invalid' });
   const user = await getUser(uid);

@@ -3,6 +3,10 @@ import { STRINGS, type Lang } from './i18n';
 
 export const digits = (s: string | undefined | null) => (s || '').replace(/\D/g, '');
 
+/** Пропускает в href только http(s):// и tg:// ссылки; прочее (javascript:, data:…) → undefined.
+ *  Защищает карточки результатов от XSS через сохранённые контакты/URL фирм. */
+export const safeHref = (u?: string | null) => (u && /^(https?:\/\/|tg:\/\/)/i.test(u.trim()) ? u.trim() : undefined);
+
 export function load<T>(key: string, fallback: T): T {
   try {
     const v = localStorage.getItem(key);

@@ -1,7 +1,7 @@
 import type React from 'react';
 import { Star } from 'lucide-react';
 import type { GisRecord } from './types';
-import { digits, type TFn } from './lib';
+import { digits, safeHref, type TFn } from './lib';
 
 export interface Mark { status?: string; note?: string }
 
@@ -46,11 +46,11 @@ export default function RecordCard({ r, t, blurred, demo, mark, onMark, waUrl }:
           <a href="#" onClick={(e) => { e.preventDefault(); if (!demo) window.open(waUrl(c.whatsapp), '_blank', 'noopener'); }} className={`${chip} border-transparent bg-[#25d366] text-white`}>WhatsApp</a>
         )}
         {c.phone && <a href={blurred || demo ? undefined : `tel:${digits(c.phone)}`} className={`${chip} border-gray-200 bg-gray-100 text-gray-900`}>📞 {c.phone}</a>}
-        {!blurred && c.telegram && <a href={demo ? undefined : c.telegram} onClick={inert} {...ext} className={`${chip} border-sky-100 bg-sky-50 text-sky-700`}>Telegram</a>}
-        {!blurred && c.instagram && <a href={demo ? undefined : c.instagram} onClick={inert} {...ext} className={`${chip} border-pink-100 bg-pink-50 text-pink-700`}>Instagram</a>}
-        {!blurred && c.website && <a href={demo ? undefined : c.website} onClick={inert} {...ext} className={`${chip} border-gray-200 bg-gray-100 text-gray-900`}>🌐 Сайт</a>}
+        {!blurred && c.telegram && <a href={demo ? undefined : safeHref(c.telegram)} onClick={inert} {...ext} className={`${chip} border-sky-100 bg-sky-50 text-sky-700`}>Telegram</a>}
+        {!blurred && c.instagram && <a href={demo ? undefined : safeHref(c.instagram)} onClick={inert} {...ext} className={`${chip} border-pink-100 bg-pink-50 text-pink-700`}>Instagram</a>}
+        {!blurred && c.website && <a href={demo ? undefined : safeHref(c.website)} onClick={inert} {...ext} className={`${chip} border-gray-200 bg-gray-100 text-gray-900`}>🌐 Сайт</a>}
         {!blurred && c.email && <a href={demo ? undefined : `mailto:${c.email}`} className={`${chip} border-gray-200 bg-gray-100 text-gray-900`}>✉️ E-mail</a>}
-        {!blurred && r.url && <a href={demo ? undefined : r.url} onClick={inert} {...ext} className={`${chip} border-emerald-100 bg-emerald-50 text-emerald-700`}>2ГИС</a>}
+        {!blurred && r.url && <a href={demo ? undefined : safeHref(r.url)} onClick={inert} {...ext} className={`${chip} border-emerald-100 bg-emerald-50 text-emerald-700`}>2ГИС</a>}
       </div>
 
       {!blurred && onMark && (
