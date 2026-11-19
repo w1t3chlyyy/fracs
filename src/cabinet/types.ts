@@ -9,6 +9,7 @@ export interface AppConfig {
 }
 export interface Me {
   user: { id: string; firstName: string; username: string | null } | null;
+  admin?: boolean;
   subscription?: { active: boolean; until: string | null };
   trial?: { maps: boolean; tg: boolean };
   quota?: { used: number; limit: number };
@@ -27,4 +28,6 @@ export interface SearchView {
   stats: Record<string, number>;
   rowsTotal: number;
   teaser: (MapsRow | TgRow)[];
+  /** Полные строки одноразового Maps trial; API отдаёт их только при первом успешном poll. */
+  trialRows?: MapsRow[];
 }

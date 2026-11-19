@@ -200,6 +200,7 @@ export default function Cabinet() {
                   ) : (
                     <DemoTool
                       subscribed={subscribed}
+                      admin={me.admin ?? false}
                       trialAvailable={me.trial?.maps ?? false}
                       onGetProgram={() => (subscribed ? setMapsView('program') : setPlansOpen(true))}
                       onSearched={() => refresh()}

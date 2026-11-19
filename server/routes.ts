@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config } from './config.ts';
 import {
@@ -64,6 +65,7 @@ api.get('/me', h(async (req, res) => {
   ]);
   res.json({
     user: { id: u.id, firstName: u.firstName, username: u.username },
+    admin: config.adminTgId > 0 && u.tgId === config.adminTgId,
     subscription: { active: isSubscribed(u), until: u.subscriptionUntil },
     trial: { maps: !mapsTrialUsed, tg: !tgTrialUsed },
     quota: { used: await usedToday(u), limit: config.dailySearchLimit },
@@ -71,8 +73,60 @@ api.get('/me', h(async (req, res) => {
 }));
 
 const MASK = '•••';
+const MAPS_DOMAINS = new Set(['ru', 'kz', 'by', 'az', 'kg', 'uz', 'cz', 'eg', 'it', 'sa', 'com.cy', 'ae', 'cl', 'qa', 'om', 'bh', 'kw', 'iq']);
 const maskPhone = (p: string | null) => (p ? p.slice(0, 7) + '•••-••-' + p.slice(-2) : null);
 const maskStart = (s: string, keep = 3) => s.slice(0, keep) + MASK;
+const parseCooldownMs = 6 * 60 * 60_000;
+
+interface TrialTicket {
+  userId: string;
+  jobId: string;
+  seed: string;
+  niche: string;
+  cityLabel: string;
+  createdAt: number;
+}
+
+function signTrialTicket(ticket: TrialTicket): string {
+  const payload = Buffer.from(JSON.stringify(ticket)).toString('base64url');
+  const signature = crypto.createHmac('sha256', config.sessionSecret).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function verifyTrialTicket(value: unknown, userId: string): TrialTicket | null {
+  if (typeof value !== 'string' || value.length > 4096) return null;
+  const separator = value.lastIndexOf('.');
+  if (separator <= 0) return null;
+  const payload = value.slice(0, separator);
+  const supplied = Buffer.from(value.slice(separator + 1));
+  const expected = Buffer.from(crypto.createHmac('sha256', config.sessionSecret).update(payload).digest('base64url'));
+  if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) return null;
+  try {
+    const ticket = JSON.parse(Buffer.from(payload, 'base64url').toString()) as TrialTicket;
+    if (ticket.userId !== userId || !ticket.jobId || !ticket.seed || Date.now() - ticket.createdAt > 24 * 60 * 60_000) return null;
+    return ticket;
+  } catch {
+    return null;
+  }
+}
+
+function parse2gisUrl(value: unknown): { url: string; cityKey: string; city: string; niche: string } | null {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = new URL(value);
+    const parts = parsed.pathname.split('/').filter(Boolean);
+    const domain = parsed.hostname.startsWith('2gis.') ? parsed.hostname.slice('2gis.'.length) : '';
+    if (!MAPS_DOMAINS.has(domain) || parts.length < 3 || parts[1] !== 'search') return null;
+    return {
+      url: parsed.toString(),
+      cityKey: `${parsed.hostname.toLowerCase()}:${parts[0].toLowerCase()}`,
+      city: decodeURIComponent(parts[0]),
+      niche: decodeURIComponent(parts[2]).trim(),
+    };
+  } catch {
+    return null;
+  }
+}
 
 function teaser(rec: SearchRecord) {
   const rows = headRows(rec);
@@ -93,6 +147,14 @@ const view = (rec: SearchRecord, u: User) => ({
   rowsTotal: rec.rowsTotal,
   teaser: isSubscribed(u) ? [] : teaser(rec),
 });
+
+async function fullTrialView(rec: SearchRecord, user: User) {
+  const stored = await getSearch(rec.id, user.id, true);
+  return {
+    ...view(rec, user),
+    trialRows: stored ? getRows(stored, 0, stored.rowsTotal) as MapsRow[] : [],
+  };
+}
 
 async function gate(req: Request, res: Response): Promise<boolean> {
   if (!(await rateLimit(`search:${req.user!.id}`, 10, 60_000))) {
@@ -123,6 +185,9 @@ api.post('/search/maps', requireAuth, h(async (req, res) => {
 
   const subscribed = isSubscribed(req.user!);
   if (!subscribed && await hasUsedTrial(req.user!.id, 'maps')) return void trialUsed(res);
+  if (subscribed && !(await rateLimit(`maps-cooldown:${req.user!.id}`, 1, parseCooldownMs))) {
+    return void res.status(429).json({ error: 'cooldown', message: 'Следующий парсинг будет доступен через 6 часов после предыдущего запуска.' });
+  }
   try {
     const result = await searchMaps(niche, city, true);
     const stats = { ...result.stats };
@@ -138,6 +203,145 @@ api.post('/search/maps', requireAuth, h(async (req, res) => {
   } catch (e: any) {
     console.error('[maps]', e);
     res.status(502).json({ error: 'provider', message: `Не удалось получить данные: ${e?.message || 'ошибка источника'}` });
+  }
+}));
+
+api.post('/search/maps/trial/start', requireAuth, h(async (req, res) => {
+  const user = req.user!;
+  const isAdmin = config.adminTgId > 0 && user.tgId === config.adminTgId;
+  if (isSubscribed(user) && !isAdmin) return void res.status(403).json({ error: 'subscription_active', message: 'Пробный запуск доступен только без активной подписки.' });
+  if (await hasUsedTrial(user.id, 'maps')) return void trialUsed(res);
+  if (!(await gate(req, res))) return;
+  if (!config.mapsWorkerUrl || !config.mapsWorkerToken) {
+    return void res.status(503).json({ error: 'worker_unconfigured', message: 'Реальный пробный парсинг пока не настроен. Администратору нужно подключить Chrome-worker.' });
+  }
+
+  const suppliedUrls: unknown[] = Array.isArray(req.body?.urls) ? req.body.urls : [];
+  const searches = suppliedUrls.map(parse2gisUrl);
+  if (!searches.length || searches.some((search) => !search)) {
+    return void res.status(400).json({ error: 'bad_urls', message: 'Добавьте корректные ссылки поиска 2ГИС.' });
+  }
+  const parsed = searches.filter((search): search is NonNullable<typeof search> => search !== null);
+  if (parsed.length > 30) return void res.status(400).json({ error: 'too_many_urls', message: 'За один пробный запуск можно проверить не более 30 ссылок.' });
+  if (new Set(parsed.map((search) => search.cityKey)).size > 3) {
+    return void res.status(400).json({ error: 'city_limit', message: 'За один запуск можно выбрать не более 3 городов.' });
+  }
+
+  const uniqueUrls = [...new Set(parsed.map((search) => search.url))];
+  const niche = cleanText(parsed[0].niche, 80) || 'Поиск 2ГИС';
+  const cityLabel = [...new Set(parsed.map((search) => search.city))].join(', ');
+  const seed = crypto.createHash('sha256').update([...uniqueUrls].sort().join('\n')).digest('hex');
+  try {
+    const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${config.mapsWorkerToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        urls: uniqueUrls,
+        max_records: Math.min(60, Math.max(1, Number(req.body?.maxRecords) || 20)),
+        clean: true,
+        filters: {
+          ...(req.body?.filters || {}),
+          require_website: false,
+          require_no_website: true,
+        },
+        advanced: req.body?.advanced || {},
+        directions: uniqueUrls.map((url) => ({ url, label: String(req.body?.labels?.[url] || '') })),
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    const workerResult: any = await workerResponse.json().catch(() => ({}));
+    if (!workerResponse.ok) {
+      return void res.status(workerResponse.status === 409 ? 409 : 502).json({
+        error: 'worker_start_failed',
+        message: workerResult.error || 'Chrome-worker не смог запустить задачу.',
+      });
+    }
+    if (typeof workerResult.jobId !== 'string' || !workerResult.jobId) {
+      return void res.status(502).json({ error: 'worker_bad_response', message: 'Chrome-worker вернул некорректный ответ.' });
+    }
+    const ticket = signTrialTicket({ userId: user.id, jobId: workerResult.jobId, seed, niche, cityLabel, createdAt: Date.now() });
+    res.json({ ticket, status: 'running' });
+  } catch (e: any) {
+    console.error('[maps worker start]', e);
+    res.status(502).json({ error: 'worker_unreachable', message: 'Не удалось подключиться к Chrome-worker. Попробуйте позже.' });
+  }
+}));
+
+api.post('/search/maps/trial/status', requireAuth, h(async (req, res) => {
+  const ticket = verifyTrialTicket(req.body?.ticket, req.user!.id);
+  if (!ticket) return void res.status(400).json({ error: 'bad_ticket', message: 'Задание недействительно или устарело. Запустите пробный поиск заново.' });
+
+  const existing = (await recentSearches(req.user!.id, 'maps', 86400_000))
+    .find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
+  if (existing) return void res.json({ status: 'done', result: await fullTrialView(existing, req.user!) });
+  if (!config.mapsWorkerUrl || !config.mapsWorkerToken) {
+    return void res.status(503).json({ error: 'worker_unconfigured', message: 'Chrome-worker не настроен.' });
+  }
+
+  try {
+    const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs/${encodeURIComponent(ticket.jobId)}`, {
+      headers: { Authorization: `Bearer ${config.mapsWorkerToken}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    const workerResult: any = await workerResponse.json().catch(() => ({}));
+    if (!workerResponse.ok) {
+      return void res.status(workerResponse.status === 404 ? 404 : 502).json({
+        error: 'worker_status_failed',
+        message: workerResult.error || 'Не удалось получить состояние Chrome-worker.',
+      });
+    }
+    if (workerResult.status === 'running') {
+      return void res.json({ status: 'running', count: Number(workerResult.count) || 0, logs: workerResult.logs || [] });
+    }
+    if (workerResult.status === 'error') {
+      return void res.json({ status: 'error', error: workerResult.error || 'Chrome-парсер завершился с ошибкой.', logs: workerResult.logs || [] });
+    }
+    if (!['done', 'stopped'].includes(workerResult.status) || !Array.isArray(workerResult.records)) {
+      return void res.status(502).json({ error: 'worker_bad_response', message: 'Chrome-worker вернул некорректный результат.' });
+    }
+
+    const rows: MapsRow[] = workerResult.records.map((record: any, index: number) => {
+      const contacts = record?.contacts && typeof record.contacts === 'object' ? record.contacts : {};
+      const phoneValue = contacts.phone || record.phone;
+      const ratingValue = record.rating == null || record.rating === '' ? null : Number(record.rating);
+      const reviewsValue = record.review_count == null || record.review_count === '' ? null : Number(record.review_count);
+      return {
+        id: String(record.id || `${ticket.jobId}-${index}`),
+        name: cleanText(record.name, 200) || 'Без названия',
+        category: cleanText(Array.isArray(record.rubrics) ? record.rubrics.join(', ') : '', 160) || ticket.niche,
+        address: cleanText([record.address, record.district, record.city].filter(Boolean).join(', '), 300),
+        phone: typeof phoneValue === 'string' && phoneValue ? cleanText(phoneValue, 80) : null,
+        rating: ratingValue !== null && Number.isFinite(ratingValue) ? ratingValue : null,
+        reviews: reviewsValue !== null && Number.isFinite(reviewsValue) ? reviewsValue : null,
+        url: typeof record.url === 'string' ? record.url : null,
+      };
+    });
+    if (!rows.length) {
+      return void res.json({ status: 'done', empty: true, logs: workerResult.logs || [] });
+    }
+
+    const stats = {
+      total: rows.length,
+      withoutSite: rows.length,
+      withPhone: rows.filter((row) => Boolean(row.phone)).length,
+    };
+    const summary = summarize('maps', stats, rows);
+    const rec: SearchRecord = {
+      id: newId(), userId: req.user!.id, kind: 'maps', createdAt: new Date().toISOString(), demo: false,
+      seed: ticket.seed, query: { niche: ticket.niche, cityLabel: ticket.cityLabel },
+      stats, rows, ...summary,
+    };
+    if (!(await claimTrial(req.user!.id, 'maps'))) {
+      const used = (await recentSearches(req.user!.id, 'maps', 86400_000))
+        .find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
+      if (used) return void res.json({ status: 'done', result: await fullTrialView(used, req.user!) });
+      return void trialUsed(res);
+    }
+    await insertSearch(rec);
+    res.json({ status: 'done', result: { ...view(rec, req.user!), trialRows: rows } });
+  } catch (e: any) {
+    console.error('[maps worker status]', e);
+    res.status(502).json({ error: 'worker_unreachable', message: 'Не удалось получить результаты Chrome-парсинга.' });
   }
 }));
 

@@ -21,6 +21,7 @@ from .paths import user_path
 SITE_URL = os.environ.get('FRACS_SITE_URL') or '__FRACS_SITE_URL__'
 OFFLINE_GRACE_S = 3600
 RECHECK_S = 60
+PARSE_COOLDOWN_S = 6 * 60 * 60
 
 _lock = threading.Lock()
 _cache: dict[str, Any] = {'at': 0.0, 'state': None}
@@ -144,6 +145,61 @@ def activate(key: str) -> dict:
         return {'ok': False, 'reason': reason}
     _save({'key': key, 'checked_at': now, 'until': res.get('until'), 'name': res.get('name')})
     return check(force=True)
+
+
+def claim_parse_slot() -> dict:
+    """Reserve a subscribed Maps parse slot across the website and desktop app."""
+    site = _site()
+    key = _load().get('key')
+    if not site or not key:
+        return {
+            'ok': False,
+            'error': 'license',
+            'message': 'Не удалось проверить подписку. Проверьте подключение и ключ лицензии.',
+            'status': 503,
+        }
+    try:
+        response = requests.post(site + '/api/app/parse-start', json={'key': key}, timeout=10)
+        try:
+            result = response.json()
+        except ValueError:
+            result = {}
+        if not isinstance(result, dict):
+            result = {}
+        result.setdefault('ok', response.ok)
+        result.setdefault('error', 'parse_start_failed' if not response.ok else '')
+        result.setdefault('message', 'Не удалось запустить парсинг. Попробуйте позже.' if not response.ok else '')
+        result['status'] = response.status_code
+        if result.get('ok'):
+            data = _load()
+            data['last_parse_at'] = time.time()
+            _save(data)
+        return result
+    except requests.RequestException:
+        state = check()
+        if state.get('ok') and state.get('offline'):
+            data = _load()
+            try:
+                last_parse_at = float(data.get('last_parse_at', 0))
+            except (TypeError, ValueError):
+                last_parse_at = 0
+            now = time.time()
+            if now - last_parse_at < PARSE_COOLDOWN_S:
+                return {
+                    'ok': False,
+                    'error': 'cooldown',
+                    'message': 'Следующий парсинг будет доступен через 6 часов после предыдущего запуска.',
+                    'status': 429,
+                }
+            data['last_parse_at'] = now
+            _save(data)
+            return {'ok': True, 'offline': True, 'status': 200}
+        return {
+            'ok': False,
+            'error': 'offline',
+            'message': 'Для запуска парсинга требуется подключение к серверу Fracs.',
+            'status': 503,
+        }
 
 
 def reset() -> None:

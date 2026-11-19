@@ -107,6 +107,25 @@ appRouter.post('/verify', h(async (req, res) => {
   res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName });
 }));
 
+/** Парсер карт может запускаться подписчиком не чаще одного раза за 6 часов. */
+appRouter.post('/parse-start', h(async (req, res) => {
+  if (!(await rateLimit(`app-parse-ip:${req.ip}`, 60, 10 * 60_000))) {
+    return void res.status(429).json({ ok: false, error: 'rate_limited', message: 'Слишком часто. Подождите.' });
+  }
+  const uid = parseKey(req.body?.key);
+  const user = uid ? await getUser(uid) : null;
+  if (!user) return void res.status(401).json({ ok: false, error: 'invalid', message: 'Неверный ключ лицензии.' });
+  if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: 'expired', message: 'Подписка закончилась.' });
+  if (!(await rateLimit(`maps-cooldown:${user.id}`, 1, 6 * 60 * 60_000))) {
+    return void res.status(429).json({
+      ok: false,
+      error: 'cooldown',
+      message: 'Следующий парсинг будет доступен через 6 часов после предыдущего запуска.',
+    });
+  }
+  res.json({ ok: true });
+}));
+
 /** Telegram-поиск для программы: ключ лицензии вместо cookie. */
 appRouter.post('/tg-search', h(async (req, res) => {
   if (!(await rateLimit(`app-tg-ip:${req.ip}`, 60, 10 * 60_000))) return void res.status(429).json({ ok: false, error: 'Слишком часто. Подождите.' });

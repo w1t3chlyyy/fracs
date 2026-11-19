@@ -28,6 +28,16 @@ export const api = {
   logout: () => post('/auth/logout'),
   cities: (q: string) => req<{ items: CityItem[] }>(`/cities?q=${encodeURIComponent(q)}`),
   searchMaps: (niche: string, cityId: string) => post<SearchView>('/search/maps', { niche, cityId }),
+  mapsTrialStart: (body: { urls: string[]; maxRecords: number; filters: unknown; advanced: unknown; labels: Record<string, string> }) =>
+    post<{ ticket: string; status: 'running' }>('/search/maps/trial/start', body),
+  mapsTrialStatus: (ticket: string) => post<{
+    status: 'running' | 'done' | 'error';
+    count?: number;
+    logs?: string[];
+    empty?: boolean;
+    error?: string;
+    result?: SearchView;
+  }>('/search/maps/trial/status', { ticket }),
   searchTg: (phrase: string, days: number) => post<SearchView>('/search/tg', { phrase, days }),
   history: (kind: 'maps' | 'tg') => req<{ items: SearchView[] }>(`/searches?kind=${kind}`),
   search: (id: string) => req<SearchView>(`/search/${id}`),

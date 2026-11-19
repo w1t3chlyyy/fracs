@@ -76,6 +76,7 @@ export default function ResultPanel({ result, subscribed, onSubscribe }: Props) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMaps = result.kind === 'maps';
+  const revealTrial = !subscribed && Boolean(result.trialRows?.length);
 
   const load = async (offset: number) => {
     setLoading(true);
@@ -92,10 +93,11 @@ export default function ResultPanel({ result, subscribed, onSubscribe }: Props) 
   };
 
   useEffect(() => {
-    setRows([]);
+    setRows(result.trialRows ?? []);
+    setTotal(result.trialRows?.length ?? 0);
     if (subscribed) load(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result.id, subscribed]);
+  }, [result.id, subscribed, result.trialRows]);
 
   const s = result.stats;
   const Item = (isMaps ? MapsItem : TgItem) as ComponentType<{ r: any; blurred?: boolean }>;
@@ -124,13 +126,15 @@ export default function ResultPanel({ result, subscribed, onSubscribe }: Props) 
       </div>
 
       <div className="mt-6">
-        {subscribed ? (
+        {subscribed || revealTrial ? (
           <>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-heading text-lg font-medium text-gray-900">Данные ({num(total)})</h3>
-              <a href={`/api/search/${result.id}/export.csv`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#F26522] hover:text-[#e05a1a]">
-                <Download className="w-4 h-4" /> Скачать CSV
-              </a>
+              {subscribed && (
+                <a href={`/api/search/${result.id}/export.csv`} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#F26522] hover:text-[#e05a1a]">
+                  <Download className="w-4 h-4" /> Скачать CSV
+                </a>
+              )}
             </div>
             <div className="space-y-3">{rows.map((r) => <Item key={r.id} r={r} />)}</div>
             {error && <p className="text-[13px] text-red-600 mt-3">{error}</p>}

@@ -51,6 +51,14 @@ export default function LinkGenerator({ t, urls, setUrls, linkMeta, setLinkMeta 
     setCountry(c); setCities(new Set()); setDists(new Set()); setCustom([]); setRub(null); setRubSearch('');
   };
 
+  const toggleCity = (key: string, on: boolean) => {
+    if (on && !cities.has(key) && cities.size >= 3) {
+      alert('За один запуск можно выбрать не более 3 городов.');
+      return;
+    }
+    setCities(toggle(cities, key, on));
+  };
+
   const add = () => {
     const q = query.trim();
     if (!q) return alert(t('a_need_query'));
@@ -95,13 +103,16 @@ export default function LinkGenerator({ t, urls, setUrls, linkMeta, setLinkMeta 
           {() => (
             <>
               <div className={tools}>
-                <a className={link} onClick={() => setCities(new Set(countryCities.map((c) => `${c.c}|${c.d}`)))}>{t('select_all')}</a>·
+                <a className={link} onClick={() => {
+                  setCities(new Set(countryCities.slice(0, 3).map((c) => `${c.c}|${c.d}`)));
+                  if (countryCities.length > 3) alert('Выбраны первые 3 города.');
+                }}>{t('select_all')}</a>·
                 <a className={link} onClick={() => setCities(new Set())}>{t('reset')}</a>
               </div>
               <div className="flex max-h-56 flex-col overflow-auto">
                 {countryCities.length ? countryCities.map((c) => (
                   <label key={c.c} className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[13px] hover:bg-gray-50">
-                    <input type="checkbox" className="accent-[#F26522]" checked={cities.has(`${c.c}|${c.d}`)} onChange={(e) => setCities(toggle(cities, `${c.c}|${c.d}`, e.target.checked))} />
+                    <input type="checkbox" className="accent-[#F26522]" checked={cities.has(`${c.c}|${c.d}`)} onChange={(e) => toggleCity(`${c.c}|${c.d}`, e.target.checked)} />
                     {c.n}
                   </label>
                 )) : <div className="text-[12px] text-gray-500">{t('no_cities')}</div>}

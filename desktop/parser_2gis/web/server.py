@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
+import hmac
 import os
+import secrets
 import tempfile
+import threading
 import webbrowser
 from functools import lru_cache
 from typing import Any
+from urllib.parse import urlsplit
 
 from ..config import Configuration
 from ..logger import logger
@@ -23,6 +27,10 @@ _DEFAULT_SHEET = 'Прочее'
 # Download file names per format.
 _DOWNLOAD_NAMES = {'csv': '2gis.csv', 'xlsx': '2gis.xlsx',
                    'json': '2gis.json', 'html': '2gis.html'}
+_MAPS_DOMAINS = {
+    'ru', 'kz', 'by', 'az', 'kg', 'uz', 'cz', 'eg', 'it', 'sa',
+    'com.cy', 'ae', 'cl', 'qa', 'om', 'bh', 'kw', 'iq',
+}
 
 # Country code -> human name (for the link generator).
 COUNTRIES = {
@@ -153,7 +161,29 @@ def create_app():
     static_dir = os.path.join(os.path.dirname(__file__), 'static')
     app = Flask(__name__, static_folder=static_dir, static_url_path='/static')
     job = ParseJob()
+    trial_jobs: dict[str, ParseJob] = {}
+    trial_jobs_lock = threading.Lock()
     history = History()
+
+    def _worker_authorized() -> bool:
+        token = os.environ.get('MAPS_WORKER_TOKEN', '')
+        supplied = request.headers.get('Authorization', '')
+        return bool(token and hmac.compare_digest(supplied, f'Bearer {token}'))
+
+    def _city_keys(urls: list[str]) -> set[str] | None:
+        keys = set()
+        for value in urls:
+            try:
+                parsed = urlsplit(value)
+                host = (parsed.hostname or '').lower()
+                parts = [part for part in parsed.path.split('/') if part]
+            except ValueError:
+                return None
+            domain = host[len('2gis.'):] if host.startswith('2gis.') else ''
+            if domain not in _MAPS_DOMAINS or len(parts) < 3 or parts[1] != 'search':
+                return None
+            keys.add(f'{host}:{parts[0].lower()}')
+        return keys
 
     def _export_send(docs, writer_opts: WriterOptions, fmt: str, labels=None):
         """Write `docs` to a temp file in `fmt` and send it as a download.
@@ -180,6 +210,8 @@ def create_app():
     @app.before_request
     def _license_gate():
         path = request.path
+        if path.startswith('/api/internal/trial/'):
+            return None
         if path.startswith('/api/') and not path.startswith('/api/license'):
             if not fracs_license.check().get('ok'):
                 return jsonify({'ok': False, 'error': 'license'}), 402
@@ -211,8 +243,26 @@ def create_app():
         urls = [u.strip() for u in (data.get('urls') or []) if u and u.strip()]
         if not urls:
             return jsonify({'ok': False, 'error': 'Не указаны ссылки'}), 400
+        city_keys = _city_keys(urls)
+        if city_keys is None:
+            return jsonify({'ok': False, 'error': 'Укажите корректные ссылки поиска 2ГИС'}), 400
+        if len(city_keys) > 3:
+            return jsonify({'ok': False, 'error': 'За один запуск можно выбрать не более 3 городов'}), 400
+        if job.running:
+            return jsonify({'ok': False, 'error': 'Парсинг уже запущен'}), 409
         try:
             config = _build_config(data)
+        except Exception as e:
+            logger.error('Не удалось подготовить парсинг: %s', e)
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        cooldown = fracs_license.claim_parse_slot()
+        if not cooldown.get('ok'):
+            return jsonify({
+                'ok': False,
+                'error': cooldown.get('error', 'cooldown'),
+                'message': cooldown.get('message', 'Повторный парсинг доступен через 6 часов.'),
+            }), int(cooldown.get('status', 429))
+        try:
             job.start(config, urls, _labels_from_request(data))
         except RuntimeError as e:
             return jsonify({'ok': False, 'error': str(e)}), 409
@@ -277,6 +327,69 @@ def create_app():
     @app.route('/api/results')
     def api_results():
         return jsonify({'records': job.results()})
+
+    @app.route('/api/internal/trial/health')
+    def api_trial_health():
+        if not _worker_authorized():
+            return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+        return jsonify({'ok': True})
+
+    @app.route('/api/internal/trial/jobs', methods=['POST'])
+    def api_trial_start():
+        if not _worker_authorized():
+            return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+        data = request.get_json(force=True, silent=True) or {}
+        urls = [str(u).strip() for u in (data.get('urls') or []) if str(u).strip()]
+        if not urls:
+            return jsonify({'ok': False, 'error': 'Не указаны ссылки'}), 400
+        if len(urls) > 30:
+            return jsonify({'ok': False, 'error': 'За один пробный запуск можно передать не более 30 ссылок'}), 400
+        city_keys = _city_keys(urls)
+        if city_keys is None:
+            return jsonify({'ok': False, 'error': 'Укажите корректные ссылки поиска 2ГИС'}), 400
+        if len(city_keys) > 3:
+            return jsonify({'ok': False, 'error': 'За один запуск можно выбрать не более 3 городов'}), 400
+        with trial_jobs_lock:
+            if any(existing.running for existing in trial_jobs.values()):
+                return jsonify({'ok': False, 'error': 'Парсер уже занят другим заданием'}), 409
+            try:
+                max_records = min(60, max(1, int(data.get('max_records', 20))))
+                config = _build_config({**data, 'max_records': max_records, 'headless': True})
+                config.filters.require_website = False
+                config.filters.require_no_website = True
+                trial_job = ParseJob()
+                job_id = secrets.token_urlsafe(24)
+                trial_job.start(config, urls, _labels_from_request(data), require_license=False, save_history=False)
+                trial_jobs[job_id] = trial_job
+                completed = [key for key, existing in trial_jobs.items() if not existing.running and key != job_id]
+                for key in completed[:-9]:
+                    del trial_jobs[key]
+            except RuntimeError as e:
+                return jsonify({'ok': False, 'error': str(e)}), 409
+            except Exception as e:
+                logger.error('Не удалось запустить внутренний пробный парсинг: %s', e)
+                return jsonify({'ok': False, 'error': str(e)}), 400
+        return jsonify({'ok': True, 'jobId': job_id})
+
+    @app.route('/api/internal/trial/jobs/<job_id>')
+    def api_trial_status(job_id: str):
+        if not _worker_authorized():
+            return jsonify({'ok': False, 'error': 'unauthorized'}), 401
+        with trial_jobs_lock:
+            trial_job = trial_jobs.get(job_id)
+        if not trial_job:
+            return jsonify({'ok': False, 'error': 'Задание не найдено'}), 404
+        payload = {
+            'ok': True,
+            'status': trial_job.status,
+            'running': trial_job.running,
+            'count': trial_job.count,
+            'error': trial_job.error,
+            'logs': trial_job.logs[-100:],
+        }
+        if trial_job.status in ('done', 'stopped'):
+            payload['records'] = trial_job.results()
+        return jsonify(payload)
 
     @app.route('/api/generator')
     def api_generator():

@@ -30,6 +30,8 @@ var config = {
   devLogin: env.ALLOW_DEV_LOGIN === "true" || !isProd && !env.TELEGRAM_BOT_TOKEN,
   mapsProvider: env.MAPS_PROVIDER || "mock",
   gisKey: env.GIS_API_KEY || "",
+  mapsWorkerUrl: (env.MAPS_WORKER_URL || "").replace(/\/$/, ""),
+  mapsWorkerToken: env.MAPS_WORKER_TOKEN || "",
   tgProvider: env.TG_PROVIDER || "mock",
   tgParserUrl: (env.TG_PARSER_URL || "").replace(/\/$/, ""),
   tgParserKey: env.TG_PARSER_KEY || "",
@@ -1508,6 +1510,23 @@ appRouter.post("/verify", h2(async (req, res) => {
   if (!isSubscribed(user)) return void res.json({ ok: false, reason: "expired" });
   res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName });
 }));
+appRouter.post("/parse-start", h2(async (req, res) => {
+  if (!await rateLimit(`app-parse-ip:${req.ip}`, 60, 10 * 6e4)) {
+    return void res.status(429).json({ ok: false, error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435." });
+  }
+  const uid = parseKey(req.body?.key);
+  const user = uid ? await getUser(uid) : null;
+  if (!user) return void res.status(401).json({ ok: false, error: "invalid", message: "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u043B\u0438\u0446\u0435\u043D\u0437\u0438\u0438." });
+  if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: "expired", message: "\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0437\u0430\u043A\u043E\u043D\u0447\u0438\u043B\u0430\u0441\u044C." });
+  if (!await rateLimit(`maps-cooldown:${user.id}`, 1, 6 * 60 * 6e4)) {
+    return void res.status(429).json({
+      ok: false,
+      error: "cooldown",
+      message: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043F\u0430\u0440\u0441\u0438\u043D\u0433 \u0431\u0443\u0434\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0447\u0435\u0440\u0435\u0437 6 \u0447\u0430\u0441\u043E\u0432 \u043F\u043E\u0441\u043B\u0435 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0433\u043E \u0437\u0430\u043F\u0443\u0441\u043A\u0430."
+    });
+  }
+  res.json({ ok: true });
+}));
 appRouter.post("/tg-search", h2(async (req, res) => {
   if (!await rateLimit(`app-tg-ip:${req.ip}`, 60, 10 * 6e4)) return void res.status(429).json({ ok: false, error: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435." });
   const uid = parseKey(req.body?.key);
@@ -1528,6 +1547,7 @@ appRouter.post("/tg-search", h2(async (req, res) => {
 }));
 
 // server/routes.ts
+import crypto6 from "node:crypto";
 import { Router as Router3 } from "express";
 
 // server/payments.ts
@@ -1658,14 +1678,55 @@ api.get("/me", h3(async (req, res) => {
   ]);
   res.json({
     user: { id: u.id, firstName: u.firstName, username: u.username },
+    admin: config.adminTgId > 0 && u.tgId === config.adminTgId,
     subscription: { active: isSubscribed(u), until: u.subscriptionUntil },
     trial: { maps: !mapsTrialUsed, tg: !tgTrialUsed },
     quota: { used: await usedToday(u), limit: config.dailySearchLimit }
   });
 }));
 var MASK = "\u2022\u2022\u2022";
+var MAPS_DOMAINS = /* @__PURE__ */ new Set(["ru", "kz", "by", "az", "kg", "uz", "cz", "eg", "it", "sa", "com.cy", "ae", "cl", "qa", "om", "bh", "kw", "iq"]);
 var maskPhone = (p) => p ? p.slice(0, 7) + "\u2022\u2022\u2022-\u2022\u2022-" + p.slice(-2) : null;
 var maskStart = (s, keep = 3) => s.slice(0, keep) + MASK;
+var parseCooldownMs = 6 * 60 * 6e4;
+function signTrialTicket(ticket) {
+  const payload = Buffer.from(JSON.stringify(ticket)).toString("base64url");
+  const signature = crypto6.createHmac("sha256", config.sessionSecret).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+function verifyTrialTicket(value, userId) {
+  if (typeof value !== "string") return null;
+  const separator = value.lastIndexOf(".");
+  if (separator <= 0) return null;
+  const payload = value.slice(0, separator);
+  const supplied = Buffer.from(value.slice(separator + 1));
+  const expected = Buffer.from(crypto6.createHmac("sha256", config.sessionSecret).update(payload).digest("base64url"));
+  if (supplied.length !== expected.length || !crypto6.timingSafeEqual(supplied, expected)) return null;
+  try {
+    const ticket = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (ticket.userId !== userId || !ticket.jobId || !ticket.seed || Date.now() - ticket.createdAt > 3 * 60 * 6e4) return null;
+    return ticket;
+  } catch {
+    return null;
+  }
+}
+function parse2gisUrl(value) {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    const domain = parsed.hostname.startsWith("2gis.") ? parsed.hostname.slice("2gis.".length) : "";
+    if (!MAPS_DOMAINS.has(domain) || parts.length < 3 || parts[1] !== "search") return null;
+    return {
+      url: parsed.toString(),
+      cityKey: `${parsed.hostname.toLowerCase()}:${parts[0].toLowerCase()}`,
+      city: decodeURIComponent(parts[0]),
+      niche: decodeURIComponent(parts[2]).trim()
+    };
+  } catch {
+    return null;
+  }
+}
 function teaser(rec) {
   const rows = headRows(rec);
   if (rec.kind === "maps") {
@@ -1700,6 +1761,13 @@ var view = (rec, u) => ({
   rowsTotal: rec.rowsTotal,
   teaser: isSubscribed(u) ? [] : teaser(rec)
 });
+async function fullTrialView(rec, user) {
+  const stored = await getSearch(rec.id, user.id, true);
+  return {
+    ...view(rec, user),
+    trialRows: stored ? getRows(stored, 0, stored.rowsTotal) : []
+  };
+}
 async function gate(req, res) {
   if (!await rateLimit(`search:${req.user.id}`, 10, 6e4)) {
     res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443." });
@@ -1724,6 +1792,9 @@ api.post("/search/maps", requireAuth, h3(async (req, res) => {
   if (!await gate(req, res)) return;
   const subscribed = isSubscribed(req.user);
   if (!subscribed && await hasUsedTrial(req.user.id, "maps")) return void trialUsed(res);
+  if (subscribed && !await rateLimit(`maps-cooldown:${req.user.id}`, 1, parseCooldownMs)) {
+    return void res.status(429).json({ error: "cooldown", message: "\u0421\u043B\u0435\u0434\u0443\u044E\u0449\u0438\u0439 \u043F\u0430\u0440\u0441\u0438\u043D\u0433 \u0431\u0443\u0434\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0447\u0435\u0440\u0435\u0437 6 \u0447\u0430\u0441\u043E\u0432 \u043F\u043E\u0441\u043B\u0435 \u043F\u0440\u0435\u0434\u044B\u0434\u0443\u0449\u0435\u0433\u043E \u0437\u0430\u043F\u0443\u0441\u043A\u0430." });
+  }
   try {
     const result = await searchMaps(niche, city, true);
     const stats = { ...result.stats };
@@ -1746,6 +1817,142 @@ api.post("/search/maps", requireAuth, h3(async (req, res) => {
   } catch (e) {
     console.error("[maps]", e);
     res.status(502).json({ error: "provider", message: `\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0435: ${e?.message || "\u043E\u0448\u0438\u0431\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430"}` });
+  }
+}));
+api.post("/search/maps/trial/start", requireAuth, h3(async (req, res) => {
+  const user = req.user;
+  const isAdmin = config.adminTgId > 0 && user.tgId === config.adminTgId;
+  if (isSubscribed(user) && !isAdmin) return void res.status(403).json({ error: "subscription_active", message: "\u041F\u0440\u043E\u0431\u043D\u044B\u0439 \u0437\u0430\u043F\u0443\u0441\u043A \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u0431\u0435\u0437 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438." });
+  if (await hasUsedTrial(user.id, "maps")) return void trialUsed(res);
+  if (!await gate(req, res)) return;
+  if (!config.mapsWorkerUrl || !config.mapsWorkerToken) {
+    return void res.status(503).json({ error: "worker_unconfigured", message: "\u0420\u0435\u0430\u043B\u044C\u043D\u044B\u0439 \u043F\u0440\u043E\u0431\u043D\u044B\u0439 \u043F\u0430\u0440\u0441\u0438\u043D\u0433 \u043F\u043E\u043A\u0430 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D. \u0410\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440\u0443 \u043D\u0443\u0436\u043D\u043E \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C Chrome-worker." });
+  }
+  const suppliedUrls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+  const searches = suppliedUrls.map(parse2gisUrl);
+  if (!searches.length || searches.some((search) => !search)) {
+    return void res.status(400).json({ error: "bad_urls", message: "\u0414\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0435 \u0441\u0441\u044B\u043B\u043A\u0438 \u043F\u043E\u0438\u0441\u043A\u0430 2\u0413\u0418\u0421." });
+  }
+  const parsed = searches.filter((search) => search !== null);
+  if (parsed.length > 30) return void res.status(400).json({ error: "too_many_urls", message: "\u0417\u0430 \u043E\u0434\u0438\u043D \u043F\u0440\u043E\u0431\u043D\u044B\u0439 \u0437\u0430\u043F\u0443\u0441\u043A \u043C\u043E\u0436\u043D\u043E \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C \u043D\u0435 \u0431\u043E\u043B\u0435\u0435 30 \u0441\u0441\u044B\u043B\u043E\u043A." });
+  if (new Set(parsed.map((search) => search.cityKey)).size > 3) {
+    return void res.status(400).json({ error: "city_limit", message: "\u0417\u0430 \u043E\u0434\u0438\u043D \u0437\u0430\u043F\u0443\u0441\u043A \u043C\u043E\u0436\u043D\u043E \u0432\u044B\u0431\u0440\u0430\u0442\u044C \u043D\u0435 \u0431\u043E\u043B\u0435\u0435 3 \u0433\u043E\u0440\u043E\u0434\u043E\u0432." });
+  }
+  const uniqueUrls = [...new Set(parsed.map((search) => search.url))];
+  const niche = cleanText(parsed[0].niche, 80) || "\u041F\u043E\u0438\u0441\u043A 2\u0413\u0418\u0421";
+  const cityLabel = [...new Set(parsed.map((search) => search.city))].join(", ");
+  const seed = crypto6.createHash("sha256").update([...uniqueUrls].sort().join("\n")).digest("hex");
+  try {
+    const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.mapsWorkerToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        urls: uniqueUrls,
+        max_records: Math.min(60, Math.max(1, Number(req.body?.maxRecords) || 20)),
+        clean: true,
+        filters: {
+          ...req.body?.filters || {},
+          require_website: false,
+          require_no_website: true
+        },
+        advanced: req.body?.advanced || {},
+        directions: uniqueUrls.map((url) => ({ url, label: String(req.body?.labels?.[url] || "") }))
+      }),
+      signal: AbortSignal.timeout(1e4)
+    });
+    const workerResult = await workerResponse.json().catch(() => ({}));
+    if (!workerResponse.ok) {
+      return void res.status(workerResponse.status === 409 ? 409 : 502).json({
+        error: "worker_start_failed",
+        message: workerResult.error || "Chrome-worker \u043D\u0435 \u0441\u043C\u043E\u0433 \u0437\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u044C \u0437\u0430\u0434\u0430\u0447\u0443."
+      });
+    }
+    if (typeof workerResult.jobId !== "string" || !workerResult.jobId) {
+      return void res.status(502).json({ error: "worker_bad_response", message: "Chrome-worker \u0432\u0435\u0440\u043D\u0443\u043B \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442." });
+    }
+    const ticket = signTrialTicket({ userId: user.id, jobId: workerResult.jobId, seed, niche, cityLabel, createdAt: Date.now() });
+    res.json({ ticket, status: "running" });
+  } catch (e) {
+    console.error("[maps worker start]", e);
+    res.status(502).json({ error: "worker_unreachable", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C\u0441\u044F \u043A Chrome-worker. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
+  }
+}));
+api.post("/search/maps/trial/status", requireAuth, h3(async (req, res) => {
+  const ticket = verifyTrialTicket(req.body?.ticket, req.user.id);
+  if (!ticket) return void res.status(400).json({ error: "bad_ticket", message: "\u0417\u0430\u0434\u0430\u043D\u0438\u0435 \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u044C\u043D\u043E \u0438\u043B\u0438 \u0443\u0441\u0442\u0430\u0440\u0435\u043B\u043E. \u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u043F\u0440\u043E\u0431\u043D\u044B\u0439 \u043F\u043E\u0438\u0441\u043A \u0437\u0430\u043D\u043E\u0432\u043E." });
+  const existing = (await recentSearches(req.user.id, "maps", 3 * 60 * 6e4)).find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
+  if (existing) return void res.json({ status: "done", result: await fullTrialView(existing, req.user) });
+  if (!config.mapsWorkerUrl || !config.mapsWorkerToken) {
+    return void res.status(503).json({ error: "worker_unconfigured", message: "Chrome-worker \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D." });
+  }
+  try {
+    const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs/${encodeURIComponent(ticket.jobId)}`, {
+      headers: { Authorization: `Bearer ${config.mapsWorkerToken}` },
+      signal: AbortSignal.timeout(1e4)
+    });
+    const workerResult = await workerResponse.json().catch(() => ({}));
+    if (!workerResponse.ok) {
+      return void res.status(workerResponse.status === 404 ? 404 : 502).json({
+        error: "worker_status_failed",
+        message: workerResult.error || "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435 Chrome-worker."
+      });
+    }
+    if (workerResult.status === "running") {
+      return void res.json({ status: "running", count: Number(workerResult.count) || 0, logs: workerResult.logs || [] });
+    }
+    if (workerResult.status === "error") {
+      return void res.json({ status: "error", error: workerResult.error || "Chrome-\u043F\u0430\u0440\u0441\u0435\u0440 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0441\u044F \u0441 \u043E\u0448\u0438\u0431\u043A\u043E\u0439.", logs: workerResult.logs || [] });
+    }
+    if (!["done", "stopped"].includes(workerResult.status) || !Array.isArray(workerResult.records)) {
+      return void res.status(502).json({ error: "worker_bad_response", message: "Chrome-worker \u0432\u0435\u0440\u043D\u0443\u043B \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442." });
+    }
+    const rows = workerResult.records.map((record, index) => {
+      const contacts = record?.contacts && typeof record.contacts === "object" ? record.contacts : {};
+      const phoneValue = contacts.phone || record.phone;
+      const ratingValue = record.rating == null || record.rating === "" ? null : Number(record.rating);
+      const reviewsValue = record.review_count == null || record.review_count === "" ? null : Number(record.review_count);
+      return {
+        id: String(record.id || `${ticket.jobId}-${index}`),
+        name: cleanText(record.name, 200) || "\u0411\u0435\u0437 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F",
+        category: cleanText(Array.isArray(record.rubrics) ? record.rubrics.join(", ") : "", 160) || ticket.niche,
+        address: cleanText([record.address, record.district, record.city].filter(Boolean).join(", "), 300),
+        phone: typeof phoneValue === "string" && phoneValue ? cleanText(phoneValue, 80) : null,
+        rating: ratingValue !== null && Number.isFinite(ratingValue) ? ratingValue : null,
+        reviews: reviewsValue !== null && Number.isFinite(reviewsValue) ? reviewsValue : null,
+        url: typeof record.url === "string" ? record.url : null
+      };
+    });
+    if (!rows.length) {
+      return void res.json({ status: "done", empty: true, logs: workerResult.logs || [] });
+    }
+    const stats = {
+      total: rows.length,
+      withoutSite: rows.length,
+      withPhone: rows.filter((row) => Boolean(row.phone)).length
+    };
+    const summary = summarize("maps", stats, rows);
+    const rec = {
+      id: newId(),
+      userId: req.user.id,
+      kind: "maps",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      demo: false,
+      seed: ticket.seed,
+      query: { niche: ticket.niche, cityLabel: ticket.cityLabel },
+      stats,
+      rows,
+      ...summary
+    };
+    if (!await claimTrial(req.user.id, "maps")) {
+      const used = (await recentSearches(req.user.id, "maps", 3 * 60 * 6e4)).find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
+      if (used) return void res.json({ status: "done", result: await fullTrialView(used, req.user) });
+      return void trialUsed(res);
+    }
+    await insertSearch(rec);
+    res.json({ status: "done", result: { ...view(rec, req.user), trialRows: rows } });
+  } catch (e) {
+    console.error("[maps worker status]", e);
+    res.status(502).json({ error: "worker_unreachable", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B Chrome-\u043F\u0430\u0440\u0441\u0438\u043D\u0433\u0430." });
   }
 }));
 api.post("/search/tg", requireAuth, h3(async (req, res) => {

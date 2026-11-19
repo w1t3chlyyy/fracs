@@ -27,6 +27,8 @@ export const config = {
 
   mapsProvider: (env.MAPS_PROVIDER || 'mock') as 'mock' | '2gis',
   gisKey: env.GIS_API_KEY || '',
+  mapsWorkerUrl: (env.MAPS_WORKER_URL || '').replace(/\/$/, ''),
+  mapsWorkerToken: env.MAPS_WORKER_TOKEN || '',
   tgProvider: (env.TG_PROVIDER || 'mock') as 'mock' | 'http',
   tgParserUrl: (env.TG_PARSER_URL || '').replace(/\/$/, ''),
   tgParserKey: env.TG_PARSER_KEY || '',

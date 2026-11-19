@@ -669,7 +669,7 @@
     dlEnabled(false); records=[]; histId=null; renderGrid(); cursor=0;
     fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
       .then(function(r){return r.json()}).then(function(d){
-        if(!d.ok){alert(d.error||t('a_start_err'));return;}
+        if(!d.ok){alert(d.message||d.error||t('a_start_err'));return;}
         $('run').style.display='none'; $('stop').style.display=''; setStatus('running');
         if(poll)clearInterval(poll); poll=setInterval(tick,700); tick();
       }).catch(function(e){alert(t('a_server')+e)});
@@ -957,10 +957,17 @@
     if(GEN.customDists.indexOf(v)<0)GEN.customDists.push(v);
     this.value=''; renderGenDists();
   });
-  $('genCities').addEventListener('change',function(){updateCitiesLabel();renderGenDists();});
+  $('genCities').addEventListener('change',function(e){
+    if(e.target.checked&&$('genCities').querySelectorAll('input:checked').length>3){e.target.checked=false;alert('За один запуск можно выбрать не более 3 городов.');}
+    updateCitiesLabel();renderGenDists();
+  });
   document.addEventListener('click',function(){[].forEach.call(document.querySelectorAll('.msel.open'),function(m){m.classList.remove('open');});});
   $('genAll').addEventListener('click',function(e){e.preventDefault();
-    [].forEach.call($('genCities').querySelectorAll('input'),function(i){i.checked=true;});updateCitiesLabel();renderGenDists();});
+    var count=0;
+    var inputs=$('genCities').querySelectorAll('input');
+    [].forEach.call(inputs,function(i){i.checked=count++<3;});
+    if(inputs.length>3)alert('Выбраны первые 3 города.');
+    updateCitiesLabel();renderGenDists();});
   $('genNone').addEventListener('click',function(e){e.preventDefault();
     [].forEach.call($('genCities').querySelectorAll('input'),function(i){i.checked=false;});updateCitiesLabel();renderGenDists();});
   $('genAdd').addEventListener('click',function(){

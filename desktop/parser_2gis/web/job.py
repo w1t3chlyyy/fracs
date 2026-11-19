@@ -28,8 +28,9 @@ class CollectorWriter(FileWriter):
     Used by the web dashboard so results can be rendered as cards and later
     exported to any format on demand.
     """
-    def __init__(self, writer_options) -> None:
+    def __init__(self, writer_options, require_license: bool = True) -> None:
         super().__init__('', writer_options)
+        self._require_license = require_license
         self.docs: list[Any] = []
         # District/sheet label for the URL currently being parsed; kept aligned
         # with `docs` so the export can split results onto separate sheets.
@@ -43,7 +44,7 @@ class CollectorWriter(FileWriter):
         pass
 
     def write(self, catalog_doc: Any) -> None:
-        if not fracs_license.check().get('ok'):
+        if self._require_license and not fracs_license.check().get('ok'):
             raise LicenseExpiredError('Подписка закончилась. Работа программы остановлена.')
         if not self._check_catalog_doc(catalog_doc):
             return
@@ -93,7 +94,9 @@ class ParseJob:
         return len(self.collector.docs) if self.collector else 0
 
     def start(self, config: Configuration, urls: list[str],
-              labels: Optional[dict[str, str]] = None) -> None:
+              labels: Optional[dict[str, str]] = None,
+              require_license: bool = True,
+              save_history: bool = True) -> None:
         with self._lock:
             if self.running:
                 raise RuntimeError('Парсинг уже запущен')
@@ -101,10 +104,10 @@ class ParseJob:
             self.logs = []
             self.error = None
             self._cancelled = False
-            self.collector = CollectorWriter(config.writer)
+            self.collector = CollectorWriter(config.writer, require_license=require_license)
 
         self._urls = list(urls)
-        self._thread = threading.Thread(target=self._run, args=(config, urls, labels or {}),
+        self._thread = threading.Thread(target=self._run, args=(config, urls, labels or {}, require_license, save_history),
                                         daemon=True)
         self._thread.start()
 
@@ -232,7 +235,9 @@ class ParseJob:
             return True
 
     def _run(self, config: Configuration, urls: list[str],
-             labels: Optional[dict[str, str]] = None) -> None:
+             labels: Optional[dict[str, str]] = None,
+             require_license: bool = True,
+             save_history: bool = True) -> None:
         labels = labels or {}
         handler = _ListLogHandler(self.logs)
         logger.addHandler(handler)
@@ -249,7 +254,7 @@ class ParseJob:
                 for url in urls:
                     if self._cancelled:
                         break
-                    if not fracs_license.check().get('ok'):
+                    if require_license and not fracs_license.check().get('ok'):
                         raise LicenseExpiredError('Подписка закончилась. Работа программы остановлена.')
                     # Tag documents from this URL with its district sheet label.
                     self.collector.current_label = labels.get(url)
@@ -299,7 +304,7 @@ class ParseJob:
             self._parser = None
             # Persist whatever was collected — full run, partial stop, or a crash
             # mid-run — so records survive reloads and aren't lost on Stop/error.
-            if self.status in ('done', 'stopped', 'error') and self.collector and self.collector.docs:
+            if save_history and self.status in ('done', 'stopped', 'error') and self.collector and self.collector.docs:
                 try:
                     History().save(urls, self.collector.docs,
                                    self.collector._options.model_dump(mode='json'),
