@@ -26,7 +26,9 @@ API_HASH = os.environ.get('TG_API_HASH', '')
 SESSION = os.environ.get('TG_SESSION_STRING', '')
 KEY = os.environ.get('TG_PARSER_KEY', '')
 PAGE = 50       # максимум Telegram на страницу
-MAX_PAGES = 3
+MAX_PAGES_PER_QUERY = 3
+MAX_QUERIES = 20
+MAX_ROWS = 20
 
 app = FastAPI(title='Fracs TG service')
 _lock = asyncio.Lock()  # одна сессия не должна работать из двух запросов одновременно
@@ -41,6 +43,35 @@ OFFER = re.compile(
     r'(предлагаю|предлагаем|выполню|выполним|делаю|делаем|оказываем|наши услуги|портфолио|под ключ|'
     r'скидк|акци[яи]|наши цены|разработаем|создадим|успейте|закажи(?:те)?\b)', re.I)
 STOP = {'ищу', 'ищем', 'нужен', 'нужна', 'нужно', 'нужны', 'надо', 'кто', 'для', 'как', 'что', 'где'}
+REQUEST_PREFIX = re.compile(
+    r'^\s*(?:ищу|ищем|в поисках|нужен|нужна|нужно|нужны|надо|требуется|требуются|'
+    r'посоветуйте|подскажите|порекомендуйте|помогите|хочу заказать|'
+    r'где (?:можно )?(?:заказать|найти)|рассмотрю предложения)\s+', re.I)
+QUERY_PREFIXES = (
+    'ищу', 'ищем', 'подскажите', 'посоветуйте', 'порекомендуйте',
+    'где найти', 'где заказать', 'помогите найти', 'хочу найти',
+    'хочу заказать', 'в поисках', 'кто может помочь найти',
+    'есть рекомендации по', 'ищу специалиста по', 'требуется',
+    'кто делает', 'кто занимается', 'ищу исполнителя на', 'кто поможет с',
+)
+TOPIC_SYNONYMS = {
+    'сайт': (
+        'веб-сайт', 'лендинг', 'сайт-визитка', 'интернет-магазин',
+        'разработка сайта', 'создание сайта', 'сайт под ключ', 'веб-разработка',
+    ),
+    'бухгалтер': (
+        'бухгалтерия', 'ведение бухгалтерии', 'бухгалтерские услуги',
+        'бухгалтер на аутсорсе', 'аутсорсинг бухгалтерии', 'сдать отчетность',
+    ),
+    'реклам': (
+        'таргетированная реклама', 'контекстная реклама', 'настройка рекламы',
+        'реклама в интернете', 'таргет', 'маркетолог', 'продвижение',
+    ),
+    'ремонт': (
+        'ремонт квартиры', 'ремонт дома', 'отделка', 'строительные работы',
+        'бригада для ремонта', 'мастер по ремонту', 'подрядчик на ремонт',
+    ),
+}
 
 
 class Req(BaseModel):
@@ -60,6 +91,26 @@ def _relevant(text: str, phrase: str) -> bool:
     t = _norm(text)
     hit = sum(1 for x in toks if x in t)
     return hit >= math.ceil(len(toks) / 2)
+
+
+def _query_variants(phrase: str) -> list[str]:
+    topic = REQUEST_PREFIX.sub('', phrase.strip()).strip(' .,!?:;') or phrase.strip()
+    candidates = [phrase.strip(), topic]
+    normalized_topic = _norm(topic)
+    for term, synonyms in TOPIC_SYNONYMS.items():
+        if re.search(rf'\b{re.escape(term)}\w*\b', normalized_topic):
+            candidates.extend(synonyms)
+    candidates.extend(f'{prefix} {topic}' for prefix in QUERY_PREFIXES)
+
+    variants, seen = [], set()
+    for candidate in candidates:
+        normalized = _norm(candidate)
+        if normalized and normalized not in seen:
+            variants.append(candidate)
+            seen.add(normalized)
+        if len(variants) == MAX_QUERIES:
+            break
+    return variants
 
 
 async def _global(client, q, cutoff, rate, peer, mid):
@@ -82,56 +133,72 @@ async def _search(phrase: str, days: int, budget: int):
     try:
         if not await client.is_user_authorized():
             raise HTTPException(503, 'Сессия Telegram недействительна: сгенерируйте TG_SESSION_STRING заново')
-        rows, seen, scanned = [], set(), 0
-        rate, peer, mid = 0, InputPeerEmpty(), 0
-        for _ in range(MAX_PAGES):
-            if time.monotonic() > deadline:
-                break
-            res = await _global(client, phrase, cutoff, rate, peer, mid)
-            msgs = list(res.messages)
-            if not msgs:
-                break
-            scanned += len(msgs)
-            chats = {c.id: c for c in res.chats}
-            users = {u.id: u for u in res.users}
-            for m in msgs:
-                text = (getattr(m, 'message', '') or '').strip()
-                if not text or m.date < cutoff or not (15 <= len(text) <= 1500):
-                    continue
-                cid = getattr(m.peer_id, 'channel_id', None) or getattr(m.peer_id, 'chat_id', None)
-                chat = chats.get(cid)
-                if chat is None or (isinstance(chat, Channel) and chat.broadcast):
-                    continue
-                uid = getattr(getattr(m, 'from_id', None), 'user_id', None)
-                user = users.get(uid)
-                if user is None or getattr(user, 'bot', False):
-                    continue
-                if not INTENT.search(text) or (OFFER.search(text) and not re.match(r'\s*(ищу|нужен|нужна|нужно|подскажите|посоветуйте)', text, re.I)):
-                    continue
-                if not _relevant(text, phrase):
-                    continue
-                h = hashlib.md5(_norm(text)[:300].encode()).hexdigest()  # кросс-посты
-                if h in seen:
-                    continue
-                seen.add(h)
-                uname = getattr(chat, 'username', None)
-                msg_link = f'https://t.me/{uname}/{m.id}' if uname else f'https://t.me/c/{cid}/{m.id}'
-                rows.append({
-                    'id': f'{cid}:{m.id}',
-                    'username': user.username or '',
-                    'name': ' '.join(x for x in [user.first_name, user.last_name] if x) or 'Без имени',
-                    'chat': getattr(chat, 'title', '') or (f'@{uname}' if uname else 'Чат'),
-                    'text': text,
-                    'date': m.date.astimezone(timezone.utc).isoformat(),
-                    'link': f'https://t.me/{user.username}' if user.username else msg_link,
-                })
-            nr = getattr(res, 'next_rate', None)
-            if len(msgs) < PAGE or not nr:
-                break
-            try:
-                rate, mid = nr, msgs[-1].id
-                peer = await client.get_input_entity(msgs[-1].peer_id)
-            except Exception:
+        rows, seen, seen_users, scanned = [], set(), set(), 0
+        for query in _query_variants(phrase):
+            rate, peer, mid = 0, InputPeerEmpty(), 0
+            for _ in range(MAX_PAGES_PER_QUERY):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or len(rows) >= MAX_ROWS:
+                    break
+                try:
+                    res = await asyncio.wait_for(
+                        _global(client, query, cutoff, rate, peer, mid),
+                        timeout=remaining,
+                    )
+                except asyncio.TimeoutError:
+                    break
+                msgs = list(res.messages)
+                if not msgs:
+                    break
+                scanned += len(msgs)
+                chats = {c.id: c for c in res.chats}
+                users = {u.id: u for u in res.users}
+                for m in msgs:
+                    if len(rows) >= MAX_ROWS:
+                        break
+                    text = (getattr(m, 'message', '') or '').strip()
+                    if not text or m.date < cutoff or not (15 <= len(text) <= 1500):
+                        continue
+                    cid = getattr(m.peer_id, 'channel_id', None) or getattr(m.peer_id, 'chat_id', None)
+                    chat = chats.get(cid)
+                    if chat is None or (isinstance(chat, Channel) and chat.broadcast):
+                        continue
+                    uid = getattr(getattr(m, 'from_id', None), 'user_id', None)
+                    user = users.get(uid)
+                    if user is None or getattr(user, 'bot', False):
+                        continue
+                    user_id = getattr(user, 'id', uid)
+                    if user_id in seen_users:
+                        continue
+                    if not INTENT.search(text) or (OFFER.search(text) and not re.match(r'\s*(ищу|нужен|нужна|нужно|подскажите|посоветуйте)', text, re.I)):
+                        continue
+                    if not (_relevant(text, phrase) or _relevant(text, query)):
+                        continue
+                    h = hashlib.md5(_norm(text)[:300].encode()).hexdigest()  # кросс-посты
+                    if h in seen:
+                        continue
+                    seen.add(h)
+                    seen_users.add(user_id)
+                    uname = getattr(chat, 'username', None)
+                    msg_link = f'https://t.me/{uname}/{m.id}' if uname else f'https://t.me/c/{cid}/{m.id}'
+                    rows.append({
+                        'id': f'{cid}:{m.id}',
+                        'username': user.username or '',
+                        'name': ' '.join(x for x in [user.first_name, user.last_name] if x) or 'Без имени',
+                        'chat': getattr(chat, 'title', '') or (f'@{uname}' if uname else 'Чат'),
+                        'text': text,
+                        'date': m.date.astimezone(timezone.utc).isoformat(),
+                        'link': f'https://t.me/{user.username}' if user.username else msg_link,
+                    })
+                nr = getattr(res, 'next_rate', None)
+                if len(msgs) < PAGE or not nr or len(rows) >= MAX_ROWS:
+                    break
+                try:
+                    rate, mid = nr, msgs[-1].id
+                    peer = await client.get_input_entity(msgs[-1].peer_id)
+                except Exception:
+                    break
+            if time.monotonic() > deadline or len(rows) >= MAX_ROWS:
                 break
         rows.sort(key=lambda r: r['date'], reverse=True)
         return rows, scanned
