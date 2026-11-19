@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link2, Lock, Play, Search, Square, X } from 'lucide-react';
+import { Link2, Loader2, Lock, Play, Search, Square, X } from 'lucide-react';
+import { api } from '../api';
+import History from '../History';
+import ResultPanel from '../ResultPanel';
+import type { SearchView } from '../types';
 import { gisApi } from './api';
 import LinkGenerator from './LinkGenerator';
 import RecordCard, { bizId, type Mark } from './RecordCard';
@@ -11,6 +15,8 @@ import { Section, btnGhost, btnOrange, inputCls } from './ui';
 
 interface Props {
   subscribed: boolean;
+  trialAvailable: boolean;
+  onSearched: () => void;
   /** Подписчику ведёт на раздел «Программа», остальным — на оплату */
   onGetProgram: () => void;
 }
@@ -30,7 +36,7 @@ const sorters: Record<string, (a: GisRecord, b: GisRecord) => number> = {
 const PILL = { idle: ['bg-gray-100 text-gray-500', 'st_ready'], running: ['bg-orange-50 text-[#F26522]', 'st_running'], done: ['bg-emerald-50 text-emerald-700', 'st_done'], stopped: ['bg-amber-50 text-amber-700', 'st_stopped'] } as const;
 
 /** Демо парсера: тот же интерфейс, что в программе, но данные сгенерированы в браузере. */
-export default function DemoTool({ subscribed, onGetProgram }: Props) {
+export default function DemoTool({ subscribed, trialAvailable, onGetProgram, onSearched }: Props) {
   const { lang, setLang, t } = useLang();
   const [urls, setUrls] = usePersisted('gis_urls', '');
   const [linkMeta, setLinkMeta] = usePersisted<Record<string, string>>('gis_linkmeta', {});
@@ -45,6 +51,9 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
   const [data, setData] = useState<GeneratorData | null>(null);
   const [status, setStatus] = useState<keyof typeof PILL>('idle');
   const [records, setRecords] = useState<GisRecord[]>([]);
+  const [trialResult, setTrialResult] = useState<SearchView | null>(null);
+  const [trialError, setTrialError] = useState('');
+  const [trialLoading, setTrialLoading] = useState(false);
   const [scanned, setScanned] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -59,17 +68,52 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
     setLogs((l) => [...l, msg]);
   };
 
-  const start = () => {
+  const start = async () => {
     const lines = urls.split('\n').map((s) => s.trim()).filter(Boolean);
     if (!lines.length) { setUrlsInvalid(true); return; }
+    if (!subscribed && trialAvailable && !data) {
+      setTrialError('Справочники городов загружаются. Попробуйте ещё раз через секунду.');
+      return;
+    }
     const url = lines[0];
     const { city, query } = parseSearchUrl(url, data?.cities ?? []);
+    setRecords([]); setScanned(0); setTerm('');
+    setTrialResult(null); setTrialError('');
+
+    if (!subscribed && trialAvailable) {
+      setStatus('running');
+      setTrialLoading(true);
+      setLogs(['Пробный поиск: реальные компании без сайта.', `Парсинг ссылки ${url}`]);
+      try {
+        if (city === 'Ваш город' || query === 'Компания') {
+          throw new Error('Для реального поиска нужна ссылка 2ГИС с городом и поисковой категорией.');
+        }
+        const { items } = await api.cities(city);
+        const normalizedCity = city.trim().toLocaleLowerCase('ru');
+        const cityItem = items.find((item) => item.name.trim().toLocaleLowerCase('ru') === normalizedCity);
+        if (!cityItem) throw new Error(`Не удалось определить город «${city}» из ссылки 2ГИС.`);
+        const result = await api.searchMaps(query, cityItem.id);
+        setTrialResult(result);
+        setScanned(result.rowsTotal);
+        setStatus('done');
+        setLogs([`Пробный поиск по реальным данным: ${url}`, `Найдено карточек без сайта: ${result.rowsTotal}. Контакты доступны по подписке.`]);
+        onSearched();
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Не удалось выполнить пробный поиск.';
+        setTrialError(message);
+        setStatus('stopped');
+        setLogs((l) => [...l, `Ошибка пробного поиска: ${message}`]);
+      } finally {
+        setTrialLoading(false);
+      }
+      return;
+    }
+
     const total = Math.min(Math.max(1, settings.max_records), DEMO_MAX);
     const pool = makePool(url, total, city, query);
     const filters = settings.filters;
     const step = Math.max(35, Math.round(TOTAL_MS / total)); // вся имитация занимает ~1 минуту
 
-    setRecords([]); setScanned(0); setTerm('');
     setLogs(['Демо-режим: данные сгенерированы, к 2ГИС запросов нет.', `Парсинг ссылки ${url}`]);
     setStatus('running');
 
@@ -88,7 +132,7 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
   };
 
   const stop = () => finish('stopped', 'Остановлено.');
-  const clear = () => { setRecords([]); setScanned(0); setLogs([]); setStatus('idle'); setTerm(''); };
+  const clear = () => { setRecords([]); setScanned(0); setTrialResult(null); setTrialError(''); setLogs([]); setStatus('idle'); setTerm(''); };
 
   const setMark = (r: GisRecord, patch: Mark) => {
     const id = bizId(r);
@@ -105,8 +149,7 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
   const [pillCls, pillKey] = PILL[status];
   const running = status === 'running';
   // После парсинга без подписки карточки скрыты блюром
-  const locked = !subscribed && records.length > 0;      // карточки размыты всегда
-  const showPaywall = locked && !running && status !== 'idle'; // плашка — после окончания
+  const locked = !subscribed && (records.length > 0 || trialResult !== null);
   const gridCls = cols === '1' ? 'grid-cols-1' : cols === '2' ? 'sm:grid-cols-2' : cols === '3' ? 'sm:grid-cols-2 xl:grid-cols-3' : 'sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]';
 
   return (
@@ -125,7 +168,13 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
         <p className="max-w-3xl text-[13px] leading-snug text-gray-700">
-          <b>Free Trial.</b> Компании, телефоны и рейтинги отдаются в тестовом варианте. Качественный парсинг 2ГИС выполняет программа Fracs Parser на вашем компьютере — она открывается после оплаты подписки.
+          {!subscribed && trialAvailable ? (
+            <><b>Пробный запуск.</b> Первый поиск по ссылке покажет реальные бизнесы без сайта. После него демо будет использовать вымышленные данные, а полные контакты доступны по подписке.</>
+          ) : !subscribed ? (
+            <><b>Демо-режим.</b> Пробный реальный поиск уже использован. Следующие запуски показывают вымышленные бизнесы; реальные данные и контакты доступны по подписке.</>
+          ) : (
+            <><b>Демо-режим.</b> На этой странице данные сгенерированы. Реальный парсинг 2ГИС выполняет программа Fracs Parser на вашем компьютере.</>
+          )}
         </p>
         <button type="button" onClick={onGetProgram} className={btnOrange}>{subscribed ? 'Скачать программу' : 'Получить программу'}</button>
       </div>
@@ -149,7 +198,11 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
           <SettingsSections t={t} s={settings} setS={setSettings} maxRecords={DEMO_MAX} />
 
           <div className="flex gap-2.5 pt-1">
-            {running ? (
+            {trialLoading ? (
+              <button type="button" disabled className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#F26522] px-6 py-2.5 text-[14px] font-medium text-white opacity-70">
+                <Loader2 className="h-4 w-4 animate-spin" /> Ищем реальные данные…
+              </button>
+            ) : running ? (
               <button type="button" onClick={stop} className="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-full border border-red-200 bg-white px-6 py-2.5 text-[14px] font-medium text-red-600 hover:bg-red-50">
                 <Square className="h-4 w-4" /> {t('stop')}
               </button>
@@ -162,7 +215,7 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold ${pillCls}`}>{t(pillKey)}</span>
-            {status !== 'idle' && <span className="text-[13px] tabular-nums text-gray-500">{records.length} {running ? t('collected') : t('found')} · просмотрено {scanned}</span>}
+            {status !== 'idle' && <span className="text-[13px] tabular-nums text-gray-500">{trialResult ? `Найдено карточек: ${trialResult.rowsTotal}` : `${records.length} ${running ? t('collected') : t('found')} · просмотрено ${scanned}`}</span>}
             <div className="relative min-w-[160px] flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input value={term} onChange={(e) => setTerm(e.target.value)} disabled={locked} placeholder={t('search_ph')} className={`${inputCls} !pl-9 disabled:opacity-50`} />
@@ -192,9 +245,12 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
               <pre ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }} className="m-0 max-h-52 overflow-auto whitespace-pre-wrap break-words border-t border-gray-100 bg-[#FAFAFA] px-4 py-3 font-mono text-[12px] leading-relaxed text-gray-600">{logs.join('\n')}</pre>
             </details>
           )}
+          {trialError && <p className="mt-3 text-[13px] text-red-600">{trialError}</p>}
 
           <div className="mt-4">
-            {shown.length > 0 ? (
+            {trialResult ? (
+              <ResultPanel result={trialResult} subscribed={subscribed} onSubscribe={onGetProgram} />
+            ) : shown.length > 0 ? (
               <div className="relative">
                 <div className={`grid gap-4 ${gridCls} ${locked ? 'pointer-events-none select-none' : ''}`} aria-hidden={locked}>
                   {shown.map((r, i) => (
@@ -224,6 +280,7 @@ export default function DemoTool({ subscribed, onGetProgram }: Props) {
           </div>
         </div>
       </div>
+      <History kind="maps" refreshKey={trialResult?.id ?? ''} onOpen={setTrialResult} />
     </div>
   );
 }

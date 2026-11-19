@@ -3,7 +3,6 @@ import { ArrowLeft, Loader2, LogOut, Map, Send } from 'lucide-react';
 import { api } from './api';
 import AppPanel from './gis/AppPanel';
 import DemoTool from './gis/DemoTool';
-import MapsTool from './MapsTool';
 import PlansModal from './PlansModal';
 import TgTool from './TgTool';
 import type { AppConfig, Me } from './types';
@@ -103,7 +102,7 @@ export default function Cabinet() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [tab, setTab] = useState<'maps' | 'tg'>('maps');
-  const [mapsView, setMapsView] = useState<'program' | 'trial' | 'demo' | null>(null);
+  const [mapsView, setMapsView] = useState<'program' | 'demo' | null>(null);
   const [plansOpen, setPlansOpen] = useState(false);
   const [paidBanner, setPaidBanner] = useState(false);
 
@@ -141,7 +140,7 @@ export default function Cabinet() {
   }
 
   const subscribed = !!me.subscription?.active;
-  const mapsViewNow = mapsView ?? (subscribed ? 'program' : 'trial');
+  const mapsViewNow = mapsView ?? (subscribed ? 'program' : 'demo');
   const logout = async () => { await api.logout(); setMe({ user: null }); };
 
   return (
@@ -192,16 +191,19 @@ export default function Cabinet() {
               {tab === 'maps' && (
                 <>
                   <div className="inline-flex bg-[#F2F2F2] rounded-full p-1 mb-6">
-                    {([['program', 'Программа'], ['trial', 'Пробный поиск'], ['demo', 'Демо']] as const).map(([id, label]) => (
+                    {([['program', 'Программа'], ['demo', 'Демо']] as const).map(([id, label]) => (
                       <button key={id} onClick={() => setMapsView(id)} className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${mapsViewNow === id ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>{label}</button>
                     ))}
                   </div>
                   {mapsViewNow === 'program' ? (
                     subscribed ? <AppPanel /> : <ProgramLocked onSubscribe={() => setPlansOpen(true)} />
-                  ) : mapsViewNow === 'trial' ? (
-                    <MapsTool subscribed={subscribed} trialAvailable={me.trial?.maps ?? false} onSubscribe={() => setPlansOpen(true)} onSearched={() => refresh()} />
                   ) : (
-                    <DemoTool subscribed={subscribed} onGetProgram={() => (subscribed ? setMapsView('program') : setPlansOpen(true))} />
+                    <DemoTool
+                      subscribed={subscribed}
+                      trialAvailable={me.trial?.maps ?? false}
+                      onGetProgram={() => (subscribed ? setMapsView('program') : setPlansOpen(true))}
+                      onSearched={() => refresh()}
+                    />
                   )}
                 </>
               )}

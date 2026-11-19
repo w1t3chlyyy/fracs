@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Loader2, Lock } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { api } from './api';
 import CityInput from './CityInput';
 import History from './History';
@@ -8,18 +8,16 @@ import type { CityItem, SearchView } from './types';
 
 const SUGGESTIONS = ['Автосервисы и детейлинг', 'Стоматологии и клиники', 'Мебельные производства', 'Юридические компании'];
 
-export default function MapsTool({ subscribed, trialAvailable, onSubscribe, onSearched }: { subscribed: boolean; trialAvailable: boolean; onSubscribe: () => void; onSearched: () => void }) {
+export default function MapsTool({ subscribed, onSubscribe, onSearched }: { subscribed: boolean; onSubscribe: () => void; onSearched: () => void }) {
   const [niche, setNiche] = useState('');
   const [city, setCity] = useState<CityItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<SearchView | null>(null);
-  const locked = !subscribed && !trialAvailable;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (locked) return onSubscribe();
     if (niche.trim().length < 2) return setError('Укажите нишу — например, «автосервис».');
     if (!city) return setError('Выберите город из списка подсказок.');
     setLoading(true);
@@ -37,12 +35,6 @@ export default function MapsTool({ subscribed, trialAvailable, onSubscribe, onSe
     <div>
       <h2 className="font-heading text-2xl sm:text-3xl font-medium tracking-[-0.02em] text-gray-900">Бизнесы без сайта на картах 2ГИС</h2>
       <p className="text-[14px] text-gray-600 mt-2 max-w-2xl">Укажите нишу и город — найдём компании, у которых в карточке нет рабочего сайта.</p>
-      {locked && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
-          <p className="flex items-center gap-2 text-[13px] text-gray-700"><Lock className="h-4 w-4 shrink-0" /> Пробный поиск по картам использован. Оформите подписку, чтобы искать дальше.</p>
-          <button type="button" onClick={onSubscribe} className="rounded-full bg-[#F26522] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#e05a1a]">Оформить подписку</button>
-        </div>
-      )}
 
       <form onSubmit={submit} className="mt-6 grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-start">
         <div>
@@ -62,7 +54,7 @@ export default function MapsTool({ subscribed, trialAvailable, onSubscribe, onSe
           </div>
         </div>
         <CityInput selected={city} onSelect={setCity} />
-        <button type="submit" disabled={loading || locked} className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[14px] font-medium transition-colors cursor-pointer">
+        <button type="submit" disabled={loading} className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[14px] font-medium transition-colors cursor-pointer">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
           {loading ? 'Ищем…' : 'Найти бизнесы'}
         </button>
