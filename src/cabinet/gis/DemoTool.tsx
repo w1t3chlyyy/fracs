@@ -128,7 +128,7 @@ export default function DemoTool({ subscribed, admin, onGetProgram }: Props) {
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
         <p className="max-w-3xl text-[13px] leading-snug text-gray-700">
           {blurDemo ? (
-            <><b>Демо-режим.</b> Запуск показывает вымышленные бизнесы с блюром. Реальные данные и контакты доступны по подписке.</>
+            <><b>Демо-режим.</b> Запуск может работать неккоректно и выдавать бизнесы, не учитывая ваши фильтры. Лучше использовать программу</>
           ) : (
             <><b>Демо-режим.</b> На этой странице данные сгенерированы. Реальный парсинг 2ГИС выполняет программа Fracs Parser на вашем компьютере.</>
           )}
