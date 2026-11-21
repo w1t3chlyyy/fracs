@@ -59,4 +59,16 @@
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     a.download = 'telegram-leads.csv'; document.body.appendChild(a); a.click(); a.remove();
   });
+
+  // Route external links through the desktop app so they open even when the
+  // browser blocks navigation from a file:// page.
+  $('tgGrid').addEventListener('click', function (e) {
+    var ext = e.target.closest('a[target="_blank"]');
+    if (!ext) return;
+    e.preventDefault();
+    var u = ext.getAttribute('href');
+    fetch('/api/open', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: u }) })
+      .then(function (r) { if (!r.ok) window.open(u, '_blank', 'noopener'); })
+      .catch(function () { window.open(u, '_blank', 'noopener'); });
+  });
 })();

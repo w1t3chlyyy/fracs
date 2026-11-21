@@ -61,6 +61,9 @@ class CSVWriter(FileWriter):
                 'point_lon': 'Долгота',
                 'url': '2GIS URL',
                 'type': 'Тип',
+                'owner_name': 'Владелец', 'owner_inn': 'ИНН',
+                'owner_phone': 'Телефон владельца', 'owner_email': 'E-mail владельца',
+                'ymaps_url': 'Яндекс Карты',
             }
         }
 
@@ -72,6 +75,7 @@ class CSVWriter(FileWriter):
                 'general_rating', 'general_review_count',
                 'phone_1', 'whatsapp_1', 'instagram_1', 'telegram_1',
                 'email_1', 'website_1', 'url',
+                'owner_name', 'owner_inn', 'owner_phone', 'owner_email', 'ymaps_url',
             ]
             return {k: v for k, v in full_mapping.items() if k in clean_keys}
 
@@ -279,6 +283,15 @@ class CSVWriter(FileWriter):
 
         # Item URL
         data['url'] = catalog_item.url
+
+        # Owner / Yandex Maps link (enrichment passes store them under _fracs).
+        fr = catalog_doc.get('_fracs') or {}
+        ow = fr.get('owner') or {}
+        data['owner_name'] = ow.get('name') or None
+        data['owner_inn'] = ow.get('inn') or None
+        data['owner_phone'] = ow.get('phone') or None
+        data['owner_email'] = ow.get('email') or None
+        data['ymaps_url'] = fr.get('ymaps') or None
 
         # Contacts
         for contact_group in catalog_item.contact_groups:

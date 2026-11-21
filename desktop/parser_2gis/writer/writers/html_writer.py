@@ -80,6 +80,9 @@ class HTMLWriter(FileWriter):
         if r['city']:
             meta_bits.append(esc(r['city']))
         meta_html = '<div class="meta">' + ', '.join(meta_bits) + '</div>' if meta_bits else ''
+        ow = r.get('owner') or {}
+        if ow.get('name') or ow.get('phone'):
+            meta_html += '<div class="meta">👤 ' + esc(' · '.join(x for x in [ow.get('name'), ow.get('phone'), ow.get('email')] if x)) + '</div>'
 
         buttons = []
         if 'whatsapp' in c:
@@ -95,6 +98,8 @@ class HTMLWriter(FileWriter):
             buttons.append(f'<a class="btn" href="{esc(_safe_url(c["website"]))}" target="_blank" rel="noopener">🌐 Сайт</a>')
         if 'email' in c:
             buttons.append(f'<a class="btn" href="mailto:{esc(c["email"])}">✉️ E-mail</a>')
+        if r.get('ymaps'):
+            buttons.append(f'<a class="btn" href="{esc(_safe_url(r["ymaps"]))}" target="_blank" rel="noopener">Яндекс Карты</a>')
         if r['url']:
             buttons.append(f'<a class="btn gis" href="{esc(_safe_url(r["url"]))}" target="_blank" rel="noopener">2GIS</a>')
 

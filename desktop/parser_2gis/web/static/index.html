@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+<link rel="icon" href="/static/logo.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fracs Parser</title>
@@ -25,8 +26,7 @@
     padding:22px 22px 28px;display:flex;flex-direction:column;gap:20px;
     position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto}
   .brand{display:flex;align-items:center;gap:10px}
-  .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--primary),#ff8a4c);
-    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px}
+  .brand .logo{width:34px;height:34px;border-radius:50%;object-fit:cover;background:none}
   .brand h1,h2,h3{font-family:Jost,Montserrat,-apple-system,"Segoe UI",sans-serif}
   .brand h1{font-size:17px;margin:0;font-weight:700;letter-spacing:-.01em}
   .langbtns{margin-left:auto;display:flex;gap:3px}
@@ -229,7 +229,7 @@
 <body>
 <div class="app">
   <aside>
-    <div class="brand"><div class="logo">F</div><h1>Fracs Parser</h1>
+    <div class="brand"><img class="logo" src="/static/logo.png" alt="Fracs"><h1>Fracs Parser</h1>
       <div class="langbtns" id="langbtns">
         <button data-lang="kk" title="Қазақша"><svg width="24" height="16" viewBox="0 0 24 16"><rect width="24" height="16" rx="2" fill="#00AFCA"/><circle cx="12" cy="7" r="3.4" fill="#FEC50C"/><rect x="4" y="12.2" width="16" height="1.4" rx=".7" fill="#FEC50C"/></svg></button>
         <button data-lang="ru" title="Русский"><svg width="24" height="16" viewBox="0 0 24 16"><rect width="24" height="16" rx="2" fill="#fff" stroke="#e6e8ef" stroke-width=".7"/><rect x=".5" y="5.5" width="23" height="5.3" fill="#0039A6"/><rect x=".5" y="10.8" width="23" height="4.7" rx="2" fill="#D52B1E"/></svg></button>
@@ -395,6 +395,8 @@
         <label class="check mini"><input type="checkbox" id="ya_missing" checked> <span data-i18n="ya_missing">только без сайта</span></label>
         <label class="check mini"><input type="checkbox" id="ya_remove" checked> <span data-i18n="ya_remove">убрать тех, у кого найден сайт</span></label>
         <label class="check mini"><input type="checkbox" id="ya_remove_nf"> <span data-i18n="ya_remove_nf">убрать не найденных на Яндексе</span></label>
+        <button class="btn-ya" id="owners" style="background:#0f172a" disabled>Владельцы</button>
+        <label class="check mini"><input type="checkbox" id="auto_owners"> <span>искать владельцев после парсинга</span></label>
       </div>
       <button class="btn-clear" id="clear" data-i18n="clear" data-i18n-title="clear_title" title="Нәтижелерді тазалау (Тарихта қалады)" disabled>✕ Тазалау</button>
     </div>
@@ -413,6 +415,7 @@
 (function(){
   var $=function(id){return document.getElementById(id)};
   var poll=null, cursor=0, records=[], histId=null;
+  var pendingOwners=false;
 
   // ---- i18n (Қазақша default, Русский) ----
   var T={
@@ -582,6 +585,8 @@
     if(c.instagram) b.push('<a class="b ig" target="_blank" rel="noopener" href="'+esc(safeUrl(c.instagram))+'">Instagram</a>');
     if(c.website) b.push('<a class="b" target="_blank" rel="noopener" href="'+esc(safeUrl(c.website))+'">🌐 Сайт</a>');
     if(c.email) b.push('<a class="b" href="mailto:'+esc(c.email)+'">✉️ E-mail</a>');
+    if(r.ymaps) b.push('<a class="b" target="_blank" rel="noopener" href="'+esc(safeUrl(r.ymaps))+'">Яндекс Карты</a>');
+    var ow=r.owner||{}, ownerHtml=(ow.name||ow.phone||ow.email)?'<div class="meta">👤 '+esc([ow.name,ow.phone,ow.email].filter(Boolean).join(' · '))+'</div>':'';
     if(r.url) b.push('<a class="b gis" target="_blank" rel="noopener" href="'+esc(safeUrl(r.url))+'">2GIS</a>');
     var rating=''; if(r.rating){var rv=r.review_count?(' · '+r.review_count+' отз.'):''; rating='<span class="rating">★ '+esc(r.rating)+esc(rv)+'</span>';}
     var rub=r.rubrics&&r.rubrics.length?'<div class="rubrics">'+esc(r.rubrics.join(' · '))+'</div>':'';
@@ -593,7 +598,7 @@
       '<input class="note" data-id="'+esc(id)+'" placeholder="'+t('note_ph')+'" value="'+esc(st.note||'')+'"></div>';
     return '<article class="card'+(done?' done':'')+'" data-s="'+esc(blob)+'">'+
       '<div class="card-head"><h2>'+esc(r.name)+'</h2>'+rating+'</div>'+rub+
-      (meta.length?'<div class="meta">'+meta.join(', ')+'</div>':'')+
+      (meta.length?'<div class="meta">'+meta.join(', ')+'</div>':'')+ownerHtml+
       '<div class="acts">'+b.join('')+'</div>'+foot+'</article>';
   }
 
@@ -644,6 +649,7 @@
         fetch('/api/results').then(function(r){return r.json()}).then(function(res){
           records=res.records||[]; histId=null; renderGrid(); dlEnabled(records.length>0);
           loadHistory();
+          if(pendingOwners && d.status==='done'){pendingOwners=false;startOwners();}
         });
       }
     }).catch(function(){});
@@ -673,6 +679,7 @@
         if(!d.ok){alert(d.message||d.error||t('a_start_err'));return;}
         $('run').style.display='none'; $('stop').style.display=''; setStatus('running');
         if(poll)clearInterval(poll); poll=setInterval(tick,700); tick();
+        pendingOwners=$('auto_owners').checked;
       }).catch(function(e){alert(t('a_server')+e)});
   });
 
@@ -685,6 +692,7 @@
     [].forEach.call(document.querySelectorAll('.dl-fmt'),function(b){b.disabled=!on;});
     $('clear').disabled=!on;
     $('yandex').disabled=!on;
+    $('owners').disabled=!on;
   }
   $('f_site').addEventListener('change',function(){ if(this.checked)$('f_nosite').checked=false; });
   $('f_nosite').addEventListener('change',function(){ if(this.checked)$('f_site').checked=false; });
@@ -701,6 +709,18 @@
         if(poll)clearInterval(poll); poll=setInterval(tick,700); tick();
       }).catch(function(e){alert(t('a_server')+e)});
   });
+
+  function startOwners(){
+    var p=payload(); p.only_missing=true; if(histId)p.history_id=histId;
+    $('logbox').textContent=''; cursor=0;
+    fetch('/api/owners',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
+      .then(function(r){return r.json()}).then(function(d){
+        if(!d.ok){alert(d.error||t('a_start_err'));return;}
+        dlEnabled(false);$('run').style.display='none';$('stop').style.display='';setStatus('running');
+        if(poll)clearInterval(poll);poll=setInterval(tick,700);tick();
+      });
+  }
+  $('owners').addEventListener('click',function(){ if(!$('owners').disabled)startOwners(); });
 
   $('dlbar').addEventListener('click',function(e){
     var b=e.target.closest('.dl-fmt'); if(!b||b.disabled)return;
@@ -791,6 +811,15 @@
 
   // WhatsApp button + "Связались" toggle.
   $('grid').addEventListener('click',function(e){
+    var ext=e.target.closest('a[target="_blank"]');
+    if(ext){
+      e.preventDefault();
+      var u=ext.getAttribute('href');
+      fetch('/api/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})})
+        .then(function(r){ if(!r.ok) window.open(u,'_blank','noopener'); })
+        .catch(function(){ window.open(u,'_blank','noopener'); });
+      return;
+    }
     var a=e.target.closest('.b.wa');
     if(a){e.preventDefault(); var num=a.getAttribute('data-wa'); if(num)window.open(waUrl(num),'_blank','noopener'); return;}
     var mark=e.target.closest('.markbtn');

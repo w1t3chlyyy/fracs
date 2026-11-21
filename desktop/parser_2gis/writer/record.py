@@ -66,6 +66,7 @@ def extract_record(catalog_doc: Any) -> Optional[dict[str, Any]]:
             elif contact.url:
                 contacts[contact.type] = contact.url.split('?')[0]
 
+    extra = (catalog_doc.get('_fracs') or {}) if isinstance(catalog_doc, dict) else {}
     return {
         'name': name,
         'description': description,
@@ -76,4 +77,6 @@ def extract_record(catalog_doc: Any) -> Optional[dict[str, Any]]:
         'review_count': review_count,
         'contacts': contacts,
         'url': catalog_item.url,
+        'owner': extra.get('owner') or {},
+        'ymaps': extra.get('ymaps'),
     }

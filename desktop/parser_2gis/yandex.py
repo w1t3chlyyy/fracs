@@ -370,6 +370,7 @@ class YandexMaps:
                         continue
 
                     if not data:
+                        doc.setdefault('_fracs', {})['ymaps'] = 'https://yandex.ru/maps/?text=' + quote(query)
                         stats['not_found'] += 1
                         stats['not_found_idx'].append(doc_idx)
                         logger.info('Яндекс [%d/%d] %s — не найдено', i, len(targets), record['name'])
@@ -380,6 +381,7 @@ class YandexMaps:
                                     i, len(targets), record['name'], data.get('name'),
                                     data.get('address') or 'адрес не считан')
                     else:
+                        doc.setdefault('_fracs', {})['ymaps'] = (data.get('url') or '').split('#')[0]
                         if data.get('closed'):
                             stats['closed'] += 1
                             stats['closed_idx'].append(doc_idx)

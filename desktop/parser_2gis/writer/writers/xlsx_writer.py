@@ -56,7 +56,8 @@ class XLSXWriter(CSVWriter):
 
         try:
             if value.startswith(('http://', 'https://')):
-                worksheet.write_url(r, c, value, link_fmt, string=value)
+                label = {'Яндекс Карты': 'Открыть на Яндекс Картах', '2GIS URL': 'Открыть в 2GIS'}.get(header, value)
+                worksheet.write_url(r, c, value, link_fmt, string=label)
                 return
             if _EMAIL_HEADER in header and '@' in value:
                 worksheet.write_url(r, c, 'mailto:%s' % value, link_fmt, string=value)

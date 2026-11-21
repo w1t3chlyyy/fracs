@@ -13,6 +13,7 @@ from ..writer.record import extract_record
 from ..writer.writers import FileWriter
 from .. import license as fracs_license
 from ..yandex import YandexCaptcha, YandexMaps
+from ..owners import Owners, OwnersCaptcha
 from .history import History
 
 class LicenseExpiredError(RuntimeError):
@@ -208,6 +209,71 @@ class ParseJob:
             if self.collector and self.collector.docs:
                 try:
                     History().save((self._urls or []) + ['Яндекс Карты'], self.collector.docs,
+                                   self.collector._options.model_dump(mode='json'),
+                                   self.collector.labels)
+                except Exception as e:
+                    logger.error('Не удалось сохранить историю: %s', e)
+            logger.removeHandler(handler)
+
+    def start_owners(self, config: Configuration, only_missing: bool = True,
+                     docs: Optional[list[Any]] = None, labels: Optional[list[Any]] = None,
+                     urls: Optional[list[str]] = None) -> None:
+        """Third pass: look up company owners (director / ИП) in open registries
+        via Chrome. Works on the current results or on `docs` (from history).
+        """
+        with self._lock:
+            if self.running:
+                raise RuntimeError('Парсинг уже запущен')
+            if docs is not None:
+                collector = CollectorWriter(config.writer)
+                collector.docs, collector.labels = list(docs), list(labels or [])
+                collector.labels += [None] * (len(collector.docs) - len(collector.labels))
+                self.collector, self._urls = collector, list(urls or [])
+            if not self.collector or not self.collector.docs:
+                raise RuntimeError('Нет данных: сначала выполните парсинг 2GIS')
+            self.status, self.logs, self.error, self._cancelled = 'running', [], None, False
+        self._thread = threading.Thread(target=self._run_owners, args=(config, only_missing), daemon=True)
+        self._thread.start()
+
+    def _run_owners(self, config: Configuration, only_missing: bool) -> None:
+        handler = _ListLogHandler(self.logs)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        try:
+            worker = Owners(config.chrome)
+            self._parser = worker
+
+            expired = False
+
+            def stop() -> bool:
+                nonlocal expired
+                if self._cancelled:
+                    return True
+                if not fracs_license.check().get('ok'):
+                    expired = True
+                    return True
+                return False
+
+            st = worker.enrich(self.collector.docs, only_missing, stop, config.chrome.headless)
+            if expired:
+                self.error, self.status = 'Подписка закончилась. Работа программы остановлена.', 'error'
+                return
+            self.status = 'stopped' if self._cancelled else 'done'
+            logger.info('Владельцы: проверено %d из %d, найдено %d, не найдено %d.',
+                        st['checked'], st['total'], st['found'], st['not_found'])
+        except OwnersCaptcha as e:
+            self.status = 'done'
+            logger.error('%s', e)
+        except Exception as e:
+            self.status = 'stopped' if self._cancelled else 'error'
+            if not self._cancelled:
+                self.error = str(e)
+                logger.error('Ошибка поиска владельцев: %s: %s', type(e).__name__, e)
+        finally:
+            self._parser = None
+            if self.collector and self.collector.docs:
+                try:
+                    History().save((self._urls or []) + ['Владельцы'], self.collector.docs,
                                    self.collector._options.model_dump(mode='json'),
                                    self.collector.labels)
                 except Exception as e:

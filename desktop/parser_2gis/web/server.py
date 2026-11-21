@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hmac
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -326,6 +327,41 @@ def create_app():
             logger.error('Не удалось запустить Яндекс Карты: %s', e)
             return jsonify({'ok': False, 'error': str(e)}), 400
         return jsonify({'ok': True})
+
+    @app.route('/api/owners', methods=['POST'])
+    def api_owners():
+        """Third pass: look up company owners (director / ИП) in open registries."""
+        if not fracs_license.check(force=True).get('ok'):
+            return jsonify({'ok': False, 'error': 'license'}), 402
+        data = request.get_json(force=True, silent=True) or {}
+        try:
+            config = _build_config(data)
+            only_missing = bool(data.get('only_missing', True))
+            hid = data.get('history_id')
+            if hid:
+                docs = history.docs(str(hid))
+                if not docs:
+                    return jsonify({'ok': False, 'error': 'Запись истории не найдена'}), 404
+                try:
+                    config.writer = WriterOptions(**history.writer_options(str(hid)))
+                except Exception:
+                    pass
+                job.start_owners(config, only_missing, docs=docs, labels=history.labels(str(hid)))
+            else:
+                job.start_owners(config, only_missing)
+        except RuntimeError as e:
+            return jsonify({'ok': False, 'error': str(e)}), 409
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 400
+        return jsonify({'ok': True})
+
+    @app.route('/api/open', methods=['POST'])
+    def api_open():
+        """Открывает ссылку в браузере по умолчанию: работает даже если браузер/Excel блокирует переход."""
+        url = str((request.get_json(force=True, silent=True) or {}).get('url', '')).strip()
+        if len(url) > 2000 or not re.match(r'^https?://', url, re.I):
+            return jsonify({'ok': False}), 400
+        return jsonify({'ok': bool(webbrowser.open(url))})
 
     @app.route('/api/stop', methods=['POST'])
     def api_stop():
