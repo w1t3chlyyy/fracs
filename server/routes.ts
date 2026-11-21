@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config } from './config.ts';
 import {
-  claimTrial, countSearchesSince, getPlans, getSearch, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
+  claimTrial, countSearchesSince, getActiveFeatures, getPlans, getSearch, getTraining, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
   type SearchRecord, type User,
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
@@ -92,9 +92,21 @@ api.get('/me', h(async (req, res) => {
     user: { id: u.id, firstName: u.firstName, username: u.username },
     admin: config.adminTgId > 0 && u.tgId === config.adminTgId,
     subscription: { active: isSubscribed(u), until: u.subscriptionUntil },
+    features: await getActiveFeatures(u),
     trial: { maps: !mapsTrialUsed, tg: !tgTrialUsed },
     quota: { used: await usedToday(u), limit: config.dailySearchLimit },
   });
+}));
+
+/** Раздел «Обучение»: только для подписчиков с features.training (тариф PRO). */
+api.get('/training', requireAuth, h(async (req, res) => {
+  const u = req.user!;
+  if (!isSubscribed(u)) return void res.status(402).json({ error: 'subscription_required', message: 'Раздел доступен по подписке.' });
+  const features = await getActiveFeatures(u);
+  if (!features.includes('training')) {
+    return void res.status(402).json({ error: 'training_required', message: 'Раздел «Обучение» доступен на тарифе PRO.' });
+  }
+  res.json({ lessons: await getTraining() });
 }));
 
 const MASK = '•••';

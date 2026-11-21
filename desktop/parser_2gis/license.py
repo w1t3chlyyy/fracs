@@ -72,7 +72,11 @@ def _is_until_active(until: Any, now: float) -> bool:
 
 
 def _verify_online(key: str) -> dict:
-    """Возвращает {'ok': bool, 'until': str|None, 'name': str} или бросает requests.RequestException."""
+    """Возвращает {'ok', 'until', 'name', 'features'} или бросает requests.RequestException.
+
+    `features` — список кодов возможностей тарифа пользователя (['base'],
+    ['base','owners','training'], …); сайт отдаёт их в /api/app/verify.
+    """
     r = requests.post(_site() + '/api/app/verify', json={'key': key}, timeout=10)
     if r.status_code >= 500:
         raise requests.RequestException(f'HTTP {r.status_code}')
@@ -94,16 +98,18 @@ def check(force: bool = False) -> dict:
 
         data = _load()
         key = data.get('key')
-        state: dict[str, Any] = {'ok': False, 'reason': 'no_key', 'until': None, 'name': None, 'offline': False, 'site': _site()}
+        state: dict[str, Any] = {'ok': False, 'reason': 'no_key', 'until': None, 'name': None,
+                                 'offline': False, 'site': _site(), 'features': []}
         if not _site():
             state['reason'] = 'not_configured'
         elif key:
             try:
                 res = _verify_online(key)
                 if res.get('ok') and _is_until_active(res.get('until'), now):
-                    data.update(checked_at=now, until=res.get('until'), name=res.get('name'))
+                    features = list(res.get('features') or [])
+                    data.update(checked_at=now, until=res.get('until'), name=res.get('name'), features=features)
                     _save(data)
-                    state.update(ok=True, reason='', until=res.get('until'), name=res.get('name'))
+                    state.update(ok=True, reason='', until=res.get('until'), name=res.get('name'), features=features)
                 else:
                     reason = res.get('reason') or 'expired'
                     # Сбрасываем кэшированное подтверждение, чтобы оффлайн-режим не обходил блокировку.
@@ -119,7 +125,8 @@ def check(force: bool = False) -> dict:
                 if not _is_until_active(until, now):
                     state.update(reason='expired' if until else 'offline')
                 elif checked_ts is not None and 0 <= now - checked_ts < OFFLINE_GRACE_S:
-                    state.update(ok=True, reason='', until=until, name=data.get('name'), offline=True)
+                    state.update(ok=True, reason='', until=until, name=data.get('name'), offline=True,
+                                 features=list(data.get('features') or []))
                 else:
                     state.update(reason='offline')
         _cache.update(at=now, state=state)
@@ -143,7 +150,8 @@ def activate(key: str) -> dict:
         with _lock:
             _cache.update(at=0.0, state=None)
         return {'ok': False, 'reason': reason}
-    _save({'key': key, 'checked_at': now, 'until': res.get('until'), 'name': res.get('name')})
+    _save({'key': key, 'checked_at': now, 'until': res.get('until'), 'name': res.get('name'),
+           'features': list(res.get('features') or [])})
     return check(force=True)
 
 
@@ -200,6 +208,34 @@ def claim_parse_slot() -> dict:
             'message': 'Для запуска парсинга требуется подключение к серверу Fracs.',
             'status': 503,
         }
+
+
+def app_fetch(path: str, payload: dict[str, Any] | None = None) -> dict:
+    """POST к эндпоинту сайта /api/app/* с ключом лицензии — для программы
+    (например, /api/app/training). Возвращает JSON ответа; при сбое сети —
+    {'ok': False, 'error': 'offline'}. Не кэшируется: запросы тарифицируются
+    на стороне сайта, поэтому вызывающая сторона сама решает, когда звать.
+    """
+    site = _site()
+    key = _load().get('key')
+    if not site or not key:
+        return {'ok': False, 'error': 'license'}
+    body: dict[str, Any] = {'key': key}
+    if payload:
+        body.update(payload)
+    try:
+        r = requests.post(site + path, json=body, timeout=15)
+        try:
+            data = r.json()
+        except ValueError:
+            data = {'ok': False, 'error': 'bad_response'}
+        if isinstance(data, dict):
+            data.setdefault('ok', r.ok)
+            if not r.ok:
+                data.setdefault('status', r.status_code)
+        return data
+    except requests.RequestException:
+        return {'ok': False, 'error': 'offline'}
 
 
 def reset() -> None:

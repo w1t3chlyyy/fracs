@@ -3,6 +3,11 @@ import { CheckCircle2, Loader2, X } from 'lucide-react';
 import { api } from './api';
 import type { AppConfig } from './types';
 
+const FEATURE_LABELS: Record<string, string> = {
+  owners: 'Поиск владельцев (руководитель / ИП, ИНН, контакты)',
+  training: 'Раздел «Обучение»',
+};
+
 export default function PlansModal({ config, onClose, onActivated }: { config: AppConfig; onClose: () => void; onActivated: () => void }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -54,19 +59,29 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
         </ul>
 
         <div className="mt-6 grid gap-3">
-          {config.plans.map((p) => (
+          {config.plans.map((p) => {
+            const extras = (p.features ?? []).filter((f) => FEATURE_LABELS[f]);
+            return (
             <button key={p.id} onClick={() => pay(p.id)} disabled={!!busy} className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-gray-200 hover:border-[#F26522] text-left transition-colors cursor-pointer disabled:opacity-60">
               <div>
                 <p className="font-medium text-gray-900">{p.title}</p>
                 {p.badge && <p className="text-[12px] text-[#F26522] mt-0.5">{p.badge}</p>}
                 {p.description && <p className="text-[12.5px] text-gray-500 mt-1 leading-snug">{p.description}</p>}
+                {extras.length > 0 && (
+                  <ul className="mt-1.5 space-y-0.5">
+                    {extras.map((f) => (
+                      <li key={f} className="flex items-start gap-1.5 text-[12px] text-gray-600"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />{FEATURE_LABELS[f]}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="font-heading text-xl font-semibold text-gray-900">{p.priceRub.toLocaleString('ru-RU')} ₽</span>
                 {busy === p.id && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {error && <p className="text-[13px] text-red-600 mt-3">{error}</p>}

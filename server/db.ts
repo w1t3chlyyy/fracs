@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { config, PLANS, type Plan } from './config.ts';
+import { config, PLANS, ALL_FEATURES, type Plan } from './config.ts';
 
 export interface User {
   id: string;
@@ -11,6 +11,8 @@ export interface User {
   firstName: string;
   createdAt: string;
   subscriptionUntil: string | null;
+  /** Тариф, по которому выдана подписка (base/month/quarter/pro). */
+  planId: string | null;
 }
 
 export interface LoginToken {
@@ -108,6 +110,7 @@ const userOf = (r: any): User => withAdmin({
   firstName: r.first_name,
   createdAt: r.created_at,
   subscriptionUntil: r.subscription_until,
+  planId: r.plan_id ?? null,
 });
 
 export async function getUser(id: string): Promise<User | null> {
@@ -151,6 +154,7 @@ export async function upsertTgUser(from: { id: number; username?: string; first_
     firstName: from.first_name || 'Пользователь',
     createdAt: new Date().toISOString(),
     subscriptionUntil: null,
+    planId: null,
   };
   memUsers.set(id, newUser);
   memTgUsers.set(from.id, id);
@@ -159,19 +163,36 @@ export async function upsertTgUser(from: { id: number; username?: string; first_
 
 export const isSubscribed = (u: User) => !!u.subscriptionUntil && Date.parse(u.subscriptionUntil) > Date.now();
 
-export async function extendSubscription(userId: string, days: number): Promise<User> {
+/**
+ * Коды возможностей, доступных пользователю: админ видит всё, подписчик —
+ * возможности своего тарифа (users.plan_id → PLANS[*].features), без тарифа —
+ * только base. Гейтятся в /api/app/verify (программа) и /api/training (кабинет).
+ */
+export async function getActiveFeatures(u: User): Promise<string[]> {
+  if (isAdminTg(u.tgId)) return [...ALL_FEATURES];
+  if (!isSubscribed(u)) return [];
+  if (!u.planId) return ['base'];
+  const plans = await getPlans();
+  const plan = plans.find((p) => p.id === u.planId);
+  return plan?.features ?? ['base'];
+}
+
+export async function extendSubscription(userId: string, days: number, planId?: string): Promise<User> {
   const u = await getUser(userId);
   if (!u) throw new Error('user not found');
   if (isAdminTg(u.tgId)) return u; // админу продлевать нечего
   const base = isSubscribed(u) ? Date.parse(u.subscriptionUntil!) : Date.now();
   const until = new Date(base + days * 86400000).toISOString();
+  const nextPlanId = planId ?? u.planId ?? null;
 
   if (useSupabase) {
-    const r = await sb().from('users').update({ subscription_until: until }).eq('id', userId).select('*').single();
+    const patch: Record<string, unknown> = { subscription_until: until };
+    if (planId !== undefined) patch.plan_id = nextPlanId;
+    const r = await sb().from('users').update(patch).eq('id', userId).select('*').single();
     return userOf(check(r, 'extendSubscription'));
   }
 
-  const updated: User = { ...u, subscriptionUntil: until };
+  const updated: User = { ...u, subscriptionUntil: until, planId: nextPlanId };
   memUsers.set(userId, updated);
   return withAdmin({ ...updated });
 }
@@ -665,4 +686,108 @@ export async function resetPlans(): Promise<Plan[]> {
   const defaults = clonePlans(PLANS);
   await savePlans(defaults);
   return defaults;
+}
+
+/* ── раздел «Обучение»: уроки хранятся в app_settings (key 'training'),
+   как тарифы; редактируются через админку в Telegram. ── */
+
+export interface Lesson {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  /** Порядок вывода: меньше — выше. */
+  order: number;
+}
+
+const TRAINING_FILE = path.join(process.cwd(), 'data', 'training.json');
+let memTraining: Lesson[] | null = null;
+
+function cloneTraining(list: Lesson[]): Lesson[] {
+  return list.map((l) => ({ ...l }));
+}
+
+function loadLocalTraining(): Lesson[] {
+  if (memTraining) return cloneTraining(memTraining);
+  try {
+    if (fs.existsSync(TRAINING_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(TRAINING_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) {
+        memTraining = parsed;
+        return cloneTraining(parsed);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  memTraining = [];
+  return cloneTraining(memTraining);
+}
+
+function saveLocalTraining(lessons: Lesson[]) {
+  memTraining = cloneTraining(lessons);
+  try {
+    fs.mkdirSync(path.dirname(TRAINING_FILE), { recursive: true });
+    fs.writeFileSync(TRAINING_FILE, JSON.stringify(lessons, null, 2), 'utf-8');
+  } catch {
+    /* read-only fs — остаётся в памяти */
+  }
+}
+
+export async function getTraining(): Promise<Lesson[]> {
+  if (useSupabase) {
+    try {
+      const r = await sb().from('app_settings').select('value').eq('key', 'training').maybeSingle();
+      if (!r.error && Array.isArray(r.data?.value)) {
+        memTraining = cloneTraining(r.data.value as Lesson[]);
+        return cloneTraining(memTraining);
+      }
+    } catch {
+      /* таблицы может не быть — используем кэш/пусто */
+    }
+  }
+  return loadLocalTraining().sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+}
+
+export async function saveTraining(lessons: Lesson[]): Promise<void> {
+  saveLocalTraining(lessons);
+  if (useSupabase) {
+    const r = await sb()
+      .from('app_settings')
+      .upsert({ key: 'training', value: lessons, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (r.error) console.warn('[db] saveTraining supabase:', r.error.message);
+  }
+}
+
+/** Добавляет урок. Заголовок — первая строка, тело — всё после первой пустой строки. */
+export async function addLesson(title: string, body: string): Promise<Lesson> {
+  const lessons = await getTraining();
+  const lesson: Lesson = {
+    id: newId(),
+    title: title.slice(0, 200),
+    body: body.slice(0, 20000),
+    createdAt: new Date().toISOString(),
+    order: lessons.length ? Math.max(...lessons.map((l) => l.order)) + 1 : 0,
+  };
+  lessons.push(lesson);
+  await saveTraining(lessons);
+  return lesson;
+}
+
+export async function updateLesson(id: string, patch: Partial<Pick<Lesson, 'title' | 'body'>>): Promise<Lesson | null> {
+  const lessons = await getTraining();
+  const target = lessons.find((l) => l.id === id || l.id.startsWith(id));
+  if (!target) return null;
+  if (patch.title !== undefined) target.title = patch.title.slice(0, 200);
+  if (patch.body !== undefined) target.body = patch.body.slice(0, 20000);
+  await saveTraining(lessons);
+  return target;
+}
+
+export async function deleteLesson(id: string): Promise<boolean> {
+  const lessons = await getTraining();
+  const next = lessons.filter((l) => !(l.id === id || l.id.startsWith(id)));
+  if (next.length === lessons.length) return false;
+  await saveTraining(next);
+  return true;
 }

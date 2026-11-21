@@ -63,6 +63,10 @@ export interface Plan {
   priceRub: number;
   badge?: string;
   description?: string;
+  /** Коды возможностей, открываемых тарифом. Гейтятся на сервере и в программе.
+   *  Базовые тарифы — ['base']; PRO добавляет 'owners' (поиск владельцев) и
+   *  'training' (раздел «Обучение»). Админ видит всё. */
+  features?: string[];
 }
 
 export const PLANS: Plan[] = [
@@ -71,6 +75,7 @@ export const PLANS: Plan[] = [
     title: '1 месяц',
     days: 30,
     priceRub: 1800,
+    features: ['base'],
     description: 'Доступ к программе Fracs Parser, базе контактов и выгрузкам на 30 дней.',
   },
   {
@@ -79,6 +84,19 @@ export const PLANS: Plan[] = [
     days: 90,
     priceRub: 4500,
     badge: 'Выгоднее на 17%',
+    features: ['base'],
     description: 'Доступ на 90 дней: экономия 900 ₽ при оплате сразу за квартал.',
   },
+  {
+    id: 'pro',
+    title: 'PRO 1 месяц',
+    days: 30,
+    priceRub: 2700,
+    badge: 'Владельцы + Обучение',
+    features: ['base', 'owners', 'training'],
+    description: 'Всё из базового тарифа + поиск владельцев (руководитель / ИП, ИНН, контакты) и раздел «Обучение».',
+  },
 ];
+
+/** Все известные коды возможностей (админу выдаём весь список). */
+export const ALL_FEATURES = Array.from(new Set(PLANS.flatMap((p) => p.features ?? [])));

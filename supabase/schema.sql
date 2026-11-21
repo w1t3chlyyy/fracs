@@ -7,8 +7,15 @@ create table if not exists public.users (
   first_name text not null default 'Пользователь',
   created_at timestamptz not null default now(),
   subscription_until timestamptz,
-  expiry_notified_for timestamptz
+  expiry_notified_for timestamptz,
+  -- Тариф, по которому выдана подписка (см. server/config.ts PLANS). Определяет
+  -- доступ к 'owners' (поиск владельцев) и 'training' (раздел «Обучение»).
+  -- NULL у старых пользователей — treated as base.
+  plan_id text
 );
+
+-- На уже существующих базах колонки может не быть — добавляем идемпотентно.
+alter table public.users add column if not exists plan_id text;
 
 create table if not exists public.login_tokens (
   token text primary key,

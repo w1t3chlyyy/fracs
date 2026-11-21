@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { config } from './config.ts';
 import {
   bindLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
-  getPlans, updatePlan, resetPlans,
+  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson,
 } from './db.ts';
 import { safeEqual, sleep } from './util.ts';
 
@@ -58,27 +58,41 @@ const who = (u: { firstName: string; username: string | null; tgId: number }) =>
 const ADMIN_HELP = `Админ-панель Fracs
 
 Пользователи:
-/grant <@username|id> [дней] — выдать или продлить подписку (по умолчанию 30)
+/grant <@username|id> [дней] [тариф] — выдать или продлить подписку (по умолчанию 30 дней, тариф month)
 /revoke <@username|id> — снять подписку
 /user <@username|id> — статус пользователя
 /users — последние 10 пользователей
 
 Тарифы и цены:
 /plans — список текущих тарифов
-/setprice <id|1|2> <цена> — изменить цену (₽)
-/setdesc <id|1|2> <описание|-> — изменить описание (- чтобы убрать)
-/settitle <id|1|2> <название> — изменить название
-/setbadge <id|1|2> <текст|-> — изменить бейдж (- чтобы убрать)
-/setdays <id|1|2> <дней> — изменить длительность
+/setprice <id|1|2|3> <цена> — изменить цену (₽)
+/setdesc <id|1|2|3> <описание|-> — изменить описание (- чтобы убрать)
+/settitle <id|1|2|3> <название> — изменить название
+/setbadge <id|1|2|3> <текст|-> — изменить бейдж (- чтобы убрать)
+/setdays <id|1|2|3> <дней> — изменить длительность
 /resetplans — сбросить тарифы к стандартным
 
+Раздел «Обучение» (виден в программе на тарифе PRO):
+/training — список уроков
+/addlesson Заголовок
+<пустая строка>
+Текст урока (можно многострочно) — добавить урок
+/setlesson <id> Заголовок
+<пустая строка>
+Новый текст — изменить урок (id из /training, можно первые 8 символов)
+/dellesson <id> — удалить урок
+
 Примеры:
-/setprice month 1800
-/setdesc quarter Выгодный доступ на 3 месяца`;
+/setprice pro 2700
+/grant 123456789 30 pro
+/addlesson Как найти клиентов
+
+Откройте нишу, введите город…`;
 
 const ADMIN_CMDS = [
   '/admin', '/grant', '/revoke', '/user', '/users',
   '/plans', '/setprice', '/setdesc', '/settitle', '/setbadge', '/setdays', '/resetplans',
+  '/training', '/addlesson', '/setlesson', '/dellesson',
 ];
 
 function formatPlans(plans: Awaited<ReturnType<typeof getPlans>>) {
@@ -191,6 +205,62 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
     return true;
   }
 
+  if (cmd === '/training') {
+    const lessons = await getTraining();
+    await notify(
+      chatId,
+      lessons.length
+        ? 'Уроки:\n\n' + lessons.map((l, i) => `${i + 1}. [${l.id.slice(0, 8)}] ${l.title}`).join('\n')
+        : 'Уроков пока нет. Добавьте:\n/addlesson Заголовок\n\nТекст урока',
+    );
+    return true;
+  }
+
+  if (cmd === '/addlesson' || cmd === '/setlesson') {
+    const rest = trimmed.slice(raw.length).trim();
+    let id = '';
+    let content = rest;
+    if (cmd === '/setlesson') {
+      const m = rest.match(/^(\S+)\s+([\s\S]+)$/);
+      if (!m) {
+        await notify(chatId, 'Использование:\n/setlesson <id> <Заголовок>\n\nТекст урока');
+        return true;
+      }
+      id = m[1];
+      content = m[2];
+    }
+    const parts = content.split(/\n\s*\n/);
+    const title = (parts[0] || '').trim();
+    const body = parts.slice(1).join('\n\n').trim();
+    if (!title) {
+      await notify(chatId, `Укажите заголовок. Формат:\n${cmd} Заголовок\n\nТекст урока (можно многострочно)`);
+      return true;
+    }
+    if (cmd === '/addlesson') {
+      const l = await addLesson(title, body);
+      await notify(chatId, `✅ Урок добавлен: [${l.id.slice(0, 8)}] ${l.title}\nИзменить: /setlesson ${l.id.slice(0, 8)} …\nУдалить: /dellesson ${l.id.slice(0, 8)}`);
+    } else {
+      const l = await updateLesson(id, { title, ...(body !== '' ? { body } : {}) });
+      if (!l) {
+        await notify(chatId, `Урок не найден: ${id}. Список: /training`);
+        return true;
+      }
+      await notify(chatId, `✅ Урок обновлён: [${l.id.slice(0, 8)}] ${l.title}`);
+    }
+    return true;
+  }
+
+  if (cmd === '/dellesson') {
+    const id = args[0];
+    if (!id) {
+      await notify(chatId, 'Использование: /dellesson <id>');
+      return true;
+    }
+    const ok = await deleteLesson(id);
+    await notify(chatId, ok ? `✅ Урок удалён: ${id}` : `Урок не найден: ${id}. Список: /training`);
+    return true;
+  }
+
   const user = args[0] ? await findUser(args[0]) : null;
   if (!user) {
     await notify(chatId, args[0] ? 'Пользователь не найден. Он должен сначала войти в кабинет через бота.' : ADMIN_HELP);
@@ -205,8 +275,16 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
       await notify(chatId, 'Укажите число дней от 1 до 3650.');
       return true;
     }
-    const u = await extendSubscription(user.id, days);
-    await notify(chatId, `✅ ${who(u)}: подписка до ${fmt(u.subscriptionUntil)}`);
+    const planId = args[2];
+    if (planId) {
+      const plans = await getPlans();
+      if (!plans.some((p) => p.id === planId)) {
+        await notify(chatId, `Неизвестный тариф: ${planId}. Доступные: ${plans.map((p) => p.id).join(', ')}`);
+        return true;
+      }
+    }
+    const u = await extendSubscription(user.id, days, planId);
+    await notify(chatId, `✅ ${who(u)}: подписка до ${fmt(u.subscriptionUntil)}` + (u.planId ? ` (тариф ${u.planId})` : ''));
     await notify(u.tgId, `✅ Подписка Fracs активна до ${fmt(u.subscriptionUntil)}. Кабинет: ${config.appUrl}/app`);
   } else if (cmd === '/revoke') {
     const u = await setSubscription(user.id, null);

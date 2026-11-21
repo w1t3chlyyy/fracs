@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config } from './config.ts';
-import { getUser, isSubscribed, rateLimit } from './db.ts';
+import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit } from './db.ts';
 import { requireAuth } from './auth.ts';
 import { searchTg } from './providers.ts';
 import { cleanText } from './util.ts';
@@ -107,7 +107,23 @@ appRouter.post('/verify', h(async (req, res) => {
   const user = await getUser(uid);
   if (!user) return void res.json({ ok: false, reason: 'invalid' });
   if (!isSubscribed(user)) return void res.json({ ok: false, reason: 'expired' });
-  res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName });
+  res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName, features: await getActiveFeatures(user) });
+}));
+
+/** Раздел «Обучение» для программы: ключ лицензии вместо cookie, только для тарифа с features.training. */
+appRouter.post('/training', h(async (req, res) => {
+  if (!(await rateLimit(`app-training-ip:${req.ip}`, 60, 10 * 60_000))) {
+    return void res.status(429).json({ ok: false, error: 'Слишком часто. Подождите.' });
+  }
+  const uid = parseKey(req.body?.key);
+  const user = uid ? await getUser(uid) : null;
+  if (!user) return void res.status(401).json({ ok: false, error: 'Неверный ключ лицензии' });
+  if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: 'Подписка закончилась' });
+  const features = await getActiveFeatures(user);
+  if (!features.includes('training')) {
+    return void res.status(402).json({ ok: false, error: 'training_required', message: 'Раздел «Обучение» доступен на тарифе PRO.' });
+  }
+  res.json({ ok: true, lessons: await getTraining() });
 }));
 
 /** Парсер карт может запускаться подписчиком не чаще одного раза за 6 часов. */

@@ -331,8 +331,12 @@ def create_app():
     @app.route('/api/owners', methods=['POST'])
     def api_owners():
         """Third pass: look up company owners (director / ИП) in open registries."""
-        if not fracs_license.check(force=True).get('ok'):
+        lic = fracs_license.check(force=True)
+        if not lic.get('ok'):
             return jsonify({'ok': False, 'error': 'license'}), 402
+        if 'owners' not in (lic.get('features') or []):
+            return jsonify({'ok': False, 'error': 'feature_required',
+                            'message': 'Поиск владельцев доступен на тарифе PRO.'}), 402
         data = request.get_json(force=True, silent=True) or {}
         try:
             config = _build_config(data)
@@ -362,6 +366,22 @@ def create_app():
         if len(url) > 2000 or not re.match(r'^https?://', url, re.I):
             return jsonify({'ok': False}), 400
         return jsonify({'ok': bool(webbrowser.open(url))})
+
+    @app.route('/api/training', methods=['GET'])
+    def api_training():
+        """Раздел «Обучение»: проксирует к сайту /api/app/training с ключом лицензии.
+        Доступен только на тарифе с features.training (PRO)."""
+        lic = fracs_license.check()
+        if not lic.get('ok'):
+            return jsonify({'ok': False, 'error': 'license'}), 402
+        if 'training' not in (lic.get('features') or []):
+            return jsonify({'ok': False, 'error': 'feature_required',
+                            'message': 'Раздел «Обучение» доступен на тарифе PRO.'}), 402
+        res = fracs_license.app_fetch('/api/app/training')
+        if not res.get('ok'):
+            return jsonify({'ok': False, 'error': res.get('error') or 'offline',
+                            'message': 'Не удалось загрузить уроки. Проверьте подключение.'}), 502
+        return jsonify({'ok': True, 'lessons': res.get('lessons') or []})
 
     @app.route('/api/stop', methods=['POST'])
     def api_stop():

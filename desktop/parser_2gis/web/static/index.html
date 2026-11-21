@@ -395,8 +395,8 @@
         <label class="check mini"><input type="checkbox" id="ya_missing" checked> <span data-i18n="ya_missing">только без сайта</span></label>
         <label class="check mini"><input type="checkbox" id="ya_remove" checked> <span data-i18n="ya_remove">убрать тех, у кого найден сайт</span></label>
         <label class="check mini"><input type="checkbox" id="ya_remove_nf"> <span data-i18n="ya_remove_nf">убрать не найденных на Яндексе</span></label>
-        <button class="btn-ya" id="owners" style="background:#0f172a" disabled>Владельцы</button>
-        <label class="check mini"><input type="checkbox" id="auto_owners"> <span>искать владельцев после парсинга</span></label>
+        <button class="btn-ya" id="owners" style="background:#0f172a;display:none" disabled>Владельцы</button>
+        <label class="check mini" id="auto_owners_wrap" style="display:none"><input type="checkbox" id="auto_owners"> <span>искать владельцев после парсинга</span></label>
       </div>
       <button class="btn-clear" id="clear" data-i18n="clear" data-i18n-title="clear_title" title="Нәтижелерді тазалау (Тарихта қалады)" disabled>✕ Тазалау</button>
     </div>
@@ -1090,6 +1090,47 @@
   };
   var of=window.fetch;window.fetch=function(){return of.apply(this,arguments).then(function(r){if(r.status===402){check();}return r;});};
   check();setInterval(check,60000);
+})();
+/* Признаки тарифа (features) и раздел «Обучение»: самодостаточный блок.
+   По /api/license узнаём features: 'owners' показывает кнопку «Владельцы»,
+   'training' — раздел «Обучение» (уроки грузятся с /api/training). */
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];})};
+  function applyFeatures(feats){
+    var hasOwners=feats.indexOf('owners')>=0;
+    var ow=$('owners'); if(ow){ow.style.display=hasOwners?'':'none';}
+    var aow=$('auto_owners_wrap'); if(aow){aow.style.display=hasOwners?'':'none';}
+    if(feats.indexOf('training')>=0){ensureTraining();}
+  }
+  function ensureTraining(){
+    if($('trainbox')) return;
+    var content=document.querySelector('.content'); if(!content) return;
+    var box=document.createElement('details');
+    box.className='log'; box.id='trainbox';
+    box.innerHTML='<summary>🎓 Обучение</summary><div id="trainBody" style="padding:14px 16px;border-top:1px solid var(--line)">Откройте, чтобы загрузить уроки.</div>';
+    content.insertBefore(box, content.firstChild);
+    box.addEventListener('toggle', function(){ if(box.open) loadTraining(); });
+  }
+  function loadTraining(){
+    var body=$('trainBody'); if(!body) return;
+    body.textContent='Загрузка…';
+    fetch('/api/training').then(function(r){return r.json()}).then(function(d){
+      if(!d.ok){body.textContent=d.message||'Раздел недоступен.';return;}
+      var ls=d.lessons||[];
+      body.innerHTML=ls.length?ls.map(function(l){
+        return '<details style="margin:10px 0"><summary style="cursor:pointer;font-weight:600">'+esc(l.title)+'</summary><div style="margin-top:8px;white-space:pre-wrap;line-height:1.5;font-size:14px">'+esc(l.body)+'</div></details>';
+      }).join(''):'Уроков пока нет.';
+    }).catch(function(){body.textContent='Не удалось загрузить. Проверьте подключение.';});
+  }
+  function refresh(){
+    fetch('/api/license').then(function(r){return r.json()}).then(function(st){
+      if(st.ok) applyFeatures(st.features||[]);
+    }).catch(function(){});
+  }
+  refresh(); setInterval(refresh,60000);
+  var of=window.fetch;
+  window.fetch=function(){return of.apply(this,arguments).then(function(r){ if(r.status===402) refresh(); return r; });};
 })();
 </script>
 <script src="/static/tg.js"></script>

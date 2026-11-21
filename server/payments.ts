@@ -15,7 +15,7 @@ async function activate(p: PaymentRecord) {
   // Идемпотентность: claim атомарно переводит pending → succeeded, повторный вебхук получит null и ничего не продлит.
   if (!(await claimPayment(p.id))) return;
   try {
-    const updated = await extendSubscription(user.id, plan.days);
+    const updated = await extendSubscription(user.id, plan.days, plan.id);
     await notify(user.tgId, `✅ Подписка активна до ${new Date(updated.subscriptionUntil!).toLocaleDateString('ru-RU')}. Данные открыты в кабинете: ${config.appUrl}/app`);
   } catch (e) {
     await revertPayment(p.id); // продление не удалось — вернём в pending, чтобы повторный вебхук мог добить
