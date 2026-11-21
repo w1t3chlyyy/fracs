@@ -227,9 +227,9 @@ export default function App() {
       <section id="pricing" className="bg-white py-16 lg:py-24 px-5 sm:px-8 lg:px-12">
         <div className="max-w-[1200px] mx-auto">
           <Heading sub="Одна подписка открывает контакты и CSV по всем вашим запросам.">Тарифы</Heading>
-          <div className="grid sm:grid-cols-2 gap-5 max-w-3xl">
+          <div className="grid gap-5 md:grid-cols-3">
             {plans.map((p, i) => (
-              <div key={p.id} className={`rounded-3xl p-7 flex flex-col justify-between gap-8 ${i === plans.length - 1 ? 'bg-gray-900 text-white' : 'bg-[#F5F5F5]'}`}>
+              <div key={p.id} className={`rounded-3xl p-6 sm:p-7 flex flex-col justify-between gap-8 ${i === plans.length - 1 ? 'bg-gray-900 text-white' : 'bg-[#F5F5F5]'}`}>
                 <div>
                   <p className="font-heading text-2xl font-semibold">{p.title}</p>
                   {p.badge && <p className="text-[13px] text-[#F26522] mt-1">{p.badge}</p>}

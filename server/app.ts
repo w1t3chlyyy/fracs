@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { attachUser } from './auth.ts';
 import { webhookHandler } from './bot.ts';
 import { appRouter } from './appRoutes.ts';
+import { adminRouter } from './adminRoutes.ts';
 import { api } from './routes.ts';
 import { csrfGuard, limit, noStoreApi, securityHeaders } from './security.ts';
 
@@ -27,6 +28,8 @@ export function buildApp() {
   app.use('/api', noStoreApi, csrfGuard);
   app.use('/api/cities', limit('cities', 60, 60_000));
   app.use('/api/config', limit('config', 60, 60_000));
+  // Админ-панель Telegram Mini App (/admin.html): валидация по initData в самом роутере.
+  app.use('/api/admin', adminRouter);
   // Программа Fracs Parser: ключ, скачивание, проверка лицензии.
   app.use('/api/app', attachUser, appRouter);
   app.use('/api', attachUser, api);

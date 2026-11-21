@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Админ-панель Fracs</title>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #f4f4f5);
+      --card: var(--tg-theme-secondary-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #18181b);
+      --muted: var(--tg-theme-hint-color, #71717a);
+      --accent: var(--tg-theme-button-color, #f26522);
+      --accent-text: var(--tg-theme-button-text-color, #ffffff);
+      --border: var(--tg-theme-border-color, #e4e4e7);
+      --danger: #dc2626;
+      --ok: #16a34a;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+    body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); min-height: 100vh; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 14px 14px 40px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    header h1 { font-size: clamp(1.1rem, 4vw, 1.35rem); margin: 0; font-weight: 600; }
+    .badge { font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--border);
+      padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+    .tabs { display: flex; gap: 6px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 5px; margin-bottom: 14px; position: sticky; top: 0; z-index: 5; }
+    .tab { flex: 1; text-align: center; padding: 9px 4px; border-radius: 9px; font-size: 13px; font-weight: 600;
+      color: var(--muted); cursor: pointer; border: none; background: transparent; transition: .15s; }
+    .tab.active { background: var(--accent); color: var(--accent-text); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+    .card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; font-weight: 500; }
+    input, select, textarea { width: 100%; padding: 10px 11px; border: 1px solid var(--border); border-radius: 10px;
+      font: inherit; color: var(--text); background: var(--bg); }
+    textarea { resize: vertical; min-height: 90px; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 120px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 14px;
+      border-radius: 10px; border: 1px solid var(--border); background: var(--card); color: var(--text);
+      font: inherit; font-weight: 600; cursor: pointer; transition: .15s; }
+    .btn:active { transform: scale(.98); }
+    .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+    .btn.danger { color: var(--danger); border-color: var(--danger); }
+    .btn.sm { padding: 7px 10px; font-size: 13px; }
+    .btn[disabled] { opacity: .5; cursor: not-allowed; }
+    .uhead { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .uhead .name { font-weight: 600; }
+    .uhead .sub { font-size: 12px; color: var(--muted); }
+    .ustatus { font-size: 12px; margin: 4px 0 10px; }
+    .ustatus.on { color: var(--ok); }
+    .ustatus.off { color: var(--muted); }
+    .pill { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); margin-left: 6px; }
+    .empty { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 14px; }
+    #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: rgba(24,24,27,.94);
+      color: #fff; padding: 11px 16px; border-radius: 10px; font-size: 13px; opacity: 0; pointer-events: none;
+      transition: opacity .2s; z-index: 50; max-width: 90vw; text-align: center; }
+    #toast.show { opacity: 1; }
+    #toast.err { background: rgba(220,38,38,.94); }
+    .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    @media (max-width: 420px) { .row > * { flex: 1 1 100%; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Админ-панель Fracs</h1>
+      <span class="badge" id="me">…</span>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="users">👥 Пользователи</button>
+      <button class="tab" data-tab="plans">💰 Тарифы</button>
+      <button class="tab" data-tab="train">🎓 Обучение</button>
+    </div>
+
+    <!-- Пользователи -->
+    <section id="tab-users" class="panel active">
+      <div class="card">
+        <h3>Выдать подписку по Telegram ID</h3>
+        <div class="row">
+          <input id="g-tgid" type="number" inputmode="numeric" placeholder="Telegram ID (число)">
+          <select id="g-plan"></select>
+          <input id="g-days" type="number" inputmode="numeric" value="30" min="1" max="3650">
+          <button class="btn primary" id="g-go">Выдать</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">ID можно посмотреть в карточке пользователя ниже или у самого пользователя через @userinfobot.</p>
+      </div>
+      <div class="card">
+        <h3>Пользователи</h3>
+        <input id="u-search" placeholder="Поиск по имени, @username или ID…" style="margin-bottom:10px">
+        <div id="u-list"></div>
+      </div>
+    </section>
+
+    <!-- Тарифы -->
+    <section id="tab-plans" class="panel">
+      <div id="p-list"></div>
+      <div class="card" style="text-align:center">
+        <button class="btn danger" id="p-reset">♻️ Сбросить тарифы к стандартным</button>
+      </div>
+    </section>
+
+    <!-- Обучение -->
+    <section id="tab-train" class="panel">
+      <div class="card">
+        <h3>Новый урок</h3>
+        <label>Заголовок</label>
+        <input id="t-title" placeholder="Например: Как найти клиентов">
+        <label>Текст урока</label>
+        <textarea id="t-body" placeholder="Текст урока. Можно несколько абзацев."></textarea>
+        <button class="btn primary" id="t-add" style="margin-top:10px">Добавить урок</button>
+      </div>
+      <div id="t-list"></div>
+    </section>
+  </div>
+
+  <div id="toast"></div>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

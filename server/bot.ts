@@ -106,6 +106,150 @@ function formatPlans(plans: Awaited<ReturnType<typeof getPlans>>) {
     .join('\n\n');
 }
 
+/* ── инлайн админ-меню + быстрые действия (полное редактирование — в Mini App /admin.html) ── */
+
+const admUrl = () => `${publicUrl()}/admin.html`;
+
+function adminHomeKb() {
+  return {
+    inline_keyboard: [
+      [{ text: '🖥 Открыть панель', web_app: { url: admUrl() } }],
+      [{ text: '👥 Пользователи', callback_data: 'adm:users' }, { text: '💰 Тарифы', callback_data: 'adm:plans' }],
+      [{ text: '🎓 Обучение', callback_data: 'adm:train' }, { text: 'ℹ️ Команды', callback_data: 'adm:help' }],
+    ],
+  };
+}
+
+const adminHomeText = '🖥 Админ-панель Fracs\n\nОткройте полную панель кнопкой ниже или посмотрите быструю сводку по разделам. Команды (/grant, /plans …) тоже работают.';
+
+const backKb = (cb: string) => ({ inline_keyboard: [[{ text: '← Назад', callback_data: cb }]] });
+
+async function editMsg(chatId: number, messageId: number, text: string, markup: unknown) {
+  await tg('editMessageText', { chat_id: chatId, message_id: messageId, text, reply_markup: markup }).catch(() => {});
+}
+
+async function answerCb(cbId: string, text = '', alert = false) {
+  await tg('answerCallbackQuery', { callback_query_id: cbId, text, show_alert: alert }).catch(() => {});
+}
+
+async function sendAdminMenu(chatId: number) {
+  await notify(chatId, adminHomeText, { reply_markup: adminHomeKb() });
+}
+
+/** Карточка одного пользователя с быстрыми кнопками выдачи/снятия подписки. */
+async function renderUserView(chatId: number, messageId: number, tgId: number) {
+  const u = await findUser(String(tgId));
+  if (!u) {
+    await editMsg(chatId, messageId, 'Пользователь не найден — пусть сначала войдёт в кабинет через бота.', backKb('adm:users'));
+    return;
+  }
+  const text =
+    `👤 ${who(u)}\n` +
+    `Подписка: ${isSubscribed(u) ? 'до ' + fmt(u.subscriptionUntil) : 'нет'}${u.planId ? ` (${u.planId})` : ''}\n` +
+    `Регистрация: ${fmt(u.createdAt)}`;
+  const kb = {
+    inline_keyboard: [
+      [{ text: 'PRO 30 дней', callback_data: `adm:g:${tgId}:pro:30` }, { text: 'База 30 дней', callback_data: `adm:g:${tgId}:month:30` }],
+      [{ text: 'PRO 90 дней', callback_data: `adm:g:${tgId}:pro:90` }, { text: 'База 90 дней', callback_data: `adm:g:${tgId}:month:90` }],
+      [{ text: '✕ Снять подписку', callback_data: `adm:r:${tgId}` }],
+      [{ text: '← К списку', callback_data: 'adm:users' }],
+    ],
+  };
+  await editMsg(chatId, messageId, text, kb);
+}
+
+/** true — колбэк админ-меню обработан. */
+async function handleAdminCallback(cb: any): Promise<boolean> {
+  const data: string = cb?.data || '';
+  if (!data.startsWith('adm:')) return false;
+  const chatId = cb.message?.chat?.id;
+  const messageId = cb.message?.message_id;
+  const cbId = cb.id;
+  if (!chatId || !messageId) return false;
+
+  if (data === 'adm:home') {
+    await editMsg(chatId, messageId, adminHomeText, adminHomeKb());
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === 'adm:help') {
+    await editMsg(chatId, messageId, ADMIN_HELP, backKb('adm:home'));
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === 'adm:users') {
+    const list = await listRecentUsers(8);
+    if (!list.length) {
+      await editMsg(chatId, messageId, '👥 Пользователей пока нет.', backKb('adm:home'));
+      await answerCb(cbId);
+      return true;
+    }
+    const rows = list.map((u) => [
+      { text: `${(u.username || u.firstName).slice(0, 20)}${isSubscribed(u) ? ' ✅' : ' ⬜'}`, callback_data: `adm:u:${u.tgId}` },
+    ]);
+    rows.push([{ text: '← Назад', callback_data: 'adm:home' }]);
+    await editMsg(chatId, messageId, '👥 Последние пользователи\n\nТапните по строке, чтобы выдать или снять подписку:', { inline_keyboard: rows });
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === 'adm:plans') {
+    const plans = await getPlans();
+    const kb = { inline_keyboard: [[{ text: '♻️ Сбросить к стандартным', callback_data: 'adm:plansreset' }], [{ text: '← Назад', callback_data: 'adm:home' }]] };
+    await editMsg(chatId, messageId, '💰 Тарифы:\n\n' + formatPlans(plans), kb);
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === 'adm:plansreset') {
+    const plans = await resetPlans();
+    await editMsg(chatId, messageId, '♻️ Тарифы сброшены к стандартным:\n\n' + formatPlans(plans), backKb('adm:home'));
+    await answerCb(cbId, 'Сброшено к стандартным');
+    return true;
+  }
+  if (data === 'adm:train') {
+    const lessons = await getTraining();
+    const text = lessons.length ? '🎓 Уроки:\n\n' + lessons.map((l, i) => `${i + 1}. ${l.title}`).join('\n') : '🎓 Уроков пока нет.';
+    const kb = { inline_keyboard: [[{ text: '🖥 Редактировать в панели', web_app: { url: admUrl() } }], [{ text: '← Назад', callback_data: 'adm:home' }]] };
+    await editMsg(chatId, messageId, text, kb);
+    await answerCb(cbId);
+    return true;
+  }
+
+  const m = data.match(/^adm:u:(\d+)$/);
+  if (m) {
+    await renderUserView(chatId, messageId, Number(m[1]));
+    await answerCb(cbId);
+    return true;
+  }
+
+  const g = data.match(/^adm:g:(\d+):(\w+):(\d+)$/);
+  if (g) {
+    const tgId = Number(g[1]);
+    const planId = g[2];
+    const days = Number(g[3]);
+    const u = await findUser(String(tgId));
+    if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
+    const plans = await getPlans();
+    if (!plans.some((p) => p.id === planId)) return answerCb(cbId, `Тариф ${planId} не найден`, true).then(() => true);
+    const upd = await extendSubscription(u.id, days, planId);
+    await answerCb(cbId, `✅ ${planId.toUpperCase()} ${days} дн. до ${fmt(upd.subscriptionUntil)}`);
+    await notify(upd.tgId, `✅ Подписка Fracs активна до ${fmt(upd.subscriptionUntil)}. Кабинет: ${publicUrl()}/app`).catch(() => {});
+    await renderUserView(chatId, messageId, tgId);
+    return true;
+  }
+
+  const r = data.match(/^adm:r:(\d+)$/);
+  if (r) {
+    const tgId = Number(r[1]);
+    const u = await findUser(String(tgId));
+    if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
+    await setSubscription(u.id, null);
+    await answerCb(cbId, '🚫 Подписка снята');
+    await renderUserView(chatId, messageId, tgId);
+    return true;
+  }
+  return false;
+}
+
 /** Команды админа. true — команда обработана. */
 async function handleAdmin(chatId: number, text: string): Promise<boolean> {
   const trimmed = text.trim();
@@ -114,7 +258,7 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
   if (!ADMIN_CMDS.includes(cmd)) return false;
 
   if (cmd === '/admin') {
-    await notify(chatId, ADMIN_HELP);
+    await sendAdminMenu(chatId);
     return true;
   }
 
@@ -294,6 +438,21 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
 }
 
 export async function handleUpdate(update: any) {
+  const cb = update?.callback_query;
+  if (cb) {
+    if (config.adminTgId > 0 && cb.from?.id === config.adminTgId) {
+      try {
+        await handleAdminCallback(cb);
+      } catch (e: any) {
+        console.error('[bot] admin cb', e);
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${e?.message || e}`, show_alert: true }).catch(() => {});
+      }
+    } else {
+      await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Нет доступа' }).catch(() => {});
+    }
+    return;
+  }
+
   const msg = update?.message;
   if (!msg?.text || !msg.from || msg.chat?.type !== 'private') return;
 
@@ -388,7 +547,7 @@ async function poll() {
   let offset = 0;
   for (;;) {
     try {
-      const r = await tg('getUpdates', { offset, timeout: 30, allowed_updates: ['message'] }, 40_000);
+      const r = await tg('getUpdates', { offset, timeout: 30, allowed_updates: ['message', 'callback_query'] }, 40_000);
       if (!r.ok) {
         await sleep(5000);
         continue;
@@ -422,9 +581,17 @@ export async function startBot() {
     ],
   }).catch(() => {});
 
+  // /admin виден только в чате администратора.
+  if (config.adminTgId > 0) {
+    await tg('setMyCommands', {
+      commands: [{ command: 'admin', description: 'Админ-панель' }],
+      scope: { type: 'chat', chat_id: config.adminTgId },
+    }).catch(() => {});
+  }
+
   if (config.botMode === 'webhook') {
     if (!config.webhookSecret) throw new Error('Для webhook-режима задайте TELEGRAM_WEBHOOK_SECRET');
-    const r = await tg('setWebhook', { url: `${config.appUrl}/api/bot/webhook`, secret_token: config.webhookSecret, allowed_updates: ['message'] });
+    const r = await tg('setWebhook', { url: `${config.appUrl}/api/bot/webhook`, secret_token: config.webhookSecret, allowed_updates: ['message', 'callback_query'] });
     if (!r.ok) throw new Error(`setWebhook: ${r.description}`);
   } else {
     await tg('deleteWebhook');
