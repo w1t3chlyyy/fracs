@@ -14,8 +14,13 @@
 
   var toastEl = document.getElementById('toast');
   var toastTimer = null;
+  var IC = {
+    ok:   '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+    ban:  '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>',
+    none: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>'
+  };
   function toast(msg, err) {
-    toastEl.textContent = msg;
+    toastEl.innerHTML = (err ? IC.ban : IC.ok) + '<span>' + esc(msg) + '</span>';
     toastEl.classList.toggle('err', !!err);
     toastEl.classList.add('show');
     clearTimeout(toastTimer);
@@ -132,7 +137,7 @@
         '<div class="uhead"><span class="name">' + esc(u.firstName || 'без имени') + '</span>' +
         '<span class="sub">@' + esc(u.username || '—') + ' <span class="pill">id ' + u.tgId + '</span></span></div>' +
         '<div class="ustatus ' + (on ? 'on' : 'off') + '">' +
-        (on ? '✅ Подписка до ' + fmt(u.subscriptionUntil) + (u.planId ? ' · ' + esc(u.planId) : '') : '⬜ нет подписки') + '</div>' +
+        (on ? IC.ok + '<span>Подписка до ' + fmt(u.subscriptionUntil) + (u.planId ? ' · ' + esc(u.planId) : '') + '</span>' : IC.none + '<span>нет подписки</span>') + '</div>' +
         '<div class="grid2">' +
         '<button class="btn primary sm" data-act="g" data-plan="pro" data-days="30">PRO 30д</button>' +
         '<button class="btn primary sm" data-act="g" data-plan="month" data-days="30">База 30д</button>' +
@@ -154,14 +159,14 @@
         var idx = USERS.findIndex(function (u) { return u.tgId === tgId; });
         if (idx >= 0) USERS[idx] = data.user;
         renderUsers();
-        toast('✅ Выдано ' + b.dataset.plan.toUpperCase() + ' ' + b.dataset.days + ' дн.');
+        toast('Выдано ' + b.dataset.plan.toUpperCase() + ' ' + b.dataset.days + ' дн.');
       } else if (b.dataset.act === 'r') {
         if (!confirm('Снять подписку у этого пользователя?')) return;
         var d2 = await api('/revoke', { tgId: tgId });
         var i2 = USERS.findIndex(function (u) { return u.tgId === tgId; });
         if (i2 >= 0) USERS[i2] = d2.user;
         renderUsers();
-        toast('🚫 Подписка снята');
+        toast('Подписка снята');
       }
     } catch (err) { toast(err.message, true); }
     finally { b.disabled = false; }
@@ -180,7 +185,7 @@
       var idx = USERS.findIndex(function (u) { return u.tgId === tgId; });
       if (idx >= 0) USERS[idx] = data.user; else await loadUsers();
       renderUsers();
-      toast('✅ Выдано ' + planId.toUpperCase() + ' ' + days + ' дн. до ' + fmt(data.user.subscriptionUntil));
+      toast('Выдано ' + planId.toUpperCase() + ' ' + days + ' дн. до ' + fmt(data.user.subscriptionUntil));
     } catch (err) { toast(err.message, true); }
     finally { b.disabled = false; }
   });
