@@ -98,6 +98,17 @@ function ProgramLocked({ onSubscribe }: { onSubscribe: () => void }) {
   );
 }
 
+function ChannelsRequired({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="max-w-md mx-auto bg-white rounded-3xl p-8 shadow-sm border border-gray-200/80 text-center">
+      <img src="/assets/aistudio/image_a4a02fc4.png" alt="Fracs" className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover shadow-sm" />
+      <h1 className="font-heading text-2xl font-medium text-gray-900">Подпишитесь на каналы</h1>
+      <p className="text-[14px] text-gray-600 mt-2">Доступ к кабинету открыт только при подписке на обязательные каналы Fracs. Откройте бота, подпишитесь на все каналы и вернитесь сюда.</p>
+      <button onClick={onRetry} className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[14px] font-medium transition-colors cursor-pointer">Проверить подписки</button>
+    </div>
+  );
+}
+
 export default function Cabinet() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [me, setMe] = useState<Me | null>(null);
@@ -133,6 +144,26 @@ export default function Cabinet() {
       }
     }, 2000);
     return () => clearInterval(t);
+  }, [refresh]);
+
+  // Вход по индивидуальной ссылке из бота (/app?token=…): опрашиваем /auth/status.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (!token) return;
+    window.history.replaceState({}, '', '/app');
+    let stopped = false;
+    let tries = 0;
+    const t = setInterval(async () => {
+      tries++;
+      try {
+        const r = await api.authStatus(token);
+        if (stopped) return;
+        if (r.status === 'ok') { clearInterval(t); await refresh(); }
+        else if (r.status === 'expired' || tries >= 20) { clearInterval(t); }
+      } catch { /* повторим на следующем тике */ }
+    }, 1500);
+    return () => { stopped = true; clearInterval(t); };
   }, [refresh]);
 
   if (!config || !me) {
@@ -177,6 +208,8 @@ export default function Cabinet() {
       <main className="max-w-[1400px] mx-auto px-3 sm:px-4 pb-16 pt-6">
         {!me.user ? (
           <LoginCard config={config} onDone={refresh} />
+        ) : me.channelsRequired ? (
+          <ChannelsRequired onRetry={refresh} />
         ) : (
           <>
             {paidBanner && <p className="mb-4 text-[13px] text-gray-700 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Ждём подтверждения оплаты…</p>}

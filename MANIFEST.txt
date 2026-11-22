@@ -1,0 +1,64 @@
+Fracs — все изменения сессии: редизайн лендинга + админка + подписка/триалы
+Базовый комитет: 13fec96 (Create security.ts)
+
+Как применить в вашем репозитории:
+  1. Распакуйте архив поверх корня репозитория (с сохранением путей).
+  2. Удалите файлы из DELETED.txt — это устаревшие артефакты сборки (старые server.ts и public/assets/aistudio/*).
+  3. npm install && npm run build — пересоберёт бандлы server.js и api/index.js, если ваш CI этого требует.
+
+Что внутри (по группам):
+  • Редизайн лендинга (ember-стиль): src/App.tsx, src/index.css, src/HalftoneFlowHero.tsx
+  • Админ-панель (новое): public/admin.html, public/admin.js, server/adminRoutes.ts, server/webapp.ts
+  • Подписка/триалы: server/payments.ts, server/auth.ts, server/db.ts, server/config.ts,
+    server/routes.ts, server/appRoutes.ts, server/app.ts, server/bot.ts, server/security.ts,
+    supabase/schema.sql, supabase/trial_usage.sql, src/cabinet/PlansModal.tsx, src/cabinet/Cabinet.tsx,
+    desktop/trial_worker.py, desktop/parser_2gis/license.py, desktop/parser_2gis/owners.py,
+    desktop/parser_2gis/yandex.py, api/tg.py
+  • Парсер/выгрузка (интеграция триалов/лицензий): desktop/parser_2gis/web/*, desktop/parser_2gis/writer/*
+  • Конфиг деплоя: vercel.json, .env.example
+  • Сборочные выходы (бандлы, пересобираются npm run build): server.js, api/index.js
+
+Исключено (шум): 115 файлов с mode-only изменениями (100644→100755, контент идентичен),
+  бинарные картинки с тем же размером, __pycache__/, *.pyc, package-lock.json (репо использует bun.lock).
+
+Полный список включённых файлов:
+.env.example
+api/index.js
+api/tg.py
+desktop/parser_2gis/license.py
+desktop/parser_2gis/owners.py
+desktop/parser_2gis/web/job.py
+desktop/parser_2gis/web/server.py
+desktop/parser_2gis/web/static/index.html
+desktop/parser_2gis/web/static/logo.png
+desktop/parser_2gis/web/static/tg.js
+desktop/parser_2gis/writer/record.py
+desktop/parser_2gis/writer/writers/csv_writer.py
+desktop/parser_2gis/writer/writers/html_writer.py
+desktop/parser_2gis/writer/writers/xlsx_writer.py
+desktop/parser_2gis/yandex.py
+public/admin.html
+public/admin.js
+server.js
+server/adminRoutes.ts
+server/app.ts
+server/appRoutes.ts
+server/auth.ts
+server/bot.ts
+server/config.ts
+server/db.ts
+server/payments.ts
+server/routes.ts
+server/security.ts
+server/webapp.ts
+src/App.tsx
+src/HalftoneFlowHero.tsx
+src/cabinet/Cabinet.tsx
+src/cabinet/PlansModal.tsx
+src/cabinet/ResultPanel.tsx
+src/cabinet/gis/RecordCard.tsx
+src/cabinet/gis/lib.ts
+src/cabinet/types.ts
+src/index.css
+supabase/schema.sql
+vercel.json

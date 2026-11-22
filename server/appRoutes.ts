@@ -5,6 +5,7 @@ import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit } from
 import { requireAuth } from './auth.ts';
 import { searchTg } from './providers.ts';
 import { cleanText } from './util.ts';
+import { checkChannelSubs } from './bot.ts';
 
 /**
  * Программа Fracs Parser: ключ лицензии, проверка подписки и выдача файлов только платным пользователям.
@@ -107,6 +108,7 @@ appRouter.post('/verify', h(async (req, res) => {
   const user = await getUser(uid);
   if (!user) return void res.json({ ok: false, reason: 'invalid' });
   if (!isSubscribed(user)) return void res.json({ ok: false, reason: 'expired' });
+  if (!(await checkChannelSubs(user.tgId))) return void res.json({ ok: false, reason: 'channels_required' });
   res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName, features: await getActiveFeatures(user) });
 }));
 
@@ -119,6 +121,7 @@ appRouter.post('/training', h(async (req, res) => {
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, error: 'Неверный ключ лицензии' });
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: 'Подписка закончилась' });
+  if (!(await checkChannelSubs(user.tgId))) return void res.status(403).json({ ok: false, error: 'channels_required', message: 'Подпишитесь на обязательные каналы в боте Fracs.' });
   const features = await getActiveFeatures(user);
   if (!features.includes('training')) {
     return void res.status(402).json({ ok: false, error: 'training_required', message: 'Раздел «Обучение» доступен на тарифе PRO.' });
@@ -135,7 +138,9 @@ appRouter.post('/parse-start', h(async (req, res) => {
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, error: 'invalid', message: 'Неверный ключ лицензии.' });
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: 'expired', message: 'Подписка закончилась.' });
-  if (!(await rateLimit(`maps-cooldown:${user.id}`, 1, 6 * 60 * 60_000))) {
+  if (!(await checkChannelSubs(user.tgId))) return void res.status(403).json({ ok: false, error: 'channels_required', message: 'Подпишитесь на обязательные каналы в боте Fracs.' });
+  // Лимит «раз в 6 часов» не действует для админа (ADMIN_TG_ID).
+  if (user.tgId !== config.adminTgId && !(await rateLimit(`maps-cooldown:${user.id}`, 1, 6 * 60 * 60_000))) {
     return void res.status(429).json({
       ok: false,
       error: 'cooldown',
@@ -152,6 +157,7 @@ appRouter.post('/tg-search', h(async (req, res) => {
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, reason: 'invalid', error: 'Неверный ключ лицензии' });
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: 'expired', error: 'Подписка закончилась' });
+  if (!(await checkChannelSubs(user.tgId))) return void res.status(403).json({ ok: false, error: 'channels_required', message: 'Подпишитесь на обязательные каналы в боте Fracs.' });
   if (!(await rateLimit(`app-tg-user:${user.id}`, 20, 10 * 60_000))) return void res.status(429).json({ ok: false, error: 'Лимит: 20 поисков за 10 минут' });
 
   const phrase = cleanText(req.body?.phrase, 120);

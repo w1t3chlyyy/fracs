@@ -6,7 +6,7 @@ import {
   type SearchRecord, type User,
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
-import { notify } from './bot.ts';
+import { notify, checkChannelSubs } from './bot.ts';
 import { findCity, searchCities } from './cities.ts';
 import { getRows, headRows, searchMaps, searchTg, summarize } from './providers.ts';
 import type { MapsRow, TgRow } from './providers.ts';
@@ -93,6 +93,7 @@ api.get('/me', h(async (req, res) => {
     admin: config.adminTgId > 0 && u.tgId === config.adminTgId,
     subscription: { active: isSubscribed(u), until: u.subscriptionUntil },
     features: await getActiveFeatures(u),
+    channelsRequired: !(await checkChannelSubs(u.tgId)),
     trial: { maps: !mapsTrialUsed, tg: !tgTrialUsed },
     quota: { used: await usedToday(u), limit: config.dailySearchLimit },
   });

@@ -12,6 +12,8 @@ export interface Me {
   admin?: boolean;
   subscription?: { active: boolean; until: string | null };
   features?: string[];
+  /** true — пользователь отписался от обязательных каналов: действия в кабинете блокируются. */
+  channelsRequired?: boolean;
   trial?: { maps: boolean; tg: boolean };
   quota?: { used: number; limit: number };
 }

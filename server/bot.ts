@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
 import { config } from './config.ts';
 import {
-  bindLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
-  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson,
+  bindLoginToken, createLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
+  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson, type User,
 } from './db.ts';
-import { safeEqual, sleep } from './util.ts';
+import { randomToken, safeEqual, sleep } from './util.ts';
 
 let botUsername = config.botUsername;
 
@@ -33,6 +33,90 @@ export async function notify(tgId: number, text: string, extra: Record<string, u
   } catch (e) {
     console.error('[bot] sendMessage', e);
   }
+}
+
+/* ── обязательные подписки на каналы (гейт перед активацией кабинета) ── */
+
+// Кэш результатов проверки (tgId -> {at, ok}), TTL 60с: getChatMember на каждый запрос — дорого.
+const subsCache = new Map<number, { at: number; ok: boolean }>();
+const SUBS_TTL = 60_000;
+
+/** true — пользователь подписан на все обязательные каналы (или каналы не заданы / это админ).
+ *  Экспортируется: cabinet и программа тоже проверяют подписки на каждом действии. */
+export async function checkChannelSubs(tgId: number): Promise<boolean> {
+  if (!config.requiredChannels.length) return true;
+  if (config.adminTgId > 0 && tgId === config.adminTgId) return true;
+  const c = subsCache.get(tgId);
+  if (c && Date.now() - c.at < SUBS_TTL) return c.ok;
+  let ok = true;
+  try {
+    for (const ch of config.requiredChannels) {
+      const r = await tg('getChatMember', { chat_id: ch, user_id: tgId });
+      const st = r?.result?.status;
+      if (!['creator', 'administrator', 'member', 'restricted'].includes(st)) { ok = false; break; }
+    }
+  } catch (e) {
+    // Сбой Telegram API: не блокируем всех (fail-open), но логируем — поймать отписку важнее, чем сломать вход при сбое TG.
+    console.warn('[bot] checkChannelSubs', tgId, e);
+    ok = true;
+  }
+  subsCache.set(tgId, { at: Date.now(), ok });
+  return ok;
+}
+
+const channelUrl = (ch: string) => (ch.startsWith('-') ? null : `https://t.me/${ch}`);
+
+/** Клавиатура гейта: кнопки на каждый канал + «Я подписался — проверить».
+ *  intent 'login' несёт исходный токен входа (вернём его в callback_data), 'ref' — без токена. */
+function subsGateKb(intent: 'ref' | 'login', param: string) {
+  const rows: { text: string; url?: string; callback_data?: string }[][] = config.requiredChannels.map((ch) => {
+    const url = channelUrl(ch);
+    const text = ch.startsWith('-') ? `📢 Канал ${ch}` : `📢 @${ch}`;
+    return url ? [{ text, url }] : [{ text, callback_data: 'sub:nop' }];
+  });
+  const cb = intent === 'login' ? `sub:check:lt:${param}` : 'sub:check:ref';
+  rows.push([{ text: '✅ Я подписался — проверить', callback_data: cb }]);
+  return { inline_keyboard: rows };
+}
+
+const SUBS_GATE_TEXT =
+  'Чтобы продолжить, подпишитесь на все каналы ниже — так вы получаете обновления и важные новости сервиса.\n\n' +
+  'После подписки нажмите «✅ Я подписался — проверить».';
+
+/** Завершение старт-флоу после прохождения подписок.
+ *  login — привязываем исходный токен входа (пользователь пришёл с сайта).
+ *  ref   — выдаём индивидуальную ссылку на кабинет /app?token=. */
+async function finalizeStart(chatId: number, user: User, intent: 'ref' | 'login', param: string) {
+  const base = publicUrl();
+  if (intent === 'login') {
+    const ok = await bindLoginToken(param, user.id);
+    if (!ok) {
+      await notify(chatId, 'Ссылка устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.', { reply_markup: docsMarkup(true) });
+      return;
+    }
+    await notify(
+      chatId,
+      `✅ Готово, ${user.firstName}! Вернитесь в браузер — вход выполнится автоматически.\n\nПравовые документы сервиса доступны по кнопкам ниже:`,
+      { reply_markup: docsMarkup(false) },
+    );
+    return;
+  }
+  // ref: выдаём индивидуальную ссылку на кабинет
+  const token = randomToken(24);
+  await createLoginToken(token);
+  await bindLoginToken(token, user.id);
+  await notify(
+    chatId,
+    `✅ Спасибо, ${user.firstName}! Вы подписались.\n\nНажмите кнопку ниже, чтобы войти в личный кабинет:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🌐 Открыть личный кабинет', url: `${base}/app?token=${token}` }],
+          ...docsMarkup(false).inline_keyboard,
+        ],
+      },
+    },
+  );
 }
 
 const publicUrl = () =>
@@ -437,6 +521,26 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
   return true;
 }
 
+/** Обработка кнопок гейта подписок (sub:*). Не-админ жмёт «Я подписался — проверить». */
+async function handleSubCallback(cb: any) {
+  const data: string = cb.data || '';
+  const chatId = cb.message?.chat?.id;
+  const messageId = cb.message?.message_id;
+  const cbId = cb.id;
+  if (!chatId) { await answerCb(cbId); return; }
+  if (data === 'sub:nop') { await answerCb(cbId, 'Откройте канал и подпишитесь, затем нажмите «проверить»'); return; }
+  if (!data.startsWith('sub:check')) { await answerCb(cbId); return; }
+  const user = await upsertTgUser(cb.from);
+  const ok = await checkChannelSubs(user.tgId);
+  if (!ok) { await answerCb(cbId, 'Ещё не подписаны на все каналы', true); return; }
+  await answerCb(cbId, '✅ Подписки подтверждены');
+  const m = data.match(/^sub:check:lt:(.+)$/);
+  const intent: 'ref' | 'login' = m ? 'login' : 'ref';
+  const param = m ? m[1] : '';
+  if (messageId) await tg('deleteMessage', { chat_id: chatId, message_id: messageId }).catch(() => {});
+  await finalizeStart(chatId, user, intent, param);
+}
+
 export async function handleUpdate(update: any) {
   const cb = update?.callback_query;
   if (cb) {
@@ -447,9 +551,18 @@ export async function handleUpdate(update: any) {
         console.error('[bot] admin cb', e);
         await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${e?.message || e}`, show_alert: true }).catch(() => {});
       }
-    } else {
-      await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Нет доступа' }).catch(() => {});
+      return;
     }
+    if ((cb.data || '').startsWith('sub:')) {
+      try {
+        await handleSubCallback(cb);
+      } catch (e: any) {
+        console.error('[bot] sub cb', e);
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${e?.message || e}`, show_alert: true }).catch(() => {});
+      }
+      return;
+    }
+    await tg('answerCallbackQuery', { callback_query_id: cb.id, text: 'Нет доступа' }).catch(() => {});
     return;
   }
 
@@ -470,59 +583,49 @@ export async function handleUpdate(update: any) {
   const cmd = rawCmd.split('@')[0].toLowerCase();
   const base = publicUrl();
 
-  if (cmd === '/privacy') {
-    await notify(msg.chat.id, `🔒 Политика конфиденциальности Fracs:\n${base}/privacy`, {
-      reply_markup: docsMarkup(false),
-    });
-    return;
-  }
-  if (cmd === '/terms') {
-    await notify(msg.chat.id, `📄 Пользовательское соглашение Fracs:\n${base}/terms`, {
-      reply_markup: docsMarkup(false),
-    });
-    return;
-  }
-  if (cmd === '/offer') {
-    await notify(msg.chat.id, `📑 Публичная оферта Fracs:\n${base}/offer`, {
-      reply_markup: docsMarkup(false),
-    });
-    return;
-  }
-  if (cmd === '/docs') {
-    await notify(msg.chat.id, 'Правовые документы сервиса Fracs:', {
-      reply_markup: docsMarkup(true),
-    });
+  // /start с параметром — основной вход: реферальная ссылка (ref_…) или токен входа с сайта.
+  if (cmd === '/start' && param) {
+    const intent: 'ref' | 'login' = param.startsWith('ref_') ? 'ref' : 'login';
+    const user = await upsertTgUser(msg.from);
+    if (await checkChannelSubs(user.tgId)) {
+      await finalizeStart(msg.chat.id, user, intent, intent === 'login' ? param : '');
+    } else {
+      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb(intent, intent === 'login' ? param : '') });
+    }
     return;
   }
 
+  // Любое другое действие — только после обязательных подписок. Отписался → блок.
+  if (!(await checkChannelSubs(msg.from.id))) {
+    await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb('ref', '') });
+    return;
+  }
+
+  if (cmd === '/privacy') {
+    await notify(msg.chat.id, `🔒 Политика конфиденциальности Fracs:\n${base}/privacy`, { reply_markup: docsMarkup(false) });
+    return;
+  }
+  if (cmd === '/terms') {
+    await notify(msg.chat.id, `📄 Пользовательское соглашение Fracs:\n${base}/terms`, { reply_markup: docsMarkup(false) });
+    return;
+  }
+  if (cmd === '/offer') {
+    await notify(msg.chat.id, `📑 Публичная оферта Fracs:\n${base}/offer`, { reply_markup: docsMarkup(false) });
+    return;
+  }
+  if (cmd === '/docs') {
+    await notify(msg.chat.id, 'Правовые документы сервиса Fracs:', { reply_markup: docsMarkup(true) });
+    return;
+  }
   if (cmd !== '/start') {
-    await notify(msg.chat.id, `Откройте личный кабинет: ${base}/app`, {
-      reply_markup: docsMarkup(true),
-    });
+    await notify(msg.chat.id, `Откройте личный кабинет: ${base}/app`, { reply_markup: docsMarkup(true) });
     return;
   }
-  if (!param) {
-    await notify(
-      msg.chat.id,
-      `Привет! Это бот Fracs.\n\nЧтобы войти, нажмите «Войти через Telegram» на странице ${base}/app.\n\nПеред началом работы вы можете ознакомиться с правовыми документами по кнопкам ниже:`,
-      { reply_markup: docsMarkup(true) },
-    );
-    return;
-  }
-  const user = await upsertTgUser(msg.from);
-  const ok = await bindLoginToken(param, user.id);
-  if (!ok) {
-    await notify(
-      msg.chat.id,
-      'Ссылка устарела. Вернитесь на сайт и нажмите «Войти через Telegram» ещё раз.',
-      { reply_markup: docsMarkup(true) },
-    );
-    return;
-  }
+  // /start без параметра
   await notify(
     msg.chat.id,
-    `✅ Готово, ${user.firstName}! Вернитесь в браузер — вход выполнится автоматически.\n\nПравовые документы сервиса доступны по кнопкам ниже:`,
-    { reply_markup: docsMarkup(false) },
+    `Привет! Это бот Fracs.\n\nЧтобы войти, нажмите «Войти через Telegram» на странице ${base}/app.\n\nПеред началом работы вы можете ознакомиться с правовыми документами по кнопкам ниже:`,
+    { reply_markup: docsMarkup(true) },
   );
 }
 

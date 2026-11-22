@@ -13,6 +13,13 @@ h1, h2, h3, h4, h5, h6, .font-heading {
   font-family: 'Jost', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
+/* Serif display face for the ember sections — mirrors the hero's HFH Serif.
+   Unlayered + element-qualified so it wins over the global h2/h3 Jost rule. */
+h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-serif-h, h6.font-serif-h, .font-serif-h {
+  font-family: 'HFH Serif', ui-serif, Georgia, 'Times New Roman', serif;
+  font-weight: 500;
+}
+
 @layer utilities {
   .font-heading {
     font-family: 'Jost', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -47,5 +54,53 @@ h1, h2, h3, h4, h5, h6, .font-heading {
     backdrop-filter: blur(50px);
     -webkit-backdrop-filter: blur(50px);
     box-shadow: inset 0 0 1px 1px rgba(255, 255, 255, 0.3);
+  }
+
+  /* —— Ember design system: same family as the HalftoneFlowHero (palette "ember") ——
+     ground #100c0a · flow #F26522 · hot #ffb27c · text #fbf3ea */
+  .ember-landing {
+    background-color: #100c0a;
+    color: #fbf3ea;
+  }
+  .ember-bg {
+    /* Hero root (.hfh-root) reads --color-background for its frame; make it
+       transparent so the hero sits on the same dark ember ground as the rest. */
+    --color-background: transparent;
+    background-color: #100c0a;
+    background-image:
+      radial-gradient(70% 55% at 50% -5%, rgba(217, 82, 29, 0.12), transparent 70%),
+      radial-gradient(circle at 1px 1px, rgba(255, 178, 124, 0.045) 1px, transparent 0);
+    background-size: auto, 22px 22px;
+  }
+  .ember-card {
+    background: linear-gradient(180deg, rgba(30, 22, 17, 0.92), rgba(18, 13, 10, 0.92));
+    border: 1px solid rgba(255, 178, 124, 0.09);
+    box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  .ember-card-2 {
+    background: linear-gradient(180deg, rgba(38, 28, 21, 0.9), rgba(24, 17, 13, 0.9));
+    border: 1px solid rgba(255, 178, 124, 0.1);
+  }
+  .ember-chip {
+    background: rgba(255, 178, 124, 0.07);
+    color: #d9c4b5;
+    border: 1px solid rgba(255, 178, 124, 0.08);
+  }
+  .ember-chip:hover {
+    background: rgba(255, 178, 124, 0.13);
+  }
+  .ember-input {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 178, 124, 0.12);
+    color: #fbf3ea;
+  }
+  .ember-input::placeholder { color: #8a7d70; }
+  .ember-input:focus { border-color: #F26522; outline: 0; }
+  .ember-glass {
+    background: rgba(20, 14, 11, 0.55);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid rgba(255, 178, 124, 0.14);
+    box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 }

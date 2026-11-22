@@ -43,10 +43,19 @@ var config = {
   // Telegram ID админа (число, не @username): подписка ему не нужна, всё открыто.
   adminTgId: Number(env.ADMIN_TG_ID) || 0,
   // @username админа: кнопка оплаты в кабинете ведёт в чат с ним (t.me/<username>).
-  adminUsername: (env.ADMIN_TG_USERNAME || "").replace(/^@/, "")
+  adminUsername: (env.ADMIN_TG_USERNAME || "").replace(/^@/, ""),
+  // Обязательные подписки на каналы перед активацией кабинета. Список через запятую:
+  // @username канала или его числовой ID (-100…). Бот должен быть админом в каждом канале,
+  // иначе getChatMember не увидит статус. Проверяется при старте в боте и на каждом действии
+  // в кабинете/программе; админ (ADMIN_TG_ID) проверку проходит всегда.
+  requiredChannels: (env.REQUIRED_CHANNELS || "").split(",").map((s) => s.trim().replace(/^@/, "")).filter(Boolean)
 };
-if (isProd && !env.SESSION_SECRET) {
-  console.warn("[config] SESSION_SECRET \u043D\u0435 \u0437\u0430\u0434\u0430\u043D \u2014 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u0441\u0435\u0441\u0441\u0438\u0438.");
+if (isProd) {
+  const missing = ["SESSION_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"].filter((k) => !env[k]);
+  if (missing.length) throw new Error(`[config] \u0412 production \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B: ${missing.join(", ")}`);
+  if (env.SESSION_SECRET.length < 32) throw new Error("[config] SESSION_SECRET \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u2265 32 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432");
+  if (env.ALLOW_DEV_LOGIN === "true") throw new Error("[config] ALLOW_DEV_LOGIN \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D \u0432 production");
+  if (env.ALLOW_MOCK_PAYMENTS === "true") throw new Error("[config] ALLOW_MOCK_PAYMENTS \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D \u0432 production");
 }
 var PLANS = [
   {
@@ -54,6 +63,7 @@ var PLANS = [
     title: "1 \u043C\u0435\u0441\u044F\u0446",
     days: 30,
     priceRub: 1800,
+    features: ["base"],
     description: "\u0414\u043E\u0441\u0442\u0443\u043F \u043A \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435 Fracs Parser, \u0431\u0430\u0437\u0435 \u043A\u043E\u043D\u0442\u0430\u043A\u0442\u043E\u0432 \u0438 \u0432\u044B\u0433\u0440\u0443\u0437\u043A\u0430\u043C \u043D\u0430 30 \u0434\u043D\u0435\u0439."
   },
   {
@@ -62,9 +72,20 @@ var PLANS = [
     days: 90,
     priceRub: 4500,
     badge: "\u0412\u044B\u0433\u043E\u0434\u043D\u0435\u0435 \u043D\u0430 17%",
+    features: ["base"],
     description: "\u0414\u043E\u0441\u0442\u0443\u043F \u043D\u0430 90 \u0434\u043D\u0435\u0439: \u044D\u043A\u043E\u043D\u043E\u043C\u0438\u044F 900 \u20BD \u043F\u0440\u0438 \u043E\u043F\u043B\u0430\u0442\u0435 \u0441\u0440\u0430\u0437\u0443 \u0437\u0430 \u043A\u0432\u0430\u0440\u0442\u0430\u043B."
+  },
+  {
+    id: "pro",
+    title: "PRO 1 \u043C\u0435\u0441\u044F\u0446",
+    days: 30,
+    priceRub: 2700,
+    badge: "\u0412\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u044B + \u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435",
+    features: ["base", "owners", "training"],
+    description: "\u0412\u0441\u0451 \u0438\u0437 \u0431\u0430\u0437\u043E\u0432\u043E\u0433\u043E \u0442\u0430\u0440\u0438\u0444\u0430 + \u043F\u043E\u0438\u0441\u043A \u0432\u043B\u0430\u0434\u0435\u043B\u044C\u0446\u0435\u0432 (\u0440\u0443\u043A\u043E\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C / \u0418\u041F, \u0418\u041D\u041D, \u043A\u043E\u043D\u0442\u0430\u043A\u0442\u044B) \u0438 \u0440\u0430\u0437\u0434\u0435\u043B \xAB\u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435\xBB."
   }
 ];
+var ALL_FEATURES = Array.from(new Set(PLANS.flatMap((p) => p.features ?? [])));
 
 // server/db.ts
 import crypto2 from "node:crypto";
@@ -110,7 +131,8 @@ var userOf = (r) => withAdmin({
   username: r.username,
   firstName: r.first_name,
   createdAt: r.created_at,
-  subscriptionUntil: r.subscription_until
+  subscriptionUntil: r.subscription_until,
+  planId: r.plan_id ?? null
 });
 async function getUser(id) {
   if (!UUID.test(id)) return null;
@@ -145,24 +167,36 @@ async function upsertTgUser(from) {
     username: from.username ?? null,
     firstName: from.first_name || "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C",
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-    subscriptionUntil: null
+    subscriptionUntil: null,
+    planId: null
   };
   memUsers.set(id, newUser);
   memTgUsers.set(from.id, id);
   return withAdmin({ ...newUser });
 }
 var isSubscribed = (u) => !!u.subscriptionUntil && Date.parse(u.subscriptionUntil) > Date.now();
-async function extendSubscription(userId, days) {
+async function getActiveFeatures(u) {
+  if (isAdminTg(u.tgId)) return [...ALL_FEATURES];
+  if (!isSubscribed(u)) return [];
+  if (!u.planId) return ["base"];
+  const plans = await getPlans();
+  const plan = plans.find((p) => p.id === u.planId);
+  return plan?.features ?? ["base"];
+}
+async function extendSubscription(userId, days, planId) {
   const u = await getUser(userId);
   if (!u) throw new Error("user not found");
   if (isAdminTg(u.tgId)) return u;
   const base = isSubscribed(u) ? Date.parse(u.subscriptionUntil) : Date.now();
   const until = new Date(base + days * 864e5).toISOString();
+  const nextPlanId = planId ?? u.planId ?? null;
   if (useSupabase) {
-    const r = await sb().from("users").update({ subscription_until: until }).eq("id", userId).select("*").single();
+    const patch = { subscription_until: until };
+    if (planId !== void 0) patch.plan_id = nextPlanId;
+    const r = await sb().from("users").update(patch).eq("id", userId).select("*").single();
     return userOf(check(r, "extendSubscription"));
   }
-  const updated = { ...u, subscriptionUntil: until };
+  const updated = { ...u, subscriptionUntil: until, planId: nextPlanId };
   memUsers.set(userId, updated);
   return withAdmin({ ...updated });
 }
@@ -191,12 +225,12 @@ async function setSubscription(userId, until) {
   u.subscriptionUntil = until;
   return withAdmin({ ...u });
 }
-async function listRecentUsers(limit = 10) {
+async function listRecentUsers(limit2 = 10) {
   if (useSupabase) {
-    const r = await sb().from("users").select("*").order("created_at", { ascending: false }).limit(limit);
+    const r = await sb().from("users").select("*").order("created_at", { ascending: false }).limit(limit2);
     return (check(r, "listRecentUsers") || []).map(userOf);
   }
-  return [...memUsers.values()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit).map((u) => withAdmin({ ...u }));
+  return [...memUsers.values()].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit2).map((u) => withAdmin({ ...u }));
 }
 var TOKEN_MS = 10 * 6e4;
 async function createLoginToken(token) {
@@ -318,12 +352,12 @@ async function recentSearches(userId, kind, sinceMs) {
   const threshold = Date.now() - sinceMs;
   return Array.from(memSearches.values()).filter((s) => s.userId === userId && s.kind === kind && Date.parse(s.createdAt) > threshold).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 100);
 }
-async function listSearches(userId, kind, limit) {
+async function listSearches(userId, kind, limit2) {
   if (useSupabase) {
-    const r = await sb().from("searches").select(SEARCH_COLS).eq("user_id", userId).eq("kind", kind).order("created_at", { ascending: false }).limit(limit);
+    const r = await sb().from("searches").select(SEARCH_COLS).eq("user_id", userId).eq("kind", kind).order("created_at", { ascending: false }).limit(limit2);
     return (check(r, "listSearches") || []).map(searchOf);
   }
-  return Array.from(memSearches.values()).filter((s) => s.userId === userId && s.kind === kind).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit);
+  return Array.from(memSearches.values()).filter((s) => s.userId === userId && s.kind === kind).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit2);
 }
 async function getSearch(id, userId, withRows = false) {
   if (!UUID.test(id)) return null;
@@ -423,12 +457,12 @@ async function revertPayment(id) {
     p.paidAt = null;
   }
 }
-async function rateLimit(key, max, windowMs) {
+async function rateLimit(key, max, windowMs, failClosed = false) {
   if (useSupabase) {
     const r = await sb().rpc("rate_limit", { p_key: key, p_max: max, p_window_ms: windowMs });
     if (r.error) {
       console.error("[db] rateLimit:", r.error.message);
-      return true;
+      return !failClosed;
     }
     return r.data === true;
   }
@@ -571,6 +605,83 @@ async function resetPlans() {
   await savePlans(defaults);
   return defaults;
 }
+var TRAINING_FILE = path.join(process.cwd(), "data", "training.json");
+var memTraining = null;
+function cloneTraining(list) {
+  return list.map((l) => ({ ...l }));
+}
+function loadLocalTraining() {
+  if (memTraining) return cloneTraining(memTraining);
+  try {
+    if (fs.existsSync(TRAINING_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(TRAINING_FILE, "utf-8"));
+      if (Array.isArray(parsed)) {
+        memTraining = parsed;
+        return cloneTraining(parsed);
+      }
+    }
+  } catch {
+  }
+  memTraining = [];
+  return cloneTraining(memTraining);
+}
+function saveLocalTraining(lessons) {
+  memTraining = cloneTraining(lessons);
+  try {
+    fs.mkdirSync(path.dirname(TRAINING_FILE), { recursive: true });
+    fs.writeFileSync(TRAINING_FILE, JSON.stringify(lessons, null, 2), "utf-8");
+  } catch {
+  }
+}
+async function getTraining() {
+  if (useSupabase) {
+    try {
+      const r = await sb().from("app_settings").select("value").eq("key", "training").maybeSingle();
+      if (!r.error && Array.isArray(r.data?.value)) {
+        memTraining = cloneTraining(r.data.value);
+        return cloneTraining(memTraining);
+      }
+    } catch {
+    }
+  }
+  return loadLocalTraining().sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
+}
+async function saveTraining(lessons) {
+  saveLocalTraining(lessons);
+  if (useSupabase) {
+    const r = await sb().from("app_settings").upsert({ key: "training", value: lessons, updated_at: (/* @__PURE__ */ new Date()).toISOString() }, { onConflict: "key" });
+    if (r.error) console.warn("[db] saveTraining supabase:", r.error.message);
+  }
+}
+async function addLesson(title, body) {
+  const lessons = await getTraining();
+  const lesson = {
+    id: newId(),
+    title: title.slice(0, 200),
+    body: body.slice(0, 2e4),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    order: lessons.length ? Math.max(...lessons.map((l) => l.order)) + 1 : 0
+  };
+  lessons.push(lesson);
+  await saveTraining(lessons);
+  return lesson;
+}
+async function updateLesson(id, patch) {
+  const lessons = await getTraining();
+  const target = lessons.find((l) => l.id === id || l.id.startsWith(id));
+  if (!target) return null;
+  if (patch.title !== void 0) target.title = patch.title.slice(0, 200);
+  if (patch.body !== void 0) target.body = patch.body.slice(0, 2e4);
+  await saveTraining(lessons);
+  return target;
+}
+async function deleteLesson(id) {
+  const lessons = await getTraining();
+  const next = lessons.filter((l) => !(l.id === id || l.id.startsWith(id)));
+  if (next.length === lessons.length) return false;
+  await saveTraining(next);
+  return true;
+}
 
 // server/util.ts
 import crypto3 from "node:crypto";
@@ -578,12 +689,12 @@ function norm(s) {
   return s.toLowerCase().replace(/ё/g, "\u0435").replace(/[-–—_.,]/g, " ").replace(/\s+/g, " ").trim();
 }
 function hashStr(s) {
-  let h4 = 2166136261;
+  let h5 = 2166136261;
   for (let i = 0; i < s.length; i++) {
-    h4 ^= s.charCodeAt(i);
-    h4 = Math.imul(h4, 16777619);
+    h5 ^= s.charCodeAt(i);
+    h5 = Math.imul(h5, 16777619);
   }
-  return h4 >>> 0;
+  return h5 >>> 0;
 }
 function mulberry32(seed) {
   let a = seed | 0;
@@ -632,6 +743,77 @@ async function notify(tgId, text, extra = {}) {
     console.error("[bot] sendMessage", e);
   }
 }
+var subsCache = /* @__PURE__ */ new Map();
+var SUBS_TTL = 6e4;
+async function checkChannelSubs(tgId) {
+  if (!config.requiredChannels.length) return true;
+  if (config.adminTgId > 0 && tgId === config.adminTgId) return true;
+  const c = subsCache.get(tgId);
+  if (c && Date.now() - c.at < SUBS_TTL) return c.ok;
+  let ok = true;
+  try {
+    for (const ch of config.requiredChannels) {
+      const r = await tg("getChatMember", { chat_id: ch, user_id: tgId });
+      const st = r?.result?.status;
+      if (!["creator", "administrator", "member", "restricted"].includes(st)) {
+        ok = false;
+        break;
+      }
+    }
+  } catch (e) {
+    console.warn("[bot] checkChannelSubs", tgId, e);
+    ok = true;
+  }
+  subsCache.set(tgId, { at: Date.now(), ok });
+  return ok;
+}
+var channelUrl = (ch) => ch.startsWith("-") ? null : `https://t.me/${ch}`;
+function subsGateKb(intent, param) {
+  const rows = config.requiredChannels.map((ch) => {
+    const url = channelUrl(ch);
+    const text = ch.startsWith("-") ? `\u{1F4E2} \u041A\u0430\u043D\u0430\u043B ${ch}` : `\u{1F4E2} @${ch}`;
+    return url ? [{ text, url }] : [{ text, callback_data: "sub:nop" }];
+  });
+  const cb = intent === "login" ? `sub:check:lt:${param}` : "sub:check:ref";
+  rows.push([{ text: "\u2705 \u042F \u043F\u043E\u0434\u043F\u0438\u0441\u0430\u043B\u0441\u044F \u2014 \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C", callback_data: cb }]);
+  return { inline_keyboard: rows };
+}
+var SUBS_GATE_TEXT = "\u0427\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C, \u043F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u0432\u0441\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u043D\u0438\u0436\u0435 \u2014 \u0442\u0430\u043A \u0432\u044B \u043F\u043E\u043B\u0443\u0447\u0430\u0435\u0442\u0435 \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0438\u044F \u0438 \u0432\u0430\u0436\u043D\u044B\u0435 \u043D\u043E\u0432\u043E\u0441\u0442\u0438 \u0441\u0435\u0440\u0432\u0438\u0441\u0430.\n\n\u041F\u043E\u0441\u043B\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u2705 \u042F \u043F\u043E\u0434\u043F\u0438\u0441\u0430\u043B\u0441\u044F \u2014 \u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C\xBB.";
+async function finalizeStart(chatId, user, intent, param) {
+  const base = publicUrl();
+  if (intent === "login") {
+    const ok = await bindLoginToken(param, user.id);
+    if (!ok) {
+      await notify(chatId, "\u0421\u0441\u044B\u043B\u043A\u0430 \u0443\u0441\u0442\u0430\u0440\u0435\u043B\u0430. \u0412\u0435\u0440\u043D\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u0441\u0430\u0439\u0442 \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0412\u043E\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\xBB \u0435\u0449\u0451 \u0440\u0430\u0437.", { reply_markup: docsMarkup(true) });
+      return;
+    }
+    await notify(
+      chatId,
+      `\u2705 \u0413\u043E\u0442\u043E\u0432\u043E, ${user.firstName}! \u0412\u0435\u0440\u043D\u0438\u0442\u0435\u0441\u044C \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u2014 \u0432\u0445\u043E\u0434 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438.
+
+\u041F\u0440\u0430\u0432\u043E\u0432\u044B\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0435\u0440\u0432\u0438\u0441\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u043F\u043E \u043A\u043D\u043E\u043F\u043A\u0430\u043C \u043D\u0438\u0436\u0435:`,
+      { reply_markup: docsMarkup(false) }
+    );
+    return;
+  }
+  const token = randomToken(24);
+  await createLoginToken(token);
+  await bindLoginToken(token, user.id);
+  await notify(
+    chatId,
+    `\u2705 \u0421\u043F\u0430\u0441\u0438\u0431\u043E, ${user.firstName}! \u0412\u044B \u043F\u043E\u0434\u043F\u0438\u0441\u0430\u043B\u0438\u0441\u044C.
+
+\u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043A\u043D\u043E\u043F\u043A\u0443 \u043D\u0438\u0436\u0435, \u0447\u0442\u043E\u0431\u044B \u0432\u043E\u0439\u0442\u0438 \u0432 \u043B\u0438\u0447\u043D\u044B\u0439 \u043A\u0430\u0431\u0438\u043D\u0435\u0442:`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "\u{1F310} \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043B\u0438\u0447\u043D\u044B\u0439 \u043A\u0430\u0431\u0438\u043D\u0435\u0442", url: `${base}/app?token=${token}` }],
+          ...docsMarkup(false).inline_keyboard
+        ]
+      }
+    }
+  );
+}
 var publicUrl = () => /^https:\/\/(?!localhost\b|127\.0\.0\.1\b)/i.test(config.appUrl) ? config.appUrl : "https://fracs.cc.cd";
 function docsMarkup(includeCabinet = true) {
   const base = publicUrl();
@@ -648,23 +830,36 @@ var who = (u) => `${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})`
 var ADMIN_HELP = `\u0410\u0434\u043C\u0438\u043D-\u043F\u0430\u043D\u0435\u043B\u044C Fracs
 
 \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438:
-/grant <@username|id> [\u0434\u043D\u0435\u0439] \u2014 \u0432\u044B\u0434\u0430\u0442\u044C \u0438\u043B\u0438 \u043F\u0440\u043E\u0434\u043B\u0438\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E 30)
+/grant <@username|id> [\u0434\u043D\u0435\u0439] [\u0442\u0430\u0440\u0438\u0444] \u2014 \u0432\u044B\u0434\u0430\u0442\u044C \u0438\u043B\u0438 \u043F\u0440\u043E\u0434\u043B\u0438\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E 30 \u0434\u043D\u0435\u0439, \u0442\u0430\u0440\u0438\u0444 month)
 /revoke <@username|id> \u2014 \u0441\u043D\u044F\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443
 /user <@username|id> \u2014 \u0441\u0442\u0430\u0442\u0443\u0441 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044F
 /users \u2014 \u043F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0435 10 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u0439
 
 \u0422\u0430\u0440\u0438\u0444\u044B \u0438 \u0446\u0435\u043D\u044B:
 /plans \u2014 \u0441\u043F\u0438\u0441\u043E\u043A \u0442\u0435\u043A\u0443\u0449\u0438\u0445 \u0442\u0430\u0440\u0438\u0444\u043E\u0432
-/setprice <id|1|2> <\u0446\u0435\u043D\u0430> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0446\u0435\u043D\u0443 (\u20BD)
-/setdesc <id|1|2> <\u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435|-> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 (- \u0447\u0442\u043E\u0431\u044B \u0443\u0431\u0440\u0430\u0442\u044C)
-/settitle <id|1|2> <\u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435
-/setbadge <id|1|2> <\u0442\u0435\u043A\u0441\u0442|-> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0431\u0435\u0439\u0434\u0436 (- \u0447\u0442\u043E\u0431\u044B \u0443\u0431\u0440\u0430\u0442\u044C)
-/setdays <id|1|2> <\u0434\u043D\u0435\u0439> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0434\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C
+/setprice <id|1|2|3> <\u0446\u0435\u043D\u0430> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0446\u0435\u043D\u0443 (\u20BD)
+/setdesc <id|1|2|3> <\u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435|-> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u043F\u0438\u0441\u0430\u043D\u0438\u0435 (- \u0447\u0442\u043E\u0431\u044B \u0443\u0431\u0440\u0430\u0442\u044C)
+/settitle <id|1|2|3> <\u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435
+/setbadge <id|1|2|3> <\u0442\u0435\u043A\u0441\u0442|-> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0431\u0435\u0439\u0434\u0436 (- \u0447\u0442\u043E\u0431\u044B \u0443\u0431\u0440\u0430\u0442\u044C)
+/setdays <id|1|2|3> <\u0434\u043D\u0435\u0439> \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0434\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C
 /resetplans \u2014 \u0441\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u0442\u0430\u0440\u0438\u0444\u044B \u043A \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u043C
 
+\u0420\u0430\u0437\u0434\u0435\u043B \xAB\u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435\xBB (\u0432\u0438\u0434\u0435\u043D \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435 \u043D\u0430 \u0442\u0430\u0440\u0438\u0444\u0435 PRO):
+/training \u2014 \u0441\u043F\u0438\u0441\u043E\u043A \u0443\u0440\u043E\u043A\u043E\u0432
+/addlesson \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A
+<\u043F\u0443\u0441\u0442\u0430\u044F \u0441\u0442\u0440\u043E\u043A\u0430>
+\u0422\u0435\u043A\u0441\u0442 \u0443\u0440\u043E\u043A\u0430 (\u043C\u043E\u0436\u043D\u043E \u043C\u043D\u043E\u0433\u043E\u0441\u0442\u0440\u043E\u0447\u043D\u043E) \u2014 \u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0443\u0440\u043E\u043A
+/setlesson <id> \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A
+<\u043F\u0443\u0441\u0442\u0430\u044F \u0441\u0442\u0440\u043E\u043A\u0430>
+\u041D\u043E\u0432\u044B\u0439 \u0442\u0435\u043A\u0441\u0442 \u2014 \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u0443\u0440\u043E\u043A (id \u0438\u0437 /training, \u043C\u043E\u0436\u043D\u043E \u043F\u0435\u0440\u0432\u044B\u0435 8 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432)
+/dellesson <id> \u2014 \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0443\u0440\u043E\u043A
+
 \u041F\u0440\u0438\u043C\u0435\u0440\u044B:
-/setprice month 1800
-/setdesc quarter \u0412\u044B\u0433\u043E\u0434\u043D\u044B\u0439 \u0434\u043E\u0441\u0442\u0443\u043F \u043D\u0430 3 \u043C\u0435\u0441\u044F\u0446\u0430`;
+/setprice pro 2700
+/grant 123456789 30 pro
+/addlesson \u041A\u0430\u043A \u043D\u0430\u0439\u0442\u0438 \u043A\u043B\u0438\u0435\u043D\u0442\u043E\u0432
+
+\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043D\u0438\u0448\u0443, \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0433\u043E\u0440\u043E\u0434\u2026`;
 var ADMIN_CMDS = [
   "/admin",
   "/grant",
@@ -677,7 +872,11 @@ var ADMIN_CMDS = [
   "/settitle",
   "/setbadge",
   "/setdays",
-  "/resetplans"
+  "/resetplans",
+  "/training",
+  "/addlesson",
+  "/setlesson",
+  "/dellesson"
 ];
 function formatPlans(plans) {
   return plans.map(
@@ -686,13 +885,142 @@ function formatPlans(plans) {
    \u041E\u043F\u0438\u0441\u0430\u043D\u0438\u0435: ${p.description || "\u2014"}`
   ).join("\n\n");
 }
+var admUrl = () => `${publicUrl()}/admin.html`;
+function adminHomeKb() {
+  return {
+    inline_keyboard: [
+      [{ text: "\u{1F5A5} \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u043F\u0430\u043D\u0435\u043B\u044C", web_app: { url: admUrl() } }],
+      [{ text: "\u{1F465} \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438", callback_data: "adm:users" }, { text: "\u{1F4B0} \u0422\u0430\u0440\u0438\u0444\u044B", callback_data: "adm:plans" }],
+      [{ text: "\u{1F393} \u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435", callback_data: "adm:train" }, { text: "\u2139\uFE0F \u041A\u043E\u043C\u0430\u043D\u0434\u044B", callback_data: "adm:help" }]
+    ]
+  };
+}
+var adminHomeText = "\u{1F5A5} \u0410\u0434\u043C\u0438\u043D-\u043F\u0430\u043D\u0435\u043B\u044C Fracs\n\n\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043F\u043E\u043B\u043D\u0443\u044E \u043F\u0430\u043D\u0435\u043B\u044C \u043A\u043D\u043E\u043F\u043A\u043E\u0439 \u043D\u0438\u0436\u0435 \u0438\u043B\u0438 \u043F\u043E\u0441\u043C\u043E\u0442\u0440\u0438\u0442\u0435 \u0431\u044B\u0441\u0442\u0440\u0443\u044E \u0441\u0432\u043E\u0434\u043A\u0443 \u043F\u043E \u0440\u0430\u0437\u0434\u0435\u043B\u0430\u043C. \u041A\u043E\u043C\u0430\u043D\u0434\u044B (/grant, /plans \u2026) \u0442\u043E\u0436\u0435 \u0440\u0430\u0431\u043E\u0442\u0430\u044E\u0442.";
+var backKb = (cb) => ({ inline_keyboard: [[{ text: "\u2190 \u041D\u0430\u0437\u0430\u0434", callback_data: cb }]] });
+async function editMsg(chatId, messageId, text, markup) {
+  await tg("editMessageText", { chat_id: chatId, message_id: messageId, text, reply_markup: markup }).catch(() => {
+  });
+}
+async function answerCb(cbId, text = "", alert = false) {
+  await tg("answerCallbackQuery", { callback_query_id: cbId, text, show_alert: alert }).catch(() => {
+  });
+}
+async function sendAdminMenu(chatId) {
+  await notify(chatId, adminHomeText, { reply_markup: adminHomeKb() });
+}
+async function renderUserView(chatId, messageId, tgId) {
+  const u = await findUser(String(tgId));
+  if (!u) {
+    await editMsg(chatId, messageId, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u2014 \u043F\u0443\u0441\u0442\u044C \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0451\u0442 \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430.", backKb("adm:users"));
+    return;
+  }
+  const text = `\u{1F464} ${who(u)}
+\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430: ${isSubscribed(u) ? "\u0434\u043E " + fmt(u.subscriptionUntil) : "\u043D\u0435\u0442"}${u.planId ? ` (${u.planId})` : ""}
+\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F: ${fmt(u.createdAt)}`;
+  const kb = {
+    inline_keyboard: [
+      [{ text: "PRO 30 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${tgId}:pro:30` }, { text: "\u0411\u0430\u0437\u0430 30 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${tgId}:month:30` }],
+      [{ text: "PRO 90 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${tgId}:pro:90` }, { text: "\u0411\u0430\u0437\u0430 90 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${tgId}:month:90` }],
+      [{ text: "\u2715 \u0421\u043D\u044F\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443", callback_data: `adm:r:${tgId}` }],
+      [{ text: "\u2190 \u041A \u0441\u043F\u0438\u0441\u043A\u0443", callback_data: "adm:users" }]
+    ]
+  };
+  await editMsg(chatId, messageId, text, kb);
+}
+async function handleAdminCallback(cb) {
+  const data = cb?.data || "";
+  if (!data.startsWith("adm:")) return false;
+  const chatId = cb.message?.chat?.id;
+  const messageId = cb.message?.message_id;
+  const cbId = cb.id;
+  if (!chatId || !messageId) return false;
+  if (data === "adm:home") {
+    await editMsg(chatId, messageId, adminHomeText, adminHomeKb());
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === "adm:help") {
+    await editMsg(chatId, messageId, ADMIN_HELP, backKb("adm:home"));
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === "adm:users") {
+    const list = await listRecentUsers(8);
+    if (!list.length) {
+      await editMsg(chatId, messageId, "\u{1F465} \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0435\u0439 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442.", backKb("adm:home"));
+      await answerCb(cbId);
+      return true;
+    }
+    const rows = list.map((u) => [
+      { text: `${(u.username || u.firstName).slice(0, 20)}${isSubscribed(u) ? " \u2705" : " \u2B1C"}`, callback_data: `adm:u:${u.tgId}` }
+    ]);
+    rows.push([{ text: "\u2190 \u041D\u0430\u0437\u0430\u0434", callback_data: "adm:home" }]);
+    await editMsg(chatId, messageId, "\u{1F465} \u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438\n\n\u0422\u0430\u043F\u043D\u0438\u0442\u0435 \u043F\u043E \u0441\u0442\u0440\u043E\u043A\u0435, \u0447\u0442\u043E\u0431\u044B \u0432\u044B\u0434\u0430\u0442\u044C \u0438\u043B\u0438 \u0441\u043D\u044F\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443:", { inline_keyboard: rows });
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === "adm:plans") {
+    const plans = await getPlans();
+    const kb = { inline_keyboard: [[{ text: "\u267B\uFE0F \u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C \u043A \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u043C", callback_data: "adm:plansreset" }], [{ text: "\u2190 \u041D\u0430\u0437\u0430\u0434", callback_data: "adm:home" }]] };
+    await editMsg(chatId, messageId, "\u{1F4B0} \u0422\u0430\u0440\u0438\u0444\u044B:\n\n" + formatPlans(plans), kb);
+    await answerCb(cbId);
+    return true;
+  }
+  if (data === "adm:plansreset") {
+    const plans = await resetPlans();
+    await editMsg(chatId, messageId, "\u267B\uFE0F \u0422\u0430\u0440\u0438\u0444\u044B \u0441\u0431\u0440\u043E\u0448\u0435\u043D\u044B \u043A \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u043C:\n\n" + formatPlans(plans), backKb("adm:home"));
+    await answerCb(cbId, "\u0421\u0431\u0440\u043E\u0448\u0435\u043D\u043E \u043A \u0441\u0442\u0430\u043D\u0434\u0430\u0440\u0442\u043D\u044B\u043C");
+    return true;
+  }
+  if (data === "adm:train") {
+    const lessons = await getTraining();
+    const text = lessons.length ? "\u{1F393} \u0423\u0440\u043E\u043A\u0438:\n\n" + lessons.map((l, i) => `${i + 1}. ${l.title}`).join("\n") : "\u{1F393} \u0423\u0440\u043E\u043A\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442.";
+    const kb = { inline_keyboard: [[{ text: "\u{1F5A5} \u0420\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0432 \u043F\u0430\u043D\u0435\u043B\u0438", web_app: { url: admUrl() } }], [{ text: "\u2190 \u041D\u0430\u0437\u0430\u0434", callback_data: "adm:home" }]] };
+    await editMsg(chatId, messageId, text, kb);
+    await answerCb(cbId);
+    return true;
+  }
+  const m = data.match(/^adm:u:(\d+)$/);
+  if (m) {
+    await renderUserView(chatId, messageId, Number(m[1]));
+    await answerCb(cbId);
+    return true;
+  }
+  const g = data.match(/^adm:g:(\d+):(\w+):(\d+)$/);
+  if (g) {
+    const tgId = Number(g[1]);
+    const planId = g[2];
+    const days = Number(g[3]);
+    const u = await findUser(String(tgId));
+    if (!u) return answerCb(cbId, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D", true).then(() => true);
+    const plans = await getPlans();
+    if (!plans.some((p) => p.id === planId)) return answerCb(cbId, `\u0422\u0430\u0440\u0438\u0444 ${planId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true).then(() => true);
+    const upd = await extendSubscription(u.id, days, planId);
+    await answerCb(cbId, `\u2705 ${planId.toUpperCase()} ${days} \u0434\u043D. \u0434\u043E ${fmt(upd.subscriptionUntil)}`);
+    await notify(upd.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${fmt(upd.subscriptionUntil)}. \u041A\u0430\u0431\u0438\u043D\u0435\u0442: ${publicUrl()}/app`).catch(() => {
+    });
+    await renderUserView(chatId, messageId, tgId);
+    return true;
+  }
+  const r = data.match(/^adm:r:(\d+)$/);
+  if (r) {
+    const tgId = Number(r[1]);
+    const u = await findUser(String(tgId));
+    if (!u) return answerCb(cbId, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D", true).then(() => true);
+    await setSubscription(u.id, null);
+    await answerCb(cbId, "\u{1F6AB} \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0441\u043D\u044F\u0442\u0430");
+    await renderUserView(chatId, messageId, tgId);
+    return true;
+  }
+  return false;
+}
 async function handleAdmin(chatId, text) {
   const trimmed = text.trim();
   const [raw, ...args] = trimmed.split(/\s+/);
   const cmd = raw.split("@")[0].toLowerCase();
   if (!ADMIN_CMDS.includes(cmd)) return false;
   if (cmd === "/admin") {
-    await notify(chatId, ADMIN_HELP);
+    await sendAdminMenu(chatId);
     return true;
   }
   if (cmd === "/plans") {
@@ -777,6 +1105,62 @@ ${updated.title} \u2014 ${updated.priceRub.toLocaleString("ru-RU")} \u20BD (${up
     );
     return true;
   }
+  if (cmd === "/training") {
+    const lessons = await getTraining();
+    await notify(
+      chatId,
+      lessons.length ? "\u0423\u0440\u043E\u043A\u0438:\n\n" + lessons.map((l, i) => `${i + 1}. [${l.id.slice(0, 8)}] ${l.title}`).join("\n") : "\u0423\u0440\u043E\u043A\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442. \u0414\u043E\u0431\u0430\u0432\u044C\u0442\u0435:\n/addlesson \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A\n\n\u0422\u0435\u043A\u0441\u0442 \u0443\u0440\u043E\u043A\u0430"
+    );
+    return true;
+  }
+  if (cmd === "/addlesson" || cmd === "/setlesson") {
+    const rest = trimmed.slice(raw.length).trim();
+    let id = "";
+    let content = rest;
+    if (cmd === "/setlesson") {
+      const m = rest.match(/^(\S+)\s+([\s\S]+)$/);
+      if (!m) {
+        await notify(chatId, "\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435:\n/setlesson <id> <\u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A>\n\n\u0422\u0435\u043A\u0441\u0442 \u0443\u0440\u043E\u043A\u0430");
+        return true;
+      }
+      id = m[1];
+      content = m[2];
+    }
+    const parts = content.split(/\n\s*\n/);
+    const title = (parts[0] || "").trim();
+    const body = parts.slice(1).join("\n\n").trim();
+    if (!title) {
+      await notify(chatId, `\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A. \u0424\u043E\u0440\u043C\u0430\u0442:
+${cmd} \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A
+
+\u0422\u0435\u043A\u0441\u0442 \u0443\u0440\u043E\u043A\u0430 (\u043C\u043E\u0436\u043D\u043E \u043C\u043D\u043E\u0433\u043E\u0441\u0442\u0440\u043E\u0447\u043D\u043E)`);
+      return true;
+    }
+    if (cmd === "/addlesson") {
+      const l = await addLesson(title, body);
+      await notify(chatId, `\u2705 \u0423\u0440\u043E\u043A \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D: [${l.id.slice(0, 8)}] ${l.title}
+\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C: /setlesson ${l.id.slice(0, 8)} \u2026
+\u0423\u0434\u0430\u043B\u0438\u0442\u044C: /dellesson ${l.id.slice(0, 8)}`);
+    } else {
+      const l = await updateLesson(id, { title, ...body !== "" ? { body } : {} });
+      if (!l) {
+        await notify(chatId, `\u0423\u0440\u043E\u043A \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D: ${id}. \u0421\u043F\u0438\u0441\u043E\u043A: /training`);
+        return true;
+      }
+      await notify(chatId, `\u2705 \u0423\u0440\u043E\u043A \u043E\u0431\u043D\u043E\u0432\u043B\u0451\u043D: [${l.id.slice(0, 8)}] ${l.title}`);
+    }
+    return true;
+  }
+  if (cmd === "/dellesson") {
+    const id = args[0];
+    if (!id) {
+      await notify(chatId, "\u0418\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D\u0438\u0435: /dellesson <id>");
+      return true;
+    }
+    const ok = await deleteLesson(id);
+    await notify(chatId, ok ? `\u2705 \u0423\u0440\u043E\u043A \u0443\u0434\u0430\u043B\u0451\u043D: ${id}` : `\u0423\u0440\u043E\u043A \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D: ${id}. \u0421\u043F\u0438\u0441\u043E\u043A: /training`);
+    return true;
+  }
   const user = args[0] ? await findUser(args[0]) : null;
   if (!user) {
     await notify(chatId, args[0] ? "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D. \u041E\u043D \u0434\u043E\u043B\u0436\u0435\u043D \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0442\u0438 \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430." : ADMIN_HELP);
@@ -792,8 +1176,16 @@ ${updated.title} \u2014 ${updated.priceRub.toLocaleString("ru-RU")} \u20BD (${up
       await notify(chatId, "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0447\u0438\u0441\u043B\u043E \u0434\u043D\u0435\u0439 \u043E\u0442 1 \u0434\u043E 3650.");
       return true;
     }
-    const u = await extendSubscription(user.id, days);
-    await notify(chatId, `\u2705 ${who(u)}: \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0434\u043E ${fmt(u.subscriptionUntil)}`);
+    const planId = args[2];
+    if (planId) {
+      const plans = await getPlans();
+      if (!plans.some((p) => p.id === planId)) {
+        await notify(chatId, `\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444: ${planId}. \u0414\u043E\u0441\u0442\u0443\u043F\u043D\u044B\u0435: ${plans.map((p) => p.id).join(", ")}`);
+        return true;
+      }
+    }
+    const u = await extendSubscription(user.id, days, planId);
+    await notify(chatId, `\u2705 ${who(u)}: \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0434\u043E ${fmt(u.subscriptionUntil)}` + (u.planId ? ` (\u0442\u0430\u0440\u0438\u0444 ${u.planId})` : ""));
     await notify(u.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${fmt(u.subscriptionUntil)}. \u041A\u0430\u0431\u0438\u043D\u0435\u0442: ${config.appUrl}/app`);
   } else if (cmd === "/revoke") {
     const u = await setSubscription(user.id, null);
@@ -801,7 +1193,64 @@ ${updated.title} \u2014 ${updated.priceRub.toLocaleString("ru-RU")} \u20BD (${up
   }
   return true;
 }
+async function handleSubCallback(cb) {
+  const data = cb.data || "";
+  const chatId = cb.message?.chat?.id;
+  const messageId = cb.message?.message_id;
+  const cbId = cb.id;
+  if (!chatId) {
+    await answerCb(cbId);
+    return;
+  }
+  if (data === "sub:nop") {
+    await answerCb(cbId, "\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043A\u0430\u043D\u0430\u043B \u0438 \u043F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C, \u0437\u0430\u0442\u0435\u043C \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u043F\u0440\u043E\u0432\u0435\u0440\u0438\u0442\u044C\xBB");
+    return;
+  }
+  if (!data.startsWith("sub:check")) {
+    await answerCb(cbId);
+    return;
+  }
+  const user = await upsertTgUser(cb.from);
+  const ok = await checkChannelSubs(user.tgId);
+  if (!ok) {
+    await answerCb(cbId, "\u0415\u0449\u0451 \u043D\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u0430\u043D\u044B \u043D\u0430 \u0432\u0441\u0435 \u043A\u0430\u043D\u0430\u043B\u044B", true);
+    return;
+  }
+  await answerCb(cbId, "\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0438 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u044B");
+  const m = data.match(/^sub:check:lt:(.+)$/);
+  const intent = m ? "login" : "ref";
+  const param = m ? m[1] : "";
+  if (messageId) await tg("deleteMessage", { chat_id: chatId, message_id: messageId }).catch(() => {
+  });
+  await finalizeStart(chatId, user, intent, param);
+}
 async function handleUpdate(update) {
+  const cb = update?.callback_query;
+  if (cb) {
+    if (config.adminTgId > 0 && cb.from?.id === config.adminTgId) {
+      try {
+        await handleAdminCallback(cb);
+      } catch (e) {
+        console.error("[bot] admin cb", e);
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: `\u041E\u0448\u0438\u0431\u043A\u0430: ${e?.message || e}`, show_alert: true }).catch(() => {
+        });
+      }
+      return;
+    }
+    if ((cb.data || "").startsWith("sub:")) {
+      try {
+        await handleSubCallback(cb);
+      } catch (e) {
+        console.error("[bot] sub cb", e);
+        await tg("answerCallbackQuery", { callback_query_id: cb.id, text: `\u041E\u0448\u0438\u0431\u043A\u0430: ${e?.message || e}`, show_alert: true }).catch(() => {
+        });
+      }
+      return;
+    }
+    await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "\u041D\u0435\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u0430" }).catch(() => {
+    });
+    return;
+  }
   const msg = update?.message;
   if (!msg?.text || !msg.from || msg.chat?.type !== "private") return;
   if (config.adminTgId > 0 && msg.from.id === config.adminTgId) {
@@ -816,67 +1265,51 @@ async function handleUpdate(update) {
   const [rawCmd, param] = msg.text.trim().split(/\s+/);
   const cmd = rawCmd.split("@")[0].toLowerCase();
   const base = publicUrl();
+  if (cmd === "/start" && param) {
+    const intent = param.startsWith("ref_") ? "ref" : "login";
+    const user = await upsertTgUser(msg.from);
+    if (await checkChannelSubs(user.tgId)) {
+      await finalizeStart(msg.chat.id, user, intent, intent === "login" ? param : "");
+    } else {
+      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb(intent, intent === "login" ? param : "") });
+    }
+    return;
+  }
+  if (!await checkChannelSubs(msg.from.id)) {
+    await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb("ref", "") });
+    return;
+  }
   if (cmd === "/privacy") {
     await notify(msg.chat.id, `\u{1F512} \u041F\u043E\u043B\u0438\u0442\u0438\u043A\u0430 \u043A\u043E\u043D\u0444\u0438\u0434\u0435\u043D\u0446\u0438\u0430\u043B\u044C\u043D\u043E\u0441\u0442\u0438 Fracs:
-${base}/privacy`, {
-      reply_markup: docsMarkup(false)
-    });
+${base}/privacy`, { reply_markup: docsMarkup(false) });
     return;
   }
   if (cmd === "/terms") {
     await notify(msg.chat.id, `\u{1F4C4} \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C\u0441\u043A\u043E\u0435 \u0441\u043E\u0433\u043B\u0430\u0448\u0435\u043D\u0438\u0435 Fracs:
-${base}/terms`, {
-      reply_markup: docsMarkup(false)
-    });
+${base}/terms`, { reply_markup: docsMarkup(false) });
     return;
   }
   if (cmd === "/offer") {
     await notify(msg.chat.id, `\u{1F4D1} \u041F\u0443\u0431\u043B\u0438\u0447\u043D\u0430\u044F \u043E\u0444\u0435\u0440\u0442\u0430 Fracs:
-${base}/offer`, {
-      reply_markup: docsMarkup(false)
-    });
+${base}/offer`, { reply_markup: docsMarkup(false) });
     return;
   }
   if (cmd === "/docs") {
-    await notify(msg.chat.id, "\u041F\u0440\u0430\u0432\u043E\u0432\u044B\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0435\u0440\u0432\u0438\u0441\u0430 Fracs:", {
-      reply_markup: docsMarkup(true)
-    });
+    await notify(msg.chat.id, "\u041F\u0440\u0430\u0432\u043E\u0432\u044B\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0435\u0440\u0432\u0438\u0441\u0430 Fracs:", { reply_markup: docsMarkup(true) });
     return;
   }
   if (cmd !== "/start") {
-    await notify(msg.chat.id, `\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043B\u0438\u0447\u043D\u044B\u0439 \u043A\u0430\u0431\u0438\u043D\u0435\u0442: ${base}/app`, {
-      reply_markup: docsMarkup(true)
-    });
-    return;
-  }
-  if (!param) {
-    await notify(
-      msg.chat.id,
-      `\u041F\u0440\u0438\u0432\u0435\u0442! \u042D\u0442\u043E \u0431\u043E\u0442 Fracs.
-
-\u0427\u0442\u043E\u0431\u044B \u0432\u043E\u0439\u0442\u0438, \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0412\u043E\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\xBB \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 ${base}/app.
-
-\u041F\u0435\u0440\u0435\u0434 \u043D\u0430\u0447\u0430\u043B\u043E\u043C \u0440\u0430\u0431\u043E\u0442\u044B \u0432\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u043E\u0437\u043D\u0430\u043A\u043E\u043C\u0438\u0442\u044C\u0441\u044F \u0441 \u043F\u0440\u0430\u0432\u043E\u0432\u044B\u043C\u0438 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u043C\u0438 \u043F\u043E \u043A\u043D\u043E\u043F\u043A\u0430\u043C \u043D\u0438\u0436\u0435:`,
-      { reply_markup: docsMarkup(true) }
-    );
-    return;
-  }
-  const user = await upsertTgUser(msg.from);
-  const ok = await bindLoginToken(param, user.id);
-  if (!ok) {
-    await notify(
-      msg.chat.id,
-      "\u0421\u0441\u044B\u043B\u043A\u0430 \u0443\u0441\u0442\u0430\u0440\u0435\u043B\u0430. \u0412\u0435\u0440\u043D\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u0441\u0430\u0439\u0442 \u0438 \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0412\u043E\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\xBB \u0435\u0449\u0451 \u0440\u0430\u0437.",
-      { reply_markup: docsMarkup(true) }
-    );
+    await notify(msg.chat.id, `\u041E\u0442\u043A\u0440\u043E\u0439\u0442\u0435 \u043B\u0438\u0447\u043D\u044B\u0439 \u043A\u0430\u0431\u0438\u043D\u0435\u0442: ${base}/app`, { reply_markup: docsMarkup(true) });
     return;
   }
   await notify(
     msg.chat.id,
-    `\u2705 \u0413\u043E\u0442\u043E\u0432\u043E, ${user.firstName}! \u0412\u0435\u0440\u043D\u0438\u0442\u0435\u0441\u044C \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440 \u2014 \u0432\u0445\u043E\u0434 \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0441\u044F \u0430\u0432\u0442\u043E\u043C\u0430\u0442\u0438\u0447\u0435\u0441\u043A\u0438.
+    `\u041F\u0440\u0438\u0432\u0435\u0442! \u042D\u0442\u043E \u0431\u043E\u0442 Fracs.
 
-\u041F\u0440\u0430\u0432\u043E\u0432\u044B\u0435 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u044B \u0441\u0435\u0440\u0432\u0438\u0441\u0430 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u043F\u043E \u043A\u043D\u043E\u043F\u043A\u0430\u043C \u043D\u0438\u0436\u0435:`,
-    { reply_markup: docsMarkup(false) }
+\u0427\u0442\u043E\u0431\u044B \u0432\u043E\u0439\u0442\u0438, \u043D\u0430\u0436\u043C\u0438\u0442\u0435 \xAB\u0412\u043E\u0439\u0442\u0438 \u0447\u0435\u0440\u0435\u0437 Telegram\xBB \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 ${base}/app.
+
+\u041F\u0435\u0440\u0435\u0434 \u043D\u0430\u0447\u0430\u043B\u043E\u043C \u0440\u0430\u0431\u043E\u0442\u044B \u0432\u044B \u043C\u043E\u0436\u0435\u0442\u0435 \u043E\u0437\u043D\u0430\u043A\u043E\u043C\u0438\u0442\u044C\u0441\u044F \u0441 \u043F\u0440\u0430\u0432\u043E\u0432\u044B\u043C\u0438 \u0434\u043E\u043A\u0443\u043C\u0435\u043D\u0442\u0430\u043C\u0438 \u043F\u043E \u043A\u043D\u043E\u043F\u043A\u0430\u043C \u043D\u0438\u0436\u0435:`,
+    { reply_markup: docsMarkup(true) }
   );
 }
 async function webhookHandler(req, res) {
@@ -896,7 +1329,7 @@ async function webhookHandler(req, res) {
 // server/auth.ts
 var COOKIE = "fracs_session";
 var SESSION_MS = 30 * 864e5;
-var sign = (p) => crypto4.createHmac("sha256", config.sessionSecret).update(p).digest("base64url");
+var sign = (p) => crypto4.createHmac("sha256", config.sessionSecret).update("session:" + p).digest("base64url");
 function makeSession(uid) {
   const payload = Buffer.from(JSON.stringify({ u: uid, e: Date.now() + SESSION_MS })).toString("base64url");
   return `${payload}.${sign(payload)}`;
@@ -915,16 +1348,20 @@ function readSession(raw) {
   }
 }
 function cookies(header = "") {
-  return Object.fromEntries(
-    header.split(";").map((p) => {
-      const i = p.indexOf("=");
-      return [p.slice(0, i).trim(), decodeURIComponent(p.slice(i + 1).trim())];
-    })
-  );
+  const out = {};
+  for (const part of header.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 1) continue;
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+    }
+  }
+  return out;
 }
 function cookieOpts(req) {
   const secure = req.secure || req.get("x-forwarded-proto") === "https" || config.isProd;
-  const sameSite = secure ? "None" : "Lax";
+  const sameSite = secure && process.env.COOKIE_SAMESITE === "None" ? "None" : "Lax";
   return { secure, sameSite };
 }
 function setSession(req, res, uid) {
@@ -940,9 +1377,13 @@ async function attachUser(req, _res, next) {
     next(e);
   }
 }
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   if (!req.user) {
     res.status(401).json({ error: "unauthorized", message: "\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 Telegram" });
+    return;
+  }
+  if (!await checkChannelSubs(req.user.tgId)) {
+    res.status(403).json({ error: "channels_required", message: "\u041F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u0432 \u0431\u043E\u0442\u0435 Fracs, \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C." });
     return;
   }
   next();
@@ -952,7 +1393,7 @@ var h = (fn) => (req, res, next) => {
 };
 var authRouter = Router();
 authRouter.post("/start", h(async (req, res) => {
-  if (!await rateLimit(`auth:${req.ip}`, 20, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited" });
+  if (!await rateLimit(`auth:${req.ip}`, 20, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited" });
   const username = await getBotUsername();
   if (!username) return void res.status(503).json({ error: "bot_not_configured", message: "\u0411\u043E\u0442 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" });
   const token = randomToken(24);
@@ -1196,9 +1637,9 @@ function score(n, v) {
   }
   return 0;
 }
-function searchCities(q, limit = 8) {
+function searchCities(q, limit2 = 8) {
   const base = norm(q);
-  const out = (cs) => cs.slice(0, limit).map(({ id, name, region }) => ({ id, name, region }));
+  const out = (cs) => cs.slice(0, limit2).map(({ id, name, region }) => ({ id, name, region }));
   if (!base) return out(CITIES.filter((c) => c.rank < 999).sort((a, b) => a.rank - b.rank));
   const variants = /* @__PURE__ */ new Set([base, norm(fixLayout(q))]);
   const scored = [];
@@ -1269,7 +1710,7 @@ var hostOf = (u) => {
   }
 };
 var AGG = ["2gis.ru", "2gis.com", "yandex.ru", "yandex.com", "ya.ru", "google.com", "google.ru", "zoon.ru", "flamp.ru", "tripadvisor.ru", "yell.ru", "orgpage.ru", "spr.ru", "vk.com", "vk.ru", "ok.ru", "instagram.com", "facebook.com", "t.me", "telegram.me", "youtube.com", "tiktok.com", "avito.ru", "hh.ru", "restoclub.ru", "wikipedia.org", "rusprofile.ru", "list-org.com", "sbis.ru", "profi.ru", "yclients.com", "dikidi.net", "booksy.com", "dzen.ru", "rutube.ru", "otzovik.com", "irecommend.ru", "checko.ru", "kontur.ru", "allbiz.ru", "cylex.ru", "pulscen.ru", "tiu.ru", "prodoctorov.ru", "docdoc.ru", "napopravku.ru", "wa.me", "linktr.ee", "taplink.cc", "booking.com"];
-var isAgg = (h4) => AGG.some((d) => h4 === d || h4.endsWith("." + d));
+var isAgg = (h5) => AGG.some((d) => h5 === d || h5.endsWith("." + d));
 var NOT_IP = /(?:^|[^a-zа-яё0-9])(?:гбу\w*|гку|мбу\w*|мбоу|мдоу|муп|гуп|мфц|загс|мвд|мчс|ооо|оао|зао|пао|ао|нко|тсж|жэк)(?=$|[^a-zа-яё0-9])|муниципальн|государственн|бюджетн|администрац|министерств|департамент|поликлиник|больниц|диспансер|полици|налогов|пенсионн|суд\b|школа|гимназия|лицей|колледж|детский сад|университет|библиотек|музей|театр|церковь|храм|мечеть|кладбищ|управляющая компания/iu;
 var CLOSED = /закрыто навсегда|навсегда закрыт|permanently closed|прекратил[а-я]* работу|больше не работает/i;
 async function serper(path2, body) {
@@ -1292,8 +1733,8 @@ async function hasOwnSite(c, city) {
   if (!toks.length) return false;
   const need = Math.max(1, Math.ceil(toks.length * 0.6));
   const hit = (t) => {
-    const h4 = norm2(t);
-    return h4.includes(norm2(c.name)) || toks.filter((x) => h4.includes(x)).length >= need;
+    const h5 = norm2(t);
+    return h5.includes(norm2(c.name)) || toks.filter((x) => h5.includes(x)).length >= need;
   };
   const web = await serper("search", { q: `${c.name} ${city}`, num: 10 });
   const org = web.organic || [];
@@ -1427,10 +1868,10 @@ function summarize(kind, stats, rows) {
   const rowsTotal = rows ? rows.length : Math.min(kind === "maps" ? stats.withoutSite : stats.people, DEMO_CAP);
   return { rowsTotal, head: rows ? rows.slice(0, 3) : void 0 };
 }
-function getRows(rec, offset, limit) {
-  if (!rec.demo) return (rec.rows ?? []).slice(offset, offset + limit);
+function getRows(rec, offset, limit2) {
+  if (!rec.demo) return (rec.rows ?? []).slice(offset, offset + limit2);
   const out = [];
-  for (let i = offset; i < Math.min(offset + limit, rec.rowsTotal); i++) out.push(rec.kind === "maps" ? demoMapsRow(rec, i) : demoTgRow(rec, i));
+  for (let i = offset; i < Math.min(offset + limit2, rec.rowsTotal); i++) out.push(rec.kind === "maps" ? demoMapsRow(rec, i) : demoTgRow(rec, i));
   return out;
 }
 var headRows = (rec) => rec.demo ? getRows(rec, 0, 3) : rec.head ?? [];
@@ -1449,7 +1890,7 @@ var PLATFORMS = [
 var h2 = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
-var mac = (uid) => crypto5.createHmac("sha256", config.sessionSecret).update("fracs-app-license:" + uid).digest("base64url").slice(0, 24);
+var mac = (uid) => crypto5.createHmac("sha256", process.env.LICENSE_SECRET || config.sessionSecret).update("fracs-app-license:" + uid).digest("base64url").slice(0, 24);
 var licenseKey = (uid) => `fracs.${Buffer.from(uid).toString("base64url")}.${mac(uid)}`;
 function parseKey(key) {
   if (typeof key !== "string") return null;
@@ -1502,13 +1943,29 @@ appRouter.get("/download/:platform", requireAuth, h2(async (req, res) => {
   res.redirect(302, loc);
 }));
 appRouter.post("/verify", h2(async (req, res) => {
-  if (!await rateLimit(`app-verify:${req.ip}`, 60, 10 * 6e4)) return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  if (!await rateLimit(`app-verify:${req.ip}`, 60, 10 * 6e4, true)) return void res.status(429).json({ ok: false, reason: "rate_limited" });
   const uid = parseKey(req.body?.key);
   if (!uid) return void res.json({ ok: false, reason: "invalid" });
   const user = await getUser(uid);
   if (!user) return void res.json({ ok: false, reason: "invalid" });
   if (!isSubscribed(user)) return void res.json({ ok: false, reason: "expired" });
-  res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName });
+  if (!await checkChannelSubs(user.tgId)) return void res.json({ ok: false, reason: "channels_required" });
+  res.json({ ok: true, until: user.subscriptionUntil, name: user.firstName, features: await getActiveFeatures(user) });
+}));
+appRouter.post("/training", h2(async (req, res) => {
+  if (!await rateLimit(`app-training-ip:${req.ip}`, 60, 10 * 6e4)) {
+    return void res.status(429).json({ ok: false, error: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435." });
+  }
+  const uid = parseKey(req.body?.key);
+  const user = uid ? await getUser(uid) : null;
+  if (!user) return void res.status(401).json({ ok: false, error: "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u043B\u0438\u0446\u0435\u043D\u0437\u0438\u0438" });
+  if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: "\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0437\u0430\u043A\u043E\u043D\u0447\u0438\u043B\u0430\u0441\u044C" });
+  if (!await checkChannelSubs(user.tgId)) return void res.status(403).json({ ok: false, error: "channels_required", message: "\u041F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u0432 \u0431\u043E\u0442\u0435 Fracs." });
+  const features = await getActiveFeatures(user);
+  if (!features.includes("training")) {
+    return void res.status(402).json({ ok: false, error: "training_required", message: "\u0420\u0430\u0437\u0434\u0435\u043B \xAB\u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435\xBB \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043D\u0430 \u0442\u0430\u0440\u0438\u0444\u0435 PRO." });
+  }
+  res.json({ ok: true, lessons: await getTraining() });
 }));
 appRouter.post("/parse-start", h2(async (req, res) => {
   if (!await rateLimit(`app-parse-ip:${req.ip}`, 60, 10 * 6e4)) {
@@ -1518,7 +1975,8 @@ appRouter.post("/parse-start", h2(async (req, res) => {
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, error: "invalid", message: "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u043B\u0438\u0446\u0435\u043D\u0437\u0438\u0438." });
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, error: "expired", message: "\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0437\u0430\u043A\u043E\u043D\u0447\u0438\u043B\u0430\u0441\u044C." });
-  if (!await rateLimit(`maps-cooldown:${user.id}`, 1, 6 * 60 * 6e4)) {
+  if (!await checkChannelSubs(user.tgId)) return void res.status(403).json({ ok: false, error: "channels_required", message: "\u041F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u0432 \u0431\u043E\u0442\u0435 Fracs." });
+  if (user.tgId !== config.adminTgId && !await rateLimit(`maps-cooldown:${user.id}`, 1, 6 * 60 * 6e4)) {
     return void res.status(429).json({
       ok: false,
       error: "cooldown",
@@ -1533,6 +1991,7 @@ appRouter.post("/tg-search", h2(async (req, res) => {
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, reason: "invalid", error: "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u043A\u043B\u044E\u0447 \u043B\u0438\u0446\u0435\u043D\u0437\u0438\u0438" });
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: "expired", error: "\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0437\u0430\u043A\u043E\u043D\u0447\u0438\u043B\u0430\u0441\u044C" });
+  if (!await checkChannelSubs(user.tgId)) return void res.status(403).json({ ok: false, error: "channels_required", message: "\u041F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u0432 \u0431\u043E\u0442\u0435 Fracs." });
   if (!await rateLimit(`app-tg-user:${user.id}`, 20, 10 * 6e4)) return void res.status(429).json({ ok: false, error: "\u041B\u0438\u043C\u0438\u0442: 20 \u043F\u043E\u0438\u0441\u043A\u043E\u0432 \u0437\u0430 10 \u043C\u0438\u043D\u0443\u0442" });
   const phrase = cleanText(req.body?.phrase, 120);
   const days = Math.min(3, Math.max(1, Math.round(Number(req.body?.days) || 3)));
@@ -1546,9 +2005,154 @@ appRouter.post("/tg-search", h2(async (req, res) => {
   }
 }));
 
-// server/routes.ts
-import crypto6 from "node:crypto";
+// server/adminRoutes.ts
 import { Router as Router3 } from "express";
+
+// server/webapp.ts
+import crypto6 from "node:crypto";
+function verifyInitData(initData) {
+  if (!config.botToken || typeof initData !== "string" || !initData.trim()) {
+    return { ok: false, error: "no_init_data" };
+  }
+  const params = new URLSearchParams(initData);
+  const hash = params.get("hash");
+  const authDate = Number(params.get("auth_date") || 0);
+  if (!hash || hash.length !== 64 || !authDate) {
+    return { ok: false, error: "bad_init_data" };
+  }
+  if (Date.now() / 1e3 - authDate > 3600) {
+    return { ok: false, error: "expired" };
+  }
+  params.delete("hash");
+  const dataCheckString = [...params.entries()].sort(([a2], [b2]) => a2 < b2 ? -1 : a2 > b2 ? 1 : 0).map(([k, v]) => `${k}=${v}`).join("\n");
+  const secret = crypto6.createHmac("sha256", "WebAppData").update(config.botToken).digest();
+  const calc = crypto6.createHmac("sha256", secret).update(dataCheckString).digest("hex");
+  const a = Buffer.from(calc);
+  const b = Buffer.from(hash);
+  if (a.length !== b.length || !crypto6.timingSafeEqual(a, b)) {
+    return { ok: false, error: "bad_hash" };
+  }
+  const userRaw = params.get("user");
+  let user;
+  try {
+    user = userRaw ? JSON.parse(userRaw) : void 0;
+  } catch {
+  }
+  return { ok: true, user };
+}
+function isAdminInitData(initData) {
+  const v = verifyInitData(initData);
+  return !!v.ok && !!v.user && v.user.id === config.adminTgId;
+}
+
+// server/adminRoutes.ts
+var adminRouter = Router3();
+var h3 = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+var requireAdmin = (req, res, next) => {
+  const initData = req.get("x-tg-initdata") || (req.body && typeof req.body === "object" ? req.body.initData : "") || "";
+  if (!config.adminTgId || !isAdminInitData(initData)) {
+    return void res.status(403).json({ error: "forbidden", message: "\u0414\u043E\u0441\u0442\u0443\u043F \u0442\u043E\u043B\u044C\u043A\u043E \u0434\u043B\u044F \u0430\u0434\u043C\u0438\u043D\u0438\u0441\u0442\u0440\u0430\u0442\u043E\u0440\u0430." });
+  }
+  next();
+};
+adminRouter.use(requireAdmin);
+var publicUser = (u) => ({
+  id: u.id,
+  tgId: u.tgId,
+  username: u.username,
+  firstName: u.firstName,
+  createdAt: u.createdAt,
+  subscriptionUntil: u.subscriptionUntil,
+  planId: u.planId,
+  active: !!u.subscriptionUntil && Date.parse(u.subscriptionUntil) > Date.now()
+});
+var publicPlan = (p) => ({ id: p.id, title: p.title, priceRub: p.priceRub, days: p.days, badge: p.badge ?? "", description: p.description ?? "", features: p.features ?? [] });
+adminRouter.get("/me", h3(async (_req, res) => {
+  res.json({ ok: true, admin: true, appUrl: config.appUrl });
+}));
+adminRouter.get("/users", h3(async (req, res) => {
+  const limit2 = Math.min(Number(req.query.limit) || 100, 200);
+  const users = await listRecentUsers(limit2);
+  res.json({ users: users.map(publicUser) });
+}));
+adminRouter.post("/grant", h3(async (req, res) => {
+  const tgId = Number(req.body?.tgId);
+  const days = Math.round(Number(req.body?.days));
+  const planId = req.body?.planId || void 0;
+  if (!Number.isInteger(tgId) || tgId <= 0) return void res.status(400).json({ error: "bad_tg_id" });
+  if (!(days > 0 && days <= 3650)) return void res.status(400).json({ error: "bad_days", message: "\u0414\u043D\u0435\u0439: 1\u20133650." });
+  const plans = await getPlans();
+  if (planId && !plans.some((p) => p.id === planId)) {
+    return void res.status(400).json({ error: "bad_plan", message: `\u0422\u0430\u0440\u0438\u0444 ${planId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D.` });
+  }
+  const user = await findUser(String(tgId));
+  if (!user) {
+    return void res.status(404).json({ error: "user_not_found", message: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u2014 \u043F\u0443\u0441\u0442\u044C \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0451\u0442 \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430." });
+  }
+  const updated = await extendSubscription(user.id, days, planId);
+  try {
+    await notify(updated.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${new Date(updated.subscriptionUntil).toLocaleDateString("ru-RU")}. \u041A\u0430\u0431\u0438\u043D\u0435\u0442: ${config.appUrl}/app`);
+  } catch {
+  }
+  res.json({ user: publicUser(updated) });
+}));
+adminRouter.post("/revoke", h3(async (req, res) => {
+  const tgId = Number(req.body?.tgId);
+  if (!Number.isInteger(tgId) || tgId <= 0) return void res.status(400).json({ error: "bad_tg_id" });
+  const user = await findUser(String(tgId));
+  if (!user) return void res.status(404).json({ error: "user_not_found" });
+  const updated = await setSubscription(user.id, null);
+  res.json({ user: publicUser(updated) });
+}));
+adminRouter.get("/plans", h3(async (_req, res) => {
+  const plans = await getPlans();
+  res.json({ plans: plans.map(publicPlan) });
+}));
+adminRouter.post("/plan", h3(async (req, res) => {
+  const id = String(req.body?.id || "");
+  const b = req.body || {};
+  const patch = {};
+  if (typeof b.title === "string") patch.title = b.title.slice(0, 120);
+  if (Number.isFinite(Number(b.priceRub))) patch.priceRub = Math.max(0, Math.round(Number(b.priceRub)));
+  if (Number.isFinite(Number(b.days))) patch.days = Math.max(1, Math.round(Number(b.days)));
+  if (typeof b.badge === "string") patch.badge = b.badge.slice(0, 60);
+  if (typeof b.description === "string") patch.description = b.description.slice(0, 400);
+  const updated = await updatePlan(id, patch);
+  if (!updated) return void res.status(404).json({ error: "plan_not_found" });
+  res.json({ plan: publicPlan(updated) });
+}));
+adminRouter.post("/plans/reset", h3(async (_req, res) => {
+  const plans = await resetPlans();
+  res.json({ plans: plans.map(publicPlan) });
+}));
+adminRouter.get("/training", h3(async (_req, res) => {
+  res.json({ lessons: await getTraining() });
+}));
+adminRouter.post("/training/save", h3(async (req, res) => {
+  const id = req.body?.id || void 0;
+  const title = String(req.body?.title || "").trim();
+  const body = String(req.body?.body || "");
+  if (!title) return void res.status(400).json({ error: "bad_title", message: "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043E\u043A." });
+  if (id) {
+    const lesson = await updateLesson(id, { title, body });
+    if (!lesson) return void res.status(404).json({ error: "lesson_not_found" });
+    res.json({ lesson });
+  } else {
+    res.json({ lesson: await addLesson(title, body) });
+  }
+}));
+adminRouter.post("/training/delete", h3(async (req, res) => {
+  const id = String(req.body?.id || "");
+  if (!id) return void res.status(400).json({ error: "bad_id" });
+  const ok = await deleteLesson(id);
+  res.json({ ok });
+}));
+
+// server/routes.ts
+import crypto7 from "node:crypto";
+import { Router as Router4 } from "express";
 
 // server/payments.ts
 var YK = "https://api.yookassa.ru/v3/payments";
@@ -1559,7 +2163,7 @@ async function activate(p) {
   if (!user || !plan) return;
   if (!await claimPayment(p.id)) return;
   try {
-    const updated = await extendSubscription(user.id, plan.days);
+    const updated = await extendSubscription(user.id, plan.days, plan.id);
     await notify(user.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${new Date(updated.subscriptionUntil).toLocaleDateString("ru-RU")}. \u0414\u0430\u043D\u043D\u044B\u0435 \u043E\u0442\u043A\u0440\u044B\u0442\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435: ${config.appUrl}/app`);
   } catch (e) {
     await revertPayment(p.id);
@@ -1636,15 +2240,43 @@ async function cronHandler(req, res) {
 }
 
 // server/routes.ts
-var api = Router3();
-var h3 = (fn) => (req, res, next) => {
+var api = Router4();
+var h4 = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
+var num = (v, min, max, d) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : d;
+};
+var flag = (v) => v === true;
+function trialOptions(body) {
+  const f = body?.filters || {}, a = body?.advanced || {};
+  return {
+    filters: {
+      dedup_franchises: flag(f.dedup_franchises),
+      dedup_across_niches: f.dedup_across_niches !== false,
+      require_phone: flag(f.require_phone),
+      require_whatsapp: flag(f.require_whatsapp),
+      require_social: flag(f.require_social),
+      require_email: flag(f.require_email),
+      require_website: false,
+      require_no_website: true,
+      min_rating: num(f.min_rating, 0, 5, 0),
+      min_reviews: num(f.min_reviews, 0, 1e5, 0)
+    },
+    advanced: {
+      disable_images: true,
+      skip_404_response: a.skip_404_response !== false,
+      delay_between_clicks: num(a.delay_between_clicks, 0, 5e3, 0),
+      columns_per_entity: num(a.columns_per_entity, 1, 5, 3)
+    }
+  };
+}
 api.use("/auth", authRouter);
-api.get("/health", h3(async (_req, res) => {
+api.get("/health", h4(async (_req, res) => {
   res.json({ ok: true, db: await ping().catch(() => false) });
 }));
-api.get("/config", h3(async (_req, res) => {
+api.get("/config", h4(async (_req, res) => {
   res.json({
     devLogin: config.devLogin,
     payment: config.paymentProvider,
@@ -1654,9 +2286,9 @@ api.get("/config", h3(async (_req, res) => {
   });
 }));
 api.get("/cities", (req, res) => {
-  res.json({ items: searchCities(String(req.query.q || ""), 8) });
+  res.json({ items: searchCities(String(req.query.q || "").slice(0, 40), 8) });
 });
-api.post("/payments/yookassa/webhook", h3(async (req, res) => {
+api.post("/payments/yookassa/webhook", h4(async (req, res) => {
   if (config.paymentProvider === "yookassa") {
     try {
       await handleYookassaWebhook(req.body);
@@ -1667,9 +2299,9 @@ api.post("/payments/yookassa/webhook", h3(async (req, res) => {
   }
   res.sendStatus(200);
 }));
-api.all("/cron/cleanup", h3(cronHandler));
+api.all("/cron/cleanup", h4(cronHandler));
 var usedToday = (u) => countSearchesSince(u.id, 864e5);
-api.get("/me", h3(async (req, res) => {
+api.get("/me", h4(async (req, res) => {
   const u = req.user;
   if (!u) return void res.json({ user: null });
   const [mapsTrialUsed, tgTrialUsed] = await Promise.all([
@@ -1680,9 +2312,20 @@ api.get("/me", h3(async (req, res) => {
     user: { id: u.id, firstName: u.firstName, username: u.username },
     admin: config.adminTgId > 0 && u.tgId === config.adminTgId,
     subscription: { active: isSubscribed(u), until: u.subscriptionUntil },
+    features: await getActiveFeatures(u),
+    channelsRequired: !await checkChannelSubs(u.tgId),
     trial: { maps: !mapsTrialUsed, tg: !tgTrialUsed },
     quota: { used: await usedToday(u), limit: config.dailySearchLimit }
   });
+}));
+api.get("/training", requireAuth, h4(async (req, res) => {
+  const u = req.user;
+  if (!isSubscribed(u)) return void res.status(402).json({ error: "subscription_required", message: "\u0420\u0430\u0437\u0434\u0435\u043B \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043F\u043E \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0435." });
+  const features = await getActiveFeatures(u);
+  if (!features.includes("training")) {
+    return void res.status(402).json({ error: "training_required", message: "\u0420\u0430\u0437\u0434\u0435\u043B \xAB\u041E\u0431\u0443\u0447\u0435\u043D\u0438\u0435\xBB \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u043D\u0430 \u0442\u0430\u0440\u0438\u0444\u0435 PRO." });
+  }
+  res.json({ lessons: await getTraining() });
 }));
 var MASK = "\u2022\u2022\u2022";
 var MAPS_DOMAINS = /* @__PURE__ */ new Set(["ru", "kz", "by", "az", "kg", "uz", "cz", "eg", "it", "sa", "com.cy", "ae", "cl", "qa", "om", "bh", "kw", "iq"]);
@@ -1691,29 +2334,30 @@ var maskStart = (s, keep = 3) => s.slice(0, keep) + MASK;
 var parseCooldownMs = 6 * 60 * 6e4;
 function signTrialTicket(ticket) {
   const payload = Buffer.from(JSON.stringify(ticket)).toString("base64url");
-  const signature = crypto6.createHmac("sha256", config.sessionSecret).update(payload).digest("base64url");
+  const signature = crypto7.createHmac("sha256", config.sessionSecret).update("trial-ticket:" + payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 function verifyTrialTicket(value, userId) {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || value.length > 4096) return null;
   const separator = value.lastIndexOf(".");
   if (separator <= 0) return null;
   const payload = value.slice(0, separator);
   const supplied = Buffer.from(value.slice(separator + 1));
-  const expected = Buffer.from(crypto6.createHmac("sha256", config.sessionSecret).update(payload).digest("base64url"));
-  if (supplied.length !== expected.length || !crypto6.timingSafeEqual(supplied, expected)) return null;
+  const expected = Buffer.from(crypto7.createHmac("sha256", config.sessionSecret).update("trial-ticket:" + payload).digest("base64url"));
+  if (supplied.length !== expected.length || !crypto7.timingSafeEqual(supplied, expected)) return null;
   try {
     const ticket = JSON.parse(Buffer.from(payload, "base64url").toString());
-    if (ticket.userId !== userId || !ticket.jobId || !ticket.seed || Date.now() - ticket.createdAt > 3 * 60 * 6e4) return null;
+    if (ticket.userId !== userId || !ticket.jobId || !ticket.seed || Date.now() - ticket.createdAt > 24 * 60 * 6e4) return null;
     return ticket;
   } catch {
     return null;
   }
 }
 function parse2gisUrl(value) {
-  if (typeof value !== "string") return null;
+  if (typeof value !== "string" || value.length > 2e3) return null;
   try {
     const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password) return null;
     const parts = parsed.pathname.split("/").filter(Boolean);
     const domain = parsed.hostname.startsWith("2gis.") ? parsed.hostname.slice("2gis.".length) : "";
     if (!MAPS_DOMAINS.has(domain) || parts.length < 3 || parts[1] !== "search") return null;
@@ -1782,7 +2426,7 @@ async function gate(req, res) {
 async function findRecent(u, kind, match) {
   return (await recentSearches(u.id, kind, 864e5)).find((r) => match(r) && !r.demo && r.rowsTotal > 0);
 }
-api.post("/search/maps", requireAuth, h3(async (req, res) => {
+api.post("/search/maps", requireAuth, h4(async (req, res) => {
   const niche = cleanText(req.body?.niche, 80);
   const city = findCity(String(req.body?.cityId || ""));
   if (niche.length < 2) return void res.status(400).json({ error: "bad_niche", message: "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043D\u0438\u0448\u0443 \u2014 \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \xAB\u0430\u0432\u0442\u043E\u0441\u0435\u0440\u0432\u0438\u0441\xBB." });
@@ -1819,7 +2463,7 @@ api.post("/search/maps", requireAuth, h3(async (req, res) => {
     res.status(502).json({ error: "provider", message: `\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0435: ${e?.message || "\u043E\u0448\u0438\u0431\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430"}` });
   }
 }));
-api.post("/search/maps/trial/start", requireAuth, h3(async (req, res) => {
+api.post("/search/maps/trial/start", requireAuth, h4(async (req, res) => {
   const user = req.user;
   const isAdmin = config.adminTgId > 0 && user.tgId === config.adminTgId;
   if (isSubscribed(user) && !isAdmin) return void res.status(403).json({ error: "subscription_active", message: "\u041F\u0440\u043E\u0431\u043D\u044B\u0439 \u0437\u0430\u043F\u0443\u0441\u043A \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0442\u043E\u043B\u044C\u043A\u043E \u0431\u0435\u0437 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0438." });
@@ -1841,21 +2485,16 @@ api.post("/search/maps/trial/start", requireAuth, h3(async (req, res) => {
   const uniqueUrls = [...new Set(parsed.map((search) => search.url))];
   const niche = cleanText(parsed[0].niche, 80) || "\u041F\u043E\u0438\u0441\u043A 2\u0413\u0418\u0421";
   const cityLabel = [...new Set(parsed.map((search) => search.city))].join(", ");
-  const seed = crypto6.createHash("sha256").update([...uniqueUrls].sort().join("\n")).digest("hex");
+  const seed = crypto7.createHash("sha256").update([...uniqueUrls].sort().join("\n")).digest("hex");
   try {
     const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs`, {
       method: "POST",
       headers: { Authorization: `Bearer ${config.mapsWorkerToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...trialOptions(req.body),
         urls: uniqueUrls,
         max_records: Math.min(60, Math.max(1, Number(req.body?.maxRecords) || 20)),
         clean: true,
-        filters: {
-          ...req.body?.filters || {},
-          require_website: false,
-          require_no_website: true
-        },
-        advanced: req.body?.advanced || {},
         directions: uniqueUrls.map((url) => ({ url, label: String(req.body?.labels?.[url] || "") }))
       }),
       signal: AbortSignal.timeout(1e4)
@@ -1877,10 +2516,10 @@ api.post("/search/maps/trial/start", requireAuth, h3(async (req, res) => {
     res.status(502).json({ error: "worker_unreachable", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u044C\u0441\u044F \u043A Chrome-worker. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
 }));
-api.post("/search/maps/trial/status", requireAuth, h3(async (req, res) => {
+api.post("/search/maps/trial/status", requireAuth, h4(async (req, res) => {
   const ticket = verifyTrialTicket(req.body?.ticket, req.user.id);
   if (!ticket) return void res.status(400).json({ error: "bad_ticket", message: "\u0417\u0430\u0434\u0430\u043D\u0438\u0435 \u043D\u0435\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u044C\u043D\u043E \u0438\u043B\u0438 \u0443\u0441\u0442\u0430\u0440\u0435\u043B\u043E. \u0417\u0430\u043F\u0443\u0441\u0442\u0438\u0442\u0435 \u043F\u0440\u043E\u0431\u043D\u044B\u0439 \u043F\u043E\u0438\u0441\u043A \u0437\u0430\u043D\u043E\u0432\u043E." });
-  const existing = (await recentSearches(req.user.id, "maps", 3 * 60 * 6e4)).find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
+  const existing = (await recentSearches(req.user.id, "maps", 864e5)).find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
   if (existing) return void res.json({ status: "done", result: await fullTrialView(existing, req.user) });
   if (!config.mapsWorkerUrl || !config.mapsWorkerToken) {
     return void res.status(503).json({ error: "worker_unconfigured", message: "Chrome-worker \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D." });
@@ -1944,7 +2583,7 @@ api.post("/search/maps/trial/status", requireAuth, h3(async (req, res) => {
       ...summary
     };
     if (!await claimTrial(req.user.id, "maps")) {
-      const used = (await recentSearches(req.user.id, "maps", 3 * 60 * 6e4)).find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
+      const used = (await recentSearches(req.user.id, "maps", 864e5)).find((record) => record.seed === ticket.seed && !record.demo && record.rowsTotal > 0);
       if (used) return void res.json({ status: "done", result: await fullTrialView(used, req.user) });
       return void trialUsed(res);
     }
@@ -1955,7 +2594,7 @@ api.post("/search/maps/trial/status", requireAuth, h3(async (req, res) => {
     res.status(502).json({ error: "worker_unreachable", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0440\u0435\u0437\u0443\u043B\u044C\u0442\u0430\u0442\u044B Chrome-\u043F\u0430\u0440\u0441\u0438\u043D\u0433\u0430." });
   }
 }));
-api.post("/search/tg", requireAuth, h3(async (req, res) => {
+api.post("/search/tg", requireAuth, h4(async (req, res) => {
   const phrase = cleanText(req.body?.phrase, 120);
   const days = Math.min(3, Math.max(1, Math.round(Number(req.body?.days) || 3)));
   if (phrase.length < 3) return void res.status(400).json({ error: "bad_phrase", message: "\u041E\u043F\u0438\u0448\u0438\u0442\u0435, \u043A\u043E\u043C\u0443 \u0438 \u0447\u0442\u043E \u043D\u0443\u0436\u043D\u043E \u2014 \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, \xAB\u043D\u0443\u0436\u0435\u043D \u0441\u0430\u0439\u0442\xBB." });
@@ -1988,19 +2627,19 @@ api.post("/search/tg", requireAuth, h3(async (req, res) => {
     res.status(502).json({ error: "provider", message: `\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0434\u0430\u043D\u043D\u044B\u0435: ${e?.message || "\u043E\u0448\u0438\u0431\u043A\u0430 \u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A\u0430"}` });
   }
 }));
-api.get("/searches", requireAuth, h3(async (req, res) => {
+api.get("/searches", requireAuth, h4(async (req, res) => {
   const kind = req.query.kind === "tg" ? "tg" : "maps";
   const items = (await listSearches(req.user.id, kind, 10)).map((s) => view(s, req.user));
   res.json({ items });
 }));
 var needSub2 = (res) => res.status(402).json({ error: "subscription_required", message: "\u0414\u0430\u043D\u043D\u044B\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u043F\u043E \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0435." });
 var trialUsed = (res) => res.status(402).json({ error: "trial_used", message: "\u041F\u0440\u043E\u0431\u043D\u044B\u0439 \u043F\u043E\u0438\u0441\u043A \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u043D. \u041E\u0444\u043E\u0440\u043C\u0438\u0442\u0435 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443 \u0434\u043B\u044F \u043D\u043E\u0432\u043E\u0433\u043E \u043F\u043E\u0438\u0441\u043A\u0430." });
-api.get("/search/:id", requireAuth, h3(async (req, res) => {
+api.get("/search/:id", requireAuth, h4(async (req, res) => {
   const rec = await getSearch(String(req.params.id), req.user.id);
   if (!rec) return void res.status(404).json({ error: "not_found" });
   res.json(view(rec, req.user));
 }));
-api.get("/search/:id/rows", requireAuth, h3(async (req, res) => {
+api.get("/search/:id/rows", requireAuth, h4(async (req, res) => {
   if (!isSubscribed(req.user)) {
     const exists = await getSearch(String(req.params.id), req.user.id);
     return void (exists ? needSub2(res) : res.status(404).json({ error: "not_found" }));
@@ -2008,15 +2647,15 @@ api.get("/search/:id/rows", requireAuth, h3(async (req, res) => {
   const rec = await getSearch(String(req.params.id), req.user.id, true);
   if (!rec) return void res.status(404).json({ error: "not_found" });
   const offset = Math.max(0, Number(req.query.offset) || 0);
-  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
-  res.json({ rows: getRows(rec, offset, limit), total: rec.rowsTotal });
+  const limit2 = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+  res.json({ rows: getRows(rec, offset, limit2), total: rec.rowsTotal });
 }));
 var csvCell = (v) => {
   let s = v == null ? "" : String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return `"${s.replace(/"/g, '""')}"`;
 };
-api.get("/search/:id/export.csv", requireAuth, h3(async (req, res) => {
+api.get("/search/:id/export.csv", requireAuth, h4(async (req, res) => {
   if (!isSubscribed(req.user)) {
     const exists = await getSearch(String(req.params.id), req.user.id);
     return void (exists ? needSub2(res) : res.status(404).json({ error: "not_found" }));
@@ -2030,7 +2669,7 @@ api.get("/search/:id/export.csv", requireAuth, h3(async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="fracs-${rec.kind}-${rec.id.slice(0, 8)}.csv"`);
   res.send(csv);
 }));
-api.post("/payments/request", requireAuth, h3(async (req, res) => {
+api.post("/payments/request", requireAuth, h4(async (req, res) => {
   if (!await rateLimit(`payreq:${req.user.id}`, 5, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E." });
   const plans = await getPlans();
   const plan = plans.find((p) => p.id === String(req.body?.planId || ""));
@@ -2048,7 +2687,7 @@ ${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})
   }
   res.json({ ok: true });
 }));
-api.post("/payments/create", requireAuth, h3(async (req, res) => {
+api.post("/payments/create", requireAuth, h4(async (req, res) => {
   if (!await rateLimit(`pay:${req.user.id}`, 10, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited" });
   try {
     res.json(await createPayment(req.user, String(req.body?.planId || "")));
@@ -2058,16 +2697,78 @@ api.post("/payments/create", requireAuth, h3(async (req, res) => {
   }
 }));
 
+// server/security.ts
+var CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval' https://telegram.org",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https://images.unsplash.com",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "upgrade-insecure-requests"
+].join("; ");
+function securityHeaders(_req, res, next) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  if (config.isProd) {
+    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+    res.setHeader("Content-Security-Policy", CSP);
+  }
+  next();
+}
+var noStoreApi = (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+};
+var SAFE = /* @__PURE__ */ new Set(["GET", "HEAD", "OPTIONS"]);
+var allowed = new Set(
+  [config.appUrl, ...(process.env.EXTRA_ORIGINS || "").split(",")].map((s) => s.trim()).filter(Boolean).map((u) => {
+    try {
+      return new URL(u).origin;
+    } catch {
+      return "";
+    }
+  })
+);
+function csrfGuard(req, res, next) {
+  if (SAFE.has(req.method)) return next();
+  const origin = req.get("origin");
+  const sameHost = origin === `${req.protocol}://${req.get("host")}`;
+  if (origin ? !(sameHost || allowed.has(origin)) : req.get("sec-fetch-site") === "cross-site") {
+    return void res.status(403).json({ error: "forbidden_origin" });
+  }
+  next();
+}
+var hits = /* @__PURE__ */ new Map();
+var limit = (name, max, windowMs) => (req, res, next) => {
+  const now = Date.now();
+  if (hits.size > 2e4) {
+    for (const [k, v] of hits) if (v.reset < now) hits.delete(k);
+  }
+  const key = `${name}:${req.ip}`;
+  const e = hits.get(key);
+  if (!e || e.reset < now) {
+    hits.set(key, { n: 1, reset: now + windowMs });
+    return next();
+  }
+  if (++e.n > max) return void res.status(429).json({ error: "rate_limited" });
+  next();
+};
+
 // server/app.ts
 function buildApp() {
   const app = express();
   app.set("trust proxy", 1);
   app.disable("x-powered-by");
-  app.use((_req, res, next) => {
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    next();
-  });
+  app.use(securityHeaders);
   app.use((req, _res, next) => {
     try {
       const b = req.body;
@@ -2079,6 +2780,10 @@ function buildApp() {
   });
   app.use(express.json({ limit: "100kb" }));
   app.post("/api/bot/webhook", webhookHandler);
+  app.use("/api", noStoreApi, csrfGuard);
+  app.use("/api/cities", limit("cities", 60, 6e4));
+  app.use("/api/config", limit("config", 60, 6e4));
+  app.use("/api/admin", adminRouter);
   app.use("/api/app", attachUser, appRouter);
   app.use("/api", attachUser, api);
   app.use("/api", (_req, res) => res.status(404).json({ error: "not_found" }));

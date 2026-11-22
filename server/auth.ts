@@ -12,7 +12,7 @@ import {
   extendSubscription,
   isSubscribed,
 } from './db.ts';
-import { getBotUsername } from './bot.ts';
+import { getBotUsername, checkChannelSubs } from './bot.ts';
 import { randomToken } from './util.ts';
 
 declare global {
@@ -85,9 +85,15 @@ export async function attachUser(req: Request, _res: Response, next: NextFunctio
   }
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     res.status(401).json({ error: 'unauthorized', message: 'Войдите через Telegram' });
+    return;
+  }
+  // Непрерывная проверка подписок на каналы: отписался — любое действие в кабинете блокируется.
+  // Админ (ADMIN_TG_ID) проверку проходит всегда.
+  if (!(await checkChannelSubs(req.user.tgId))) {
+    res.status(403).json({ error: 'channels_required', message: 'Подпишитесь на обязательные каналы в боте Fracs, чтобы продолжить.' });
     return;
   }
   next();
