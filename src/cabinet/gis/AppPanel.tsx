@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError } from '../api';
 import { Check, Copy, Download, KeyRound, Loader2, Monitor, ShieldCheck } from 'lucide-react';
-import { btnGhost, btnOrange } from './ui';
+import { btnOrange } from './ui';
 
 interface Info {
   key: string;
@@ -74,8 +74,8 @@ export default function AppPanel() {
         <div className="rounded-2xl bg-gray-900 p-5 text-white sm:p-6">
           <h3 className="flex items-center gap-2 font-heading text-lg font-medium"><KeyRound className="h-5 w-5 text-[#F26522]" /> Ключ лицензии</h3>
           <div className="mt-4 break-all rounded-xl bg-white/10 px-3.5 py-3 font-mono text-[12px] leading-relaxed text-gray-100 select-all">{info.key}</div>
-          <button type="button" onClick={copy} className={`${btnGhost} mt-3 !border-white/20 !bg-white !text-gray-900`}>
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied ? 'Скопировано' : 'Скопировать ключ'}
+          <button type="button" onClick={copy} className="mt-3 inline-flex items-center gap-2 rounded-full bg-[#F26522] px-5 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#e05a1a] cursor-pointer">
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Скопировано' : 'Скопировать ключ'}
           </button>
           <p className="mt-4 flex items-start gap-2 text-[12.5px] leading-snug text-gray-300">
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />

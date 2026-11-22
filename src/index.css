@@ -122,6 +122,11 @@ h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-seri
   background: rgba(255, 178, 124, 0.05);
   border-color: rgba(255, 178, 124, 0.1);
 }
+.ember-cabinet .bg-gray-900,
+.ember-cabinet .bg-gray-800 {
+  background: linear-gradient(180deg, rgba(38, 28, 21, 0.9), rgba(24, 17, 13, 0.9));
+  border-color: rgba(255, 178, 124, 0.1);
+}
 .ember-cabinet .bg-orange-50,
 .ember-cabinet .bg-amber-50 {
   background: rgba(255, 178, 124, 0.08);
