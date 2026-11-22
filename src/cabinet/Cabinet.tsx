@@ -48,21 +48,21 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
   const dev = async () => { await api.devLogin(); onDone(); };
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-3xl p-8 shadow-sm border border-gray-200/80 text-center">
+    <div className="max-w-md mx-auto ember-card rounded-3xl p-8 text-center">
       <img
         src="/assets/aistudio/image_a4a02fc4.png"
         alt="Fracs"
         className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover shadow-sm"
       />
-      <h1 className="font-heading text-3xl font-medium tracking-[-0.02em] text-gray-900">Личный кабинет</h1>
-      <p className="text-[14px] text-gray-600 mt-2">Войдите через Telegram-бота — пароль и email не нужны.</p>
+      <h1 className="font-heading text-3xl font-medium tracking-[-0.02em] text-[#fbf3ea]">Личный кабинет</h1>
+      <p className="text-[14px] text-[#d9c4b5] mt-2">Войдите через Telegram-бота — пароль и email не нужны.</p>
 
       {link ? (
         <div className="mt-6">
           <a href={link.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[14px] font-medium transition-colors">
             <Send className="w-4 h-4" /> Открыть бота
           </a>
-          <p className="text-[13px] text-gray-500 mt-4 flex items-center justify-center gap-2">
+          <p className="text-[13px] text-[#a08c7c] mt-4 flex items-center justify-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin" /> Нажмите «Start» в Telegram — вход произойдёт сам
           </p>
         </div>
@@ -72,17 +72,17 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
         </button>
       )}
 
-      {error && <p className="text-[13px] text-red-600 mt-4">{error}</p>}
+      {error && <p className="text-[13px] text-[#ff8a5b] mt-4">{error}</p>}
       {config.devLogin && (
-        <button onClick={dev} type="button" className="mt-4 block mx-auto text-[13px] text-gray-500 hover:text-gray-900 underline underline-offset-4 cursor-pointer">
+        <button onClick={dev} type="button" className="mt-4 block mx-auto text-[13px] text-[#a08c7c] hover:text-[#fbf3ea] underline underline-offset-4 cursor-pointer">
           Войти без бота (dev-режим)
         </button>
       )}
-      <p className="mt-6 pt-4 border-t border-gray-100 text-[12px] text-gray-400 leading-relaxed">
+      <p className="mt-6 pt-4 border-t border-[rgba(255,178,124,0.1)] text-[12px] text-[#a08c7c] leading-relaxed">
         Входя в кабинет, вы принимаете{' '}
-        <a href="/terms" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">пользовательское соглашение</a>{' '}
+        <a href="/terms" className="text-[#d9c4b5] hover:text-[#fbf3ea] underline underline-offset-2">пользовательское соглашение</a>{' '}
         и{' '}
-        <a href="/privacy" className="text-gray-600 hover:text-gray-900 underline underline-offset-2">политику конфиденциальности</a>.
+        <a href="/privacy" className="text-[#d9c4b5] hover:text-[#fbf3ea] underline underline-offset-2">политику конфиденциальности</a>.
       </p>
     </div>
   );
@@ -90,9 +90,9 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
 
 function ProgramLocked({ onSubscribe }: { onSubscribe: () => void }) {
   return (
-    <div className="rounded-2xl bg-[#F9F9F9] p-8 text-center">
-      <h2 className="font-heading text-2xl font-medium text-gray-900">Программа Fracs Parser</h2>
-      <p className="mx-auto mt-2 max-w-xl text-[14px] text-gray-600">Реальный парсинг 2ГИС на вашем компьютере: любые города и ниши, фильтры, выгрузка в HTML/CSV/XLSX/JSON, Яндекс Карты. Программа и ключ открываются после оформления подписки.</p>
+    <div className="rounded-2xl ember-card-2 p-8 text-center">
+      <h2 className="font-heading text-2xl font-medium text-[#fbf3ea]">Программа Fracs Parser</h2>
+      <p className="mx-auto mt-2 max-w-xl text-[14px] text-[#d9c4b5]">Реальный парсинг 2ГИС на вашем компьютере: любые города и ниши, фильтры, выгрузка в HTML/CSV/XLSX/JSON, Яндекс Карты. Программа и ключ открываются после оформления подписки.</p>
       <button onClick={onSubscribe} className="mt-5 px-6 py-2.5 rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[14px] font-medium transition-colors cursor-pointer">Оформить подписку</button>
     </div>
   );
@@ -100,10 +100,10 @@ function ProgramLocked({ onSubscribe }: { onSubscribe: () => void }) {
 
 function ChannelsRequired({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="max-w-md mx-auto bg-white rounded-3xl p-8 shadow-sm border border-gray-200/80 text-center">
+    <div className="max-w-md mx-auto ember-card rounded-3xl p-8 text-center">
       <img src="/assets/aistudio/image_a4a02fc4.png" alt="Fracs" className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover shadow-sm" />
-      <h1 className="font-heading text-2xl font-medium text-gray-900">Подпишитесь на каналы</h1>
-      <p className="text-[14px] text-gray-600 mt-2">Доступ к кабинету открыт только при подписке на обязательные каналы Fracs. Откройте бота, подпишитесь на все каналы и вернитесь сюда.</p>
+      <h1 className="font-heading text-2xl font-medium text-[#fbf3ea]">Подпишитесь на каналы</h1>
+      <p className="text-[14px] text-[#d9c4b5] mt-2">Доступ к кабинету открыт только при подписке на обязательные каналы Fracs. Откройте бота, подпишитесь на все каналы и вернитесь сюда.</p>
       <button onClick={onRetry} className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[14px] font-medium transition-colors cursor-pointer">Проверить подписки</button>
     </div>
   );
@@ -167,7 +167,7 @@ export default function Cabinet() {
   }, [refresh]);
 
   if (!config || !me) {
-    return <div className="min-h-screen bg-[#EFEFEF] flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-gray-400" /></div>;
+    return <div className="min-h-screen ember-bg flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-[#a08c7c]" /></div>;
   }
 
   const subscribed = !!me.subscription?.active;
@@ -175,9 +175,9 @@ export default function Cabinet() {
   const logout = async () => { await api.logout(); setMe({ user: null }); };
 
   return (
-    <div className="min-h-screen bg-[#EFEFEF] text-gray-900 font-sans antialiased">
+    <div className="ember-cabinet min-h-screen ember-bg text-[#fbf3ea] font-sans antialiased">
       <header className="max-w-[1400px] mx-auto p-2 sm:p-3">
-        <nav className="bg-white rounded-full p-[5px] flex items-center justify-between gap-3">
+        <nav className="ember-glass rounded-full p-[5px] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <a href="/" aria-label="На сайт" className="flex items-center gap-2 group">
               <img
@@ -185,21 +185,21 @@ export default function Cabinet() {
                 alt="Fracs"
                 className="w-10 h-10 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform shrink-0"
               />
-              <span className="font-heading text-lg font-semibold tracking-tight text-gray-900 hidden sm:inline">Fracs</span>
+              <span className="font-heading text-lg font-semibold tracking-tight text-[#fbf3ea] hidden sm:inline">Fracs</span>
             </a>
-            <a href="/" className="hidden sm:inline-flex items-center gap-1.5 text-[13px] text-gray-600 hover:text-gray-900"><ArrowLeft className="w-3.5 h-3.5" /> На сайт</a>
+            <a href="/" className="hidden sm:inline-flex items-center gap-1.5 text-[13px] text-[#d9c4b5] hover:text-[#fbf3ea]"><ArrowLeft className="w-3.5 h-3.5" /> На сайт</a>
           </div>
           {me.user && (
             <div className="flex items-center gap-2 sm:gap-3 pr-1">
-              <span className="hidden sm:inline text-[13px] text-gray-600">{me.user.username ? `@${me.user.username}` : me.user.firstName}</span>
+              <span className="hidden sm:inline text-[13px] text-[#d9c4b5]">{me.user.username ? `@${me.user.username}` : me.user.firstName}</span>
               {subscribed ? (
-                <span className="text-[12px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-3 py-1.5">
+                <span className="text-[12px] font-medium text-[#ffb27c] bg-[rgba(255,178,124,0.1)] border border-[rgba(255,178,124,0.25)] rounded-full px-3 py-1.5">
                   Подписка до {new Date(me.subscription!.until!).toLocaleDateString('ru-RU')}
                 </span>
               ) : (
-                <button onClick={() => setPlansOpen(true)} className="text-[13px] font-medium text-white bg-gray-900 hover:bg-black rounded-full px-4 py-2 transition-colors cursor-pointer">Оформить подписку</button>
+                <button onClick={() => setPlansOpen(true)} className="text-[13px] font-medium text-white bg-[#F26522] hover:bg-[#e05a1a] rounded-full px-4 py-2 transition-colors cursor-pointer">Оформить подписку</button>
               )}
-              <button onClick={logout} aria-label="Выйти" className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer"><LogOut className="w-4 h-4" /></button>
+              <button onClick={logout} aria-label="Выйти" className="w-9 h-9 rounded-full bg-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.12)] flex items-center justify-center cursor-pointer"><LogOut className="w-4 h-4" /></button>
             </div>
           )}
         </nav>
@@ -212,20 +212,20 @@ export default function Cabinet() {
           <ChannelsRequired onRetry={refresh} />
         ) : (
           <>
-            {paidBanner && <p className="mb-4 text-[13px] text-gray-700 bg-white border border-gray-200 rounded-2xl px-4 py-3 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Ждём подтверждения оплаты…</p>}
-            <div className="inline-flex bg-white rounded-full p-1 mb-6">
+            {paidBanner && <p className="mb-4 text-[13px] text-[#d9c4b5] ember-glass rounded-2xl px-4 py-3 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Ждём подтверждения оплаты…</p>}
+            <div className="inline-flex ember-glass rounded-full p-1 mb-6">
               {([['maps', 'Карты 2ГИС', Map], ['tg', 'Telegram', Send]] as const).map(([id, label, Icon]) => (
-                <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-5 py-2 rounded-full text-[14px] font-medium transition-colors cursor-pointer ${tab === id ? 'bg-gray-900 text-white' : 'text-gray-600 hover:text-gray-900'}`}>
+                <button key={id} onClick={() => setTab(id)} className={`inline-flex items-center gap-2 px-5 py-2 rounded-full text-[14px] font-medium transition-colors cursor-pointer ${tab === id ? 'bg-[#F26522] text-white' : 'text-[#d9c4b5] hover:text-[#fbf3ea]'}`}>
                   <Icon className="w-4 h-4" /> {label}
                 </button>
               ))}
             </div>
-            <section className="bg-white rounded-3xl p-5 sm:p-8 border border-gray-200/80 shadow-sm">
+            <section className="ember-card rounded-3xl p-5 sm:p-8">
               {tab === 'maps' && (
                 <>
-                  <div className="inline-flex bg-[#F2F2F2] rounded-full p-1 mb-6">
+                  <div className="inline-flex bg-[rgba(255,255,255,0.04)] rounded-full p-1 mb-6">
                     {([['program', 'Программа'], ['demo', 'Демо']] as const).map(([id, label]) => (
-                      <button key={id} onClick={() => setMapsView(id)} className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${mapsViewNow === id ? 'bg-gray-900 text-white' : 'text-gray-600'}`}>{label}</button>
+                      <button key={id} onClick={() => setMapsView(id)} className={`px-5 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${mapsViewNow === id ? 'bg-[#F26522] text-white' : 'text-[#d9c4b5]'}`}>{label}</button>
                     ))}
                   </div>
                   {mapsViewNow === 'program' ? (
@@ -240,20 +240,20 @@ export default function Cabinet() {
                 </>
               )}
               {tab === 'tg' && <TgTool subscribed={subscribed} trialAvailable={me.trial?.tg ?? false} onSubscribe={() => setPlansOpen(true)} onSearched={() => refresh()} />}
-              {me.quota && tab === 'tg' && <p className="text-[12px] text-gray-400 mt-8">Запросов за 24 часа: {me.quota.used} из {me.quota.limit}</p>}
+              {me.quota && tab === 'tg' && <p className="text-[12px] text-[#a08c7c] mt-8">Запросов за 24 часа: {me.quota.used} из {me.quota.limit}</p>}
             </section>
           </>
         )}
       </main>
 
-      <footer className="max-w-[1400px] mx-auto px-3 sm:px-4 pb-8 flex flex-wrap items-center justify-between gap-3 text-[12px] text-gray-500">
-        <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="hover:text-gray-900 underline underline-offset-4">
+      <footer className="max-w-[1400px] mx-auto px-3 sm:px-4 pb-8 flex flex-wrap items-center justify-between gap-3 text-[12px] text-[#a08c7c]">
+        <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className="hover:text-[#fbf3ea] underline underline-offset-4">
           Поддержка: @HelpManage
         </a>
         <div className="flex flex-wrap items-center gap-4">
-          <a href="/privacy" className="hover:text-gray-900 underline underline-offset-4">Политика конфиденциальности</a>
-          <a href="/terms" className="hover:text-gray-900 underline underline-offset-4">Пользовательское соглашение</a>
-          <a href="/offer" className="hover:text-gray-900 underline underline-offset-4">Публичная оферта</a>
+          <a href="/privacy" className="hover:text-[#fbf3ea] underline underline-offset-4">Политика конфиденциальности</a>
+          <a href="/terms" className="hover:text-[#fbf3ea] underline underline-offset-4">Пользовательское соглашение</a>
+          <a href="/offer" className="hover:text-[#fbf3ea] underline underline-offset-4">Публичная оферта</a>
         </div>
       </footer>
 

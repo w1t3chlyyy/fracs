@@ -1,10 +1,10 @@
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config, type Plan } from './config.ts';
 import { isAdminInitData } from './webapp.ts';
-import { notify } from './bot.ts';
+import { notify, resolveChannel } from './bot.ts';
 import {
   extendSubscription, findUser, getPlans, getTraining, addLesson, updateLesson, deleteLesson,
-  listRecentUsers, resetPlans, setSubscription, updatePlan, type User,
+  listRecentUsers, resetPlans, setSubscription, updatePlan, getRequiredChannels, setRequiredChannels, type User,
 } from './db.ts';
 
 /**
@@ -131,4 +131,24 @@ adminRouter.post('/training/delete', h(async (req, res) => {
   if (!id) return void res.status(400).json({ error: 'bad_id' });
   const ok = await deleteLesson(id);
   res.json({ ok });
+}));
+
+/* ── обязательные каналы (редактируются из админки; хранятся в app_settings) ── */
+
+adminRouter.get('/channels', h(async (_req, res) => {
+  res.json({ channels: await getRequiredChannels() });
+}));
+
+adminRouter.post('/channels', h(async (req, res) => {
+  const raw = req.body?.channels;
+  if (!Array.isArray(raw)) return void res.status(400).json({ error: 'bad_channels', message: 'Ожидается массив строк.' });
+  const clean = await setRequiredChannels(raw.map((s: unknown) => String(s)));
+  res.json({ channels: clean });
+}));
+
+adminRouter.post('/channels/check', h(async (req, res) => {
+  const id = String(req.body?.id || '').trim();
+  if (!id) return void res.status(400).json({ error: 'bad_id', message: 'Укажите @username или ID канала.' });
+  const info = await resolveChannel(id);
+  res.json(info);
 }));

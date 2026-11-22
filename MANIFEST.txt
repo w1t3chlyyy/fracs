@@ -1,64 +1,56 @@
-Fracs — все изменения сессии: редизайн лендинга + админка + подписка/триалы
-Базовый комитет: 13fec96 (Create security.ts)
+Fracs — редактирование каналов в админке + ember-редизайн кабинета и админки
+============================================================================
 
-Как применить в вашем репозитории:
-  1. Распакуйте архив поверх корня репозитория (с сохранением путей).
-  2. Удалите файлы из DELETED.txt — это устаревшие артефакты сборки (старые server.ts и public/assets/aistudio/*).
-  3. npm install && npm run build — пересоберёт бандлы server.js и api/index.js, если ваш CI этого требует.
+Что нового в этом архиве (поверх предыдущего):
 
-Что внутри (по группам):
-  • Редизайн лендинга (ember-стиль): src/App.tsx, src/index.css, src/HalftoneFlowHero.tsx
-  • Админ-панель (новое): public/admin.html, public/admin.js, server/adminRoutes.ts, server/webapp.ts
-  • Подписка/триалы: server/payments.ts, server/auth.ts, server/db.ts, server/config.ts,
-    server/routes.ts, server/appRoutes.ts, server/app.ts, server/bot.ts, server/security.ts,
-    supabase/schema.sql, supabase/trial_usage.sql, src/cabinet/PlansModal.tsx, src/cabinet/Cabinet.tsx,
-    desktop/trial_worker.py, desktop/parser_2gis/license.py, desktop/parser_2gis/owners.py,
-    desktop/parser_2gis/yandex.py, api/tg.py
-  • Парсер/выгрузка (интеграция триалов/лицензий): desktop/parser_2gis/web/*, desktop/parser_2gis/writer/*
-  • Конфиг деплоя: vercel.json, .env.example
-  • Сборочные выходы (бандлы, пересобираются npm run build): server.js, api/index.js
+1. АДМИНКА — редактирование обязательных каналов (вкладка «Каналы»)
+   - Добавляйте/удаляйте каналы прямо в панели (@username или числовой ID -100…).
+   - Кнопка «Проверить» резолвит канал через бота (getChat) и проверяет, что бот —
+     админ в канале (иначе getChatMember чужих пользователей не сработает).
+   - Каналы хранятся в БД: app_settings, key 'required_channels' (JSON-массив).
+     Миграция НЕ нужна — таблица app_settings уже существует (используется для
+     тарифов и обучения). Ключ создаётся при первом сохранении из админки.
+   - Бот (checkChannelSubs, subsGateKb) и кабинет читают каналы из БД (in-memory
+     кэш 60с, refresh при сохранении). Если в БД пусто — fallback на env
+     REQUIRED_CHANNELS. Таким образом REQUIRED_CHANNELS теперь опционален:
+     задайте через админку, либо оставьте в env как значение по умолчанию.
 
-Исключено (шум): 115 файлов с mode-only изменениями (100644→100755, контент идентичен),
-  бинарные картинки с тем же размером, __pycache__/, *.pyc, package-lock.json (репо использует bun.lock).
+2. EMBER-РЕДИЗАЙН ЛИЧНОГО КАБИНЕТА
+   - Shell (навигация, логин-карта, табы, секция, футер, состояния locked/paid).
+   - PlansModal (модалка подписки), ResultPanel (статистика, карточки, замок),
+     RecordCard (карточка организации + чипы контактов).
+   - Scoped-CSS-блок .ember-cabinet в index.css: переводит светлые Tailwind-утилиты
+     вложенных инструментов (AppPanel/TgTool/DemoTool/MapsTool/History/…) в тёмную
+     палитру, не трогая оранжевые акценты (#F26522) и тёмные блоки.
 
-Полный список включённых файлов:
-.env.example
-api/index.js
-api/tg.py
-desktop/parser_2gis/license.py
-desktop/parser_2gis/owners.py
-desktop/parser_2gis/web/job.py
-desktop/parser_2gis/web/server.py
-desktop/parser_2gis/web/static/index.html
-desktop/parser_2gis/web/static/logo.png
-desktop/parser_2gis/web/static/tg.js
-desktop/parser_2gis/writer/record.py
-desktop/parser_2gis/writer/writers/csv_writer.py
-desktop/parser_2gis/writer/writers/html_writer.py
-desktop/parser_2gis/writer/writers/xlsx_writer.py
-desktop/parser_2gis/yandex.py
-public/admin.html
-public/admin.js
-server.js
-server/adminRoutes.ts
-server/app.ts
-server/appRoutes.ts
-server/auth.ts
-server/bot.ts
-server/config.ts
-server/db.ts
-server/payments.ts
-server/routes.ts
-server/security.ts
-server/webapp.ts
-src/App.tsx
-src/HalftoneFlowHero.tsx
-src/cabinet/Cabinet.tsx
-src/cabinet/PlansModal.tsx
-src/cabinet/ResultPanel.tsx
-src/cabinet/gis/RecordCard.tsx
-src/cabinet/gis/lib.ts
-src/cabinet/types.ts
-src/index.css
-supabase/schema.sql
-vercel.json
+3. АДМИНКА — ember-тема
+   - Палитра панели переведена в ember через CSS-переменные (--bg #100c0a,
+     --card #1e1611, --text #fbf3ea, акцент #f26522). Структура и логика без изменений.
+
+Файлы архива (по группам):
+  Каналы (бэкенд):     server/db.ts, server/bot.ts, server/adminRoutes.ts
+  Каналы (админ-UI):   public/admin.html, public/admin.js
+  Кабинет ember:        src/index.css, src/cabinet/Cabinet.tsx,
+                        src/cabinet/PlansModal.tsx, src/cabinet/ResultPanel.tsx,
+                        src/cabinet/gis/RecordCard.tsx
+  Сборочные бандлы:     server.js, api/index.js (пересобраны; можно пересобрать
+                        `npm run build`)
+
+Как применить:
+  1. Распакуйте архив поверх корня репозитория (с сохранением путей) — файлы
+     заменят предыдущие версии.
+  2. npm install && npm run build  (пересоберёт dist; server.js и api/index.js
+     уже в архиве, но пересборка не повредит).
+  3. Миграция БД НЕ требуется (app_settings существует; required_channels —
+     новый ключ, создаётся при первом сохранении из админки).
+  4. Зайдите в админ-панель (/admin.html через бота) → вкладка «Каналы» →
+     добавьте каналы, нажмите «Проверить» (убедитесь, что бот админ), «Сохранить».
+
+Проверено:
+  - tsc --noEmit: чисто.
+  - npm run build: успешно (Cabinet chunk 77KB, api/index.js 195KB, server.js 199KB).
+  - Кабинет: root bg rgb(16,12,10), nav ember-glass, section ember-card,
+    заголовки rgb(251,243,234), .bg-white вложенных инструментов → тёмный градиент.
+  - TgTool рендерится, ошибок консоли нет.
+  - /api/admin/channels → 403 без initData (роут смонтирован, requireAdmin работает).
+  - Админка: --bg/--card/--text в ember, вкладка и панель «Каналы» присутствуют.

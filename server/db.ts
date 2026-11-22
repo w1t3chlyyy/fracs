@@ -791,3 +791,61 @@ export async function deleteLesson(id: string): Promise<boolean> {
   await saveTraining(next);
   return true;
 }
+
+/* ── обязательные каналы (REQUIRED_CHANNELS): хранятся в app_settings
+   (key 'required_channels') и редактируются из админки. До первой записи
+   или при недоступной БД берётся fallback из env REQUIRED_CHANNELS.
+   Кэш in-memory на 60с — refresh при setRequiredChannels и по TTL. ── */
+
+let _channelsCache: { at: number; list: string[] } | null = null;
+const CHANNELS_TTL = 60_000;
+
+function normalizeChannels(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    const s = String(item).trim().replace(/^@/, '');
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
+/** Текущий список обязательных каналов (из БД, иначе из env). */
+export async function getRequiredChannels(): Promise<string[]> {
+  if (_channelsCache && Date.now() - _channelsCache.at < CHANNELS_TTL) return _channelsCache.list;
+  let list: string[] = [];
+  if (useSupabase) {
+    try {
+      const r = await sb().from('app_settings').select('value').eq('key', 'required_channels').maybeSingle();
+      if (!r.error && r.data?.value) {
+        const v = typeof r.data.value === 'string' ? JSON.parse(r.data.value) : r.data.value;
+        list = normalizeChannels(v);
+      }
+    } catch {
+      /* таблицы/ключа может не быть — fallback к env */
+    }
+  }
+  if (!list.length) list = config.requiredChannels.slice();
+  _channelsCache = { at: Date.now(), list };
+  return list;
+}
+
+/** Сохранить список обязательных каналов из админки. Возвращает нормализованный список. */
+export async function setRequiredChannels(input: string[]): Promise<string[]> {
+  const clean = normalizeChannels(input);
+  if (useSupabase) {
+    try {
+      const r = await sb()
+        .from('app_settings')
+        .upsert({ key: 'required_channels', value: clean, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (r.error) console.warn('[db] setRequiredChannels supabase:', r.error.message);
+    } catch (e: any) {
+      console.warn('[db] setRequiredChannels:', e?.message || e);
+    }
+  }
+  _channelsCache = { at: Date.now(), list: clean };
+  return clean;
+}

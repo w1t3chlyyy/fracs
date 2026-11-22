@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { config } from './config.ts';
 import {
   bindLoginToken, createLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
-  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson, type User,
+  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson, getRequiredChannels, type User,
 } from './db.ts';
 import { randomToken, safeEqual, sleep } from './util.ts';
 
@@ -35,6 +35,46 @@ export async function notify(tgId: number, text: string, extra: Record<string, u
   }
 }
 
+let botIdCache = 0;
+async function getBotId(): Promise<number> {
+  if (botIdCache || !config.botToken) return botIdCache;
+  const me = await tg('getMe');
+  if (me.ok) botIdCache = me.result.id;
+  return botIdCache;
+}
+
+/** Разрешить идентификатор канала (@username или -100… ID) через getChat и проверить,
+ *  что бот — админ (иначе getChatMember чужих пользователей не сработает).
+ *  Используется админкой для валидации канала перед сохранением. */
+export async function resolveChannel(ch: string): Promise<{
+  ok: boolean; id?: string; title?: string; username?: string; type?: string; botIsAdmin?: boolean; error?: string;
+}> {
+  const id = String(ch || '').trim().replace(/^@/, '');
+  if (!id) return { ok: false, error: 'empty' };
+  try {
+    const chat = await tg('getChat', { chat_id: id });
+    if (!chat.ok) return { ok: false, id, error: chat.description || 'канал не найден или бот не участник' };
+    const r = chat.result;
+    const bid = await getBotId();
+    let botIsAdmin = false;
+    if (bid) {
+      const m = await tg('getChatMember', { chat_id: id, user_id: bid }).catch(() => null as any);
+      const st = m?.result?.status;
+      botIsAdmin = st === 'administrator' || st === 'creator';
+    }
+    return {
+      ok: true,
+      id: String(r.id ?? id),
+      title: r.title || (r.username ? '@' + r.username : id),
+      username: r.username ? '@' + r.username : '',
+      type: r.type,
+      botIsAdmin,
+    };
+  } catch (e: any) {
+    return { ok: false, id, error: e?.message || 'не удалось разрешить канал' };
+  }
+}
+
 /* ── обязательные подписки на каналы (гейт перед активацией кабинета) ── */
 
 // Кэш результатов проверки (tgId -> {at, ok}), TTL 60с: getChatMember на каждый запрос — дорого.
@@ -42,15 +82,17 @@ const subsCache = new Map<number, { at: number; ok: boolean }>();
 const SUBS_TTL = 60_000;
 
 /** true — пользователь подписан на все обязательные каналы (или каналы не заданы / это админ).
- *  Экспортируется: cabinet и программа тоже проверяют подписки на каждом действии. */
+ *  Экспортируется: cabinet и программа тоже проверяют подписки на каждом действии.
+ *  Список каналов берётся из БД (getRequiredChannels) — редактируется из админки. */
 export async function checkChannelSubs(tgId: number): Promise<boolean> {
-  if (!config.requiredChannels.length) return true;
+  const channels = await getRequiredChannels();
+  if (!channels.length) return true;
   if (config.adminTgId > 0 && tgId === config.adminTgId) return true;
   const c = subsCache.get(tgId);
   if (c && Date.now() - c.at < SUBS_TTL) return c.ok;
   let ok = true;
   try {
-    for (const ch of config.requiredChannels) {
+    for (const ch of channels) {
       const r = await tg('getChatMember', { chat_id: ch, user_id: tgId });
       const st = r?.result?.status;
       if (!['creator', 'administrator', 'member', 'restricted'].includes(st)) { ok = false; break; }
@@ -67,9 +109,11 @@ export async function checkChannelSubs(tgId: number): Promise<boolean> {
 const channelUrl = (ch: string) => (ch.startsWith('-') ? null : `https://t.me/${ch}`);
 
 /** Клавиатура гейта: кнопки на каждый канал + «Я подписался — проверить».
- *  intent 'login' несёт исходный токен входа (вернём его в callback_data), 'ref' — без токена. */
-function subsGateKb(intent: 'ref' | 'login', param: string) {
-  const rows: { text: string; url?: string; callback_data?: string }[][] = config.requiredChannels.map((ch) => {
+ *  intent 'login' несёт исходный токен входа (вернём его в callback_data), 'ref' — без токена.
+ *  Async: список каналов читается из БД. */
+async function subsGateKb(intent: 'ref' | 'login', param: string) {
+  const channels = await getRequiredChannels();
+  const rows: { text: string; url?: string; callback_data?: string }[][] = channels.map((ch) => {
     const url = channelUrl(ch);
     const text = ch.startsWith('-') ? `📢 Канал ${ch}` : `📢 @${ch}`;
     return url ? [{ text, url }] : [{ text, callback_data: 'sub:nop' }];
@@ -590,14 +634,14 @@ export async function handleUpdate(update: any) {
     if (await checkChannelSubs(user.tgId)) {
       await finalizeStart(msg.chat.id, user, intent, intent === 'login' ? param : '');
     } else {
-      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb(intent, intent === 'login' ? param : '') });
+      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb(intent, intent === 'login' ? param : '') });
     }
     return;
   }
 
   // Любое другое действие — только после обязательных подписок. Отписался → блок.
   if (!(await checkChannelSubs(msg.from.id))) {
-    await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb('ref', '') });
+    await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb('ref', '') });
     return;
   }
 

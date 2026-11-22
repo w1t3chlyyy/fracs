@@ -251,6 +251,74 @@
     }
   });
 
+  /* ── каналы ── */
+  var CHANNELS = [];
+  async function loadChannels() {
+    var data = await api('/channels');
+    CHANNELS = (data.channels || []).slice();
+    if (!CHANNELS.length) CHANNELS = [''];
+    renderChannels();
+  }
+  function renderChannels() {
+    var box = document.getElementById('ch-list');
+    box.innerHTML = CHANNELS.map(function (ch, i) {
+      return '<div class="row ch-row" data-i="' + i + '" style="align-items:flex-start;margin-bottom:6px">' +
+        '<input class="ch-in" value="' + esc(ch) + '" placeholder="@username или -100…">' +
+        '<button class="btn sm ch-check" data-act="check">Проверить</button>' +
+        '<button class="btn danger sm ch-del" data-act="del" style="flex:0 0 auto">×</button></div>' +
+        '<div class="ch-status" style="font-size:12px;color:var(--muted);margin:-2px 0 10px"></div>';
+    }).join('');
+  }
+  document.getElementById('ch-list').addEventListener('input', function (e) {
+    var row = e.target.closest('.ch-row'); if (!row) return;
+    var i = Number(row.getAttribute('data-i'));
+    CHANNELS[i] = e.target.value;
+  });
+  document.getElementById('ch-list').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var row = b.closest('.ch-row'); if (!row) return;
+    var i = Number(row.getAttribute('data-i'));
+    var status = row.nextElementSibling;
+    if (b.dataset.act === 'del') {
+      CHANNELS.splice(i, 1);
+      if (!CHANNELS.length) CHANNELS = [''];
+      renderChannels();
+      return;
+    }
+    if (b.dataset.act === 'check') {
+      var id = (row.querySelector('.ch-in').value || '').trim();
+      if (!id) { toast('Введите канал', true); return; }
+      b.disabled = true; status.textContent = 'Проверяем…';
+      try {
+        var info = await api('/channels/check', { id: id });
+        if (info.ok) {
+          status.innerHTML = esc(info.title || id) + (info.username ? ' · ' + esc(info.username) : '') +
+            ' · тип: ' + esc(info.type || '?') +
+            (info.botIsAdmin ? ' · <span style="color:var(--accent)">✓ бот-админ</span>' : ' · <span style="color:var(--danger)">✗ бот не админ</span>');
+        } else {
+          status.innerHTML = '<span style="color:var(--danger)">✗ ' + esc(info.error || 'не найден') + '</span>';
+        }
+      } catch (err) { status.innerHTML = '<span style="color:var(--danger)">✗ ' + esc(err.message) + '</span>'; }
+      finally { b.disabled = false; }
+    }
+  });
+  document.getElementById('ch-add').addEventListener('click', function () {
+    CHANNELS.push(''); renderChannels();
+    var rows = document.querySelectorAll('.ch-row');
+    var last = rows[rows.length - 1]; if (last) last.querySelector('.ch-in').focus();
+  });
+  document.getElementById('ch-save').addEventListener('click', async function () {
+    var list = CHANNELS.map(function (s) { return (s || '').trim(); }).filter(Boolean);
+    var b = this; b.disabled = true;
+    try {
+      var data = await api('/channels', { channels: list });
+      CHANNELS = data.channels.length ? data.channels.slice() : [''];
+      renderChannels();
+      toast('Каналы сохранены: ' + data.channels.length);
+    } catch (err) { toast(err.message, true); }
+    finally { b.disabled = false; }
+  });
+
   /* ── старт ── */
   (async function init() {
     if (!initData) {
@@ -261,7 +329,7 @@
     }
     try {
       await api('/me');
-      await Promise.all([loadPlans(), loadUsers(), loadTraining()]);
+      await Promise.all([loadPlans(), loadUsers(), loadTraining(), loadChannels()]);
     } catch (err) {
       toast(err.message, true);
     }

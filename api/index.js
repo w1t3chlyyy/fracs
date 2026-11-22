@@ -682,6 +682,50 @@ async function deleteLesson(id) {
   await saveTraining(next);
   return true;
 }
+var _channelsCache = null;
+var CHANNELS_TTL = 6e4;
+function normalizeChannels(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const item of raw) {
+    const s = String(item).trim().replace(/^@/, "");
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+async function getRequiredChannels() {
+  if (_channelsCache && Date.now() - _channelsCache.at < CHANNELS_TTL) return _channelsCache.list;
+  let list = [];
+  if (useSupabase) {
+    try {
+      const r = await sb().from("app_settings").select("value").eq("key", "required_channels").maybeSingle();
+      if (!r.error && r.data?.value) {
+        const v = typeof r.data.value === "string" ? JSON.parse(r.data.value) : r.data.value;
+        list = normalizeChannels(v);
+      }
+    } catch {
+    }
+  }
+  if (!list.length) list = config.requiredChannels.slice();
+  _channelsCache = { at: Date.now(), list };
+  return list;
+}
+async function setRequiredChannels(input) {
+  const clean = normalizeChannels(input);
+  if (useSupabase) {
+    try {
+      const r = await sb().from("app_settings").upsert({ key: "required_channels", value: clean, updated_at: (/* @__PURE__ */ new Date()).toISOString() }, { onConflict: "key" });
+      if (r.error) console.warn("[db] setRequiredChannels supabase:", r.error.message);
+    } catch (e) {
+      console.warn("[db] setRequiredChannels:", e?.message || e);
+    }
+  }
+  _channelsCache = { at: Date.now(), list: clean };
+  return clean;
+}
 
 // server/util.ts
 import crypto3 from "node:crypto";
@@ -743,16 +787,50 @@ async function notify(tgId, text, extra = {}) {
     console.error("[bot] sendMessage", e);
   }
 }
+var botIdCache = 0;
+async function getBotId() {
+  if (botIdCache || !config.botToken) return botIdCache;
+  const me = await tg("getMe");
+  if (me.ok) botIdCache = me.result.id;
+  return botIdCache;
+}
+async function resolveChannel(ch) {
+  const id = String(ch || "").trim().replace(/^@/, "");
+  if (!id) return { ok: false, error: "empty" };
+  try {
+    const chat = await tg("getChat", { chat_id: id });
+    if (!chat.ok) return { ok: false, id, error: chat.description || "\u043A\u0430\u043D\u0430\u043B \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u0438\u043B\u0438 \u0431\u043E\u0442 \u043D\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A" };
+    const r = chat.result;
+    const bid = await getBotId();
+    let botIsAdmin = false;
+    if (bid) {
+      const m = await tg("getChatMember", { chat_id: id, user_id: bid }).catch(() => null);
+      const st = m?.result?.status;
+      botIsAdmin = st === "administrator" || st === "creator";
+    }
+    return {
+      ok: true,
+      id: String(r.id ?? id),
+      title: r.title || (r.username ? "@" + r.username : id),
+      username: r.username ? "@" + r.username : "",
+      type: r.type,
+      botIsAdmin
+    };
+  } catch (e) {
+    return { ok: false, id, error: e?.message || "\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u044C \u043A\u0430\u043D\u0430\u043B" };
+  }
+}
 var subsCache = /* @__PURE__ */ new Map();
 var SUBS_TTL = 6e4;
 async function checkChannelSubs(tgId) {
-  if (!config.requiredChannels.length) return true;
+  const channels = await getRequiredChannels();
+  if (!channels.length) return true;
   if (config.adminTgId > 0 && tgId === config.adminTgId) return true;
   const c = subsCache.get(tgId);
   if (c && Date.now() - c.at < SUBS_TTL) return c.ok;
   let ok = true;
   try {
-    for (const ch of config.requiredChannels) {
+    for (const ch of channels) {
       const r = await tg("getChatMember", { chat_id: ch, user_id: tgId });
       const st = r?.result?.status;
       if (!["creator", "administrator", "member", "restricted"].includes(st)) {
@@ -768,8 +846,9 @@ async function checkChannelSubs(tgId) {
   return ok;
 }
 var channelUrl = (ch) => ch.startsWith("-") ? null : `https://t.me/${ch}`;
-function subsGateKb(intent, param) {
-  const rows = config.requiredChannels.map((ch) => {
+async function subsGateKb(intent, param) {
+  const channels = await getRequiredChannels();
+  const rows = channels.map((ch) => {
     const url = channelUrl(ch);
     const text = ch.startsWith("-") ? `\u{1F4E2} \u041A\u0430\u043D\u0430\u043B ${ch}` : `\u{1F4E2} @${ch}`;
     return url ? [{ text, url }] : [{ text, callback_data: "sub:nop" }];
@@ -1271,12 +1350,12 @@ async function handleUpdate(update) {
     if (await checkChannelSubs(user.tgId)) {
       await finalizeStart(msg.chat.id, user, intent, intent === "login" ? param : "");
     } else {
-      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb(intent, intent === "login" ? param : "") });
+      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb(intent, intent === "login" ? param : "") });
     }
     return;
   }
   if (!await checkChannelSubs(msg.from.id)) {
-    await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: subsGateKb("ref", "") });
+    await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb("ref", "") });
     return;
   }
   if (cmd === "/privacy") {
@@ -2148,6 +2227,21 @@ adminRouter.post("/training/delete", h3(async (req, res) => {
   if (!id) return void res.status(400).json({ error: "bad_id" });
   const ok = await deleteLesson(id);
   res.json({ ok });
+}));
+adminRouter.get("/channels", h3(async (_req, res) => {
+  res.json({ channels: await getRequiredChannels() });
+}));
+adminRouter.post("/channels", h3(async (req, res) => {
+  const raw = req.body?.channels;
+  if (!Array.isArray(raw)) return void res.status(400).json({ error: "bad_channels", message: "\u041E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F \u043C\u0430\u0441\u0441\u0438\u0432 \u0441\u0442\u0440\u043E\u043A." });
+  const clean = await setRequiredChannels(raw.map((s) => String(s)));
+  res.json({ channels: clean });
+}));
+adminRouter.post("/channels/check", h3(async (req, res) => {
+  const id = String(req.body?.id || "").trim();
+  if (!id) return void res.status(400).json({ error: "bad_id", message: "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 @username \u0438\u043B\u0438 ID \u043A\u0430\u043D\u0430\u043B\u0430." });
+  const info = await resolveChannel(id);
+  res.json(info);
 }));
 
 // server/routes.ts
