@@ -24,7 +24,6 @@ export const HALFTONE_PALETTES = {
 export type HalftonePaletteName = keyof typeof HALFTONE_PALETTES
 
 export type HalftoneFlowHeroProps = {
-  badge?: string
   /** Headline. Wrap a word in *asterisks* for italic, \n for a line break. */
   title?: string
   description?: React.ReactNode
@@ -121,9 +120,6 @@ const CSS =
   ".hfh-fallback{position:absolute;inset:0;background:radial-gradient(70% 60% at 30% 30%,color-mix(in oklab,var(--hfh-flow) 55%,transparent),transparent 70%),radial-gradient(60% 50% at 75% 75%,color-mix(in oklab,var(--hfh-flow) 40%,transparent),transparent 70%)}" +
   ".hfh-scrim{position:absolute;inset:0;pointer-events:none;background:radial-gradient(55% 48% at 50% 50%,color-mix(in oklab,var(--hfh-ground) 82%,transparent),transparent 100%)}" +
   ".hfh-inner{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 20px;pointer-events:none}" +
-  ".hfh-badge{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:500;letter-spacing:.01em;" +
-  "background:color-mix(in oklab,var(--hfh-text) 9%,transparent);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--hfh-text) 18%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}" +
-  ".hfh-badge i{width:6px;height:6px;border-radius:50%;background:var(--hfh-hot);box-shadow:0 0 10px var(--hfh-hot)}" +
   ".hfh-h{margin:22px 0 0;font-family:'HFH Serif',ui-serif,Georgia,serif;font-weight:400;font-size:clamp(46px,7.2vw,112px);line-height:.95;letter-spacing:-.025em}" +
   ".hfh-h em{font-style:italic;color:var(--hfh-hot)}" +
   ".hfh-line{display:block}" +
@@ -176,7 +172,6 @@ const DEFAULT_PROMPTS = [
 ]
 
 export default function HalftoneFlowHero({
-  
   title = "Your words,\n*only sooner.*",
   description = "Quill learns your voice from what you've already written, then drafts emails, docs and replies you'd actually send.",
   prompts = DEFAULT_PROMPTS,
@@ -390,12 +385,6 @@ export default function HalftoneFlowHero({
         <div ref={host} className="hfh-host" aria-hidden="true" />
         <div className="hfh-scrim" aria-hidden="true" />
         <div className="hfh-inner">
-          {badge ? (
-            <span className="hfh-badge hfh-fade" style={{ transitionDelay: ".2s" }}>
-              <i aria-hidden="true" />
-              {badge}
-            </span>
-          ) : null}
           <h1 className="hfh-h">
             {lines.map((line, i) => (
               <span className="hfh-line" key={i}>
