@@ -176,7 +176,7 @@ const DEFAULT_PROMPTS = [
 ]
 
 export default function HalftoneFlowHero({
-  badge = "Writing that sounds like you",
+  
   title = "Your words,\n*only sooner.*",
   description = "Quill learns your voice from what you've already written, then drafts emails, docs and replies you'd actually send.",
   prompts = DEFAULT_PROMPTS,
