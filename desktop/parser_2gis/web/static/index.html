@@ -1148,4 +1148,441 @@
     // Preserve which curated districts were already checked across re-renders.
     var wasChecked={};
     [].forEach.call(box.querySelectorAll('input[data-city]:checked'),function(i){
-      wasChecked[i.getAttribute('data-city')+'
+      wasChecked[i.getAttribute('data-city')+' '+i.getAttribute('data-name')]=1;});
+    cities.forEach(function(c){
+      var ds=GEN.districts[c.code]||[];
+      if(!ds.length)return;
+      if(multi)html+='<div class="distGroup">'+esc(c.name)+'</div>';
+      html+=ds.map(function(d){
+        var on=wasChecked[c.code+' '+d]?' checked':'';
+        return '<label><input type="checkbox" data-city="'+esc(c.code)+'" data-name="'+esc(d)+'"'+on+'> '+esc(d)+'</label>';
+      }).join('');
+    });
+    GEN.customDists.forEach(function(d){
+      html+='<label><input type="checkbox" data-custom="1" data-name="'+esc(d)+'" checked> '+esc(d)+
+        '<span class="dcustom" data-remove="'+esc(d)+'" title="<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>"><svg class="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></span></label>';
+    });
+    if(!html && !cities.length)html='<div class="genDistHint">'+t('dist_pick_city')+'</div>';
+    box.innerHTML=html;
+    updateDistLabel();
+  }
+  function updateDistLabel(){
+    var n=$('genDists').querySelectorAll('input:checked').length;
+    $('genDistBtn').textContent=n?(t('district_sel')+n):t('no_district');
+  }
+  function curRubrics(){var ru=isRu();return GEN.rubrics.filter(function(r){return ru?r.is_russian:r.is_non_russian;});}
+  function renderGenRubrics(){
+    var term=$('genRubricSearch').value.trim().toLowerCase();
+    var list=curRubrics();
+    if(term)list=list.filter(function(r){return r.label.toLowerCase().indexOf(term)>-1;});
+    list=list.slice(0,300);
+    var html='<div class="ri'+(GEN.rubCode?'':' sel')+'" data-code="">'+t('no_rubric_opt')+'</div>';
+    html+=list.map(function(r){
+      return '<div class="ri'+(GEN.rubCode===r.code?' sel':'')+'" data-code="'+esc(r.code)+'">'+esc(r.label)+'</div>';
+    }).join('');
+    $('genRubList').innerHTML=html;
+  }
+  function renderGenQueryList(){
+    // Suggestions shown while typing the query (native datalist autocomplete).
+    $('genQueryList').innerHTML=curRubrics().map(function(r){
+      return '<option value="'+esc(r.label)+'">';}).join('');
+  }
+  function loadGenerator(){
+    if(GEN.loaded)return;
+    fetch('/api/generator').then(function(r){return r.json()}).then(function(d){
+      GEN.cities=d.cities; GEN.rubrics=d.rubrics; GEN.districts=d.districts||{}; GEN.loaded=true;
+      $('genCountry').innerHTML=d.countries.map(function(c){
+        return '<option value="'+esc(c.code)+'"'+(c.code==='kz'?' selected':'')+'>'+esc(c.name)+'</option>';}).join('');
+      renderGenCities(); renderGenDists(); renderGenRubrics(); renderGenQueryList();
+    }).catch(function(){});
+  }
+  $('gen').addEventListener('toggle',function(){if($('gen').open)loadGenerator();});
+  function setRubric(code,label){
+    GEN.rubCode=code||''; GEN.rubLabel=code?label:'';
+    $('genRubBtn').textContent=code?label:t('no_rubric');
+  }
+  $('genCountry').addEventListener('change',function(){
+    setRubric('',''); $('genRubricSearch').value=''; GEN.customDists=[];
+    renderGenCities();renderGenDists();renderGenRubrics();renderGenQueryList();});
+  $('genRubricSearch').addEventListener('input',renderGenRubrics);
+  $('genRubList').addEventListener('click',function(e){
+    var ri=e.target.closest('.ri'); if(!ri)return;
+    var code=ri.getAttribute('data-code');
+    setRubric(code, ri.textContent);
+    if(code && !$('genQuery').value.trim())$('genQuery').value=ri.textContent;
+    renderGenRubrics();
+    $('genRubWrap').classList.remove('open');
+  });
+  // Dropdowns (cities / rubric): open one at a time, close on outside click.
+  function toggleMsel(wrap){
+    var willOpen=!wrap.classList.contains('open');
+    [].forEach.call(document.querySelectorAll('.msel.open'),function(m){m.classList.remove('open');});
+    if(willOpen)wrap.classList.add('open');
+  }
+  $('genCitiesBtn').addEventListener('click',function(e){e.stopPropagation();toggleMsel($('genCitiesWrap'));});
+  $('genRubBtn').addEventListener('click',function(e){e.stopPropagation();toggleMsel($('genRubWrap'));});
+  $('genDistBtn').addEventListener('click',function(e){e.stopPropagation();toggleMsel($('genDistWrap'));});
+  $('genCitiesPanel').addEventListener('click',function(e){e.stopPropagation();});
+  $('genRubPanel').addEventListener('click',function(e){e.stopPropagation();});
+  $('genDistPanel').addEventListener('click',function(e){e.stopPropagation();});
+  // District picker: label update, select-all/none, custom add + remove.
+  $('genDists').addEventListener('change',updateDistLabel);
+  $('genDists').addEventListener('click',function(e){
+    var rm=e.target.closest('[data-remove]'); if(!rm)return;
+    e.preventDefault();
+    var name=rm.getAttribute('data-remove');
+    GEN.customDists=GEN.customDists.filter(function(d){return d!==name;});
+    renderGenDists();
+  });
+  $('genDistAll').addEventListener('click',function(e){e.preventDefault();
+    [].forEach.call($('genDists').querySelectorAll('input'),function(i){i.checked=true;});updateDistLabel();});
+  $('genDistNone').addEventListener('click',function(e){e.preventDefault();
+    [].forEach.call($('genDists').querySelectorAll('input'),function(i){i.checked=false;});updateDistLabel();});
+  $('genDistCustom').addEventListener('keydown',function(e){
+    if(e.key!=='Enter')return;
+    e.preventDefault();
+    var v=this.value.trim(); if(!v)return;
+    if(GEN.customDists.indexOf(v)<0)GEN.customDists.push(v);
+    this.value=''; renderGenDists();
+  });
+  $('genCities').addEventListener('change',function(e){
+    if(e.target.checked&&$('genCities').querySelectorAll('input:checked').length>3){e.target.checked=false;alert('За один запуск можно выбрать не более 3 городов.');}
+    updateCitiesLabel();renderGenDists();
+  });
+  document.addEventListener('click',function(){[].forEach.call(document.querySelectorAll('.msel.open'),function(m){m.classList.remove('open');});});
+  $('genAll').addEventListener('click',function(e){e.preventDefault();
+    var count=0;
+    var inputs=$('genCities').querySelectorAll('input');
+    [].forEach.call(inputs,function(i){i.checked=count++<3;});
+    if(inputs.length>3)alert('Выбраны первые 3 города.');
+    updateCitiesLabel();renderGenDists();});
+  $('genNone').addEventListener('click',function(e){e.preventDefault();
+    [].forEach.call($('genCities').querySelectorAll('input'),function(i){i.checked=false;});updateCitiesLabel();renderGenDists();});
+  $('genAdd').addEventListener('click',function(){
+    var q=$('genQuery').value.trim();
+    if(!q){alert(t('a_need_query'));return;}
+    var checked=$('genCities').querySelectorAll('input:checked');
+    if(!checked.length){alert(t('a_need_city'));return;}
+    var code=GEN.rubCode||'';
+    var existing=$('urls').value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+    var seen={}; existing.forEach(function(u){seen[u]=1;});
+    var added=0;
+    // Custom districts apply to every selected city; curated ones only to their own city.
+    var customChecked=[].map.call($('genDists').querySelectorAll('input[data-custom]:checked'),
+      function(i){return i.getAttribute('data-name');});
+    function build(domain,cityCode,district){
+      var query=district?(q+' '+district):q;
+      var url='https://2gis.'+domain+'/'+cityCode+
+        '/search/'+encodeURIComponent(query)+(code?'/rubricId/'+code:'')+'/filters/sort=name';
+      if(!seen[url]){existing.push(url);seen[url]=1;added++;}
+      if(district)LINKMETA[url]=district;  // tag for per-district Excel sheets
+    }
+    [].forEach.call(checked,function(i){
+      var cityCode=i.getAttribute('data-code'), domain=i.getAttribute('data-domain');
+      var dists=[].map.call(
+        $('genDists').querySelectorAll('input[data-city="'+cityCode+'"]:checked'),
+        function(d){return d.getAttribute('data-name');}
+      ).concat(customChecked);
+      if(!dists.length){build(domain,cityCode,'');}
+      else dists.forEach(function(d){build(domain,cityCode,d);});
+    });
+    $('urls').value=existing.join('\n');
+    saveLinkMeta();
+    var btn=$('genAdd'); btn.textContent=t('added')+added;
+    setTimeout(function(){btn.textContent=t('add_links');},1300);
+  });
+
+  // Restore state on load: preload generator data, show last results / resume a job.
+  (function init(){
+    var savedLang='ru'; try{savedLang=localStorage.getItem('lang')||'ru';}catch(_){}
+    applyLang(savedLang);
+    loadGenerator();
+    loadHistory();
+    fetch('/api/status?cursor=0').then(function(r){return r.json()}).then(function(d){
+      cursor=d.cursor; setStatus(d.status);
+      if(d.logs && d.logs.length){$('logwrap').style.display='';$('logbox').textContent=d.logs.join('\n');}
+      if(d.running){$('run').style.display='none';$('stop').style.display='';
+        if(poll)clearInterval(poll);poll=setInterval(tick,700);}
+      if(d.count){fetch('/api/results').then(function(r){return r.json()}).then(function(res){
+        records=res.records||[];renderGrid();dlEnabled(records.length>0);});}
+    }).catch(function(){});
+  })();
+})();
+</script>
+<script>
+/* ── Tab switching (icon rail) + Обучение ── */
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  function setTab(tab){
+    [].forEach.call(document.querySelectorAll('.side-panel'),function(p){p.hidden=p.getAttribute('data-panel')!==tab;});
+    [].forEach.call(document.querySelectorAll('.work-panel'),function(p){p.hidden=p.getAttribute('data-panel')!==tab;});
+    [].forEach.call(document.querySelectorAll('.topbar [data-tabs]'),function(el){
+      var ts=(el.getAttribute('data-tabs')||'').split(' ');
+      el.style.display = ts.indexOf(tab)>=0 ? '' : 'none';
+    });
+    [].forEach.call(document.querySelectorAll('.rail button[data-tab]'),function(b){
+      b.classList.toggle('on',b.getAttribute('data-tab')===tab);
+    });
+    if(tab==='learn') loadLearn();
+    if(tab==='tg' && typeof window.tgRender==='function') window.tgRender();
+  }
+  [].forEach.call(document.querySelectorAll('.rail button[data-tab]'),function(b){
+    b.addEventListener('click',function(){setTab(b.getAttribute('data-tab'));});
+  });
+  $('rail-lic').addEventListener('click',function(){
+    fetch('/api/license').then(function(r){return r.json()}).then(function(st){
+      if(st.ok){
+        var until=st.until?new Date(st.until).toLocaleDateString('ru-RU'):'—';
+        alert('Лицензия активна. Тариф: '+(st.plan||'—')+'. Действует до: '+until+'.');
+      }else{ document.getElementById('lic').style.display='flex'; }
+    }).catch(function(){ document.getElementById('lic').style.display='flex'; });
+  });
+  $('learnTabs').addEventListener('click',function(e){
+    var b=e.target.closest('button[data-lt]'); if(!b)return;
+    [].forEach.call($('learnTabs').querySelectorAll('button'),function(x){x.classList.toggle('on',x===b);});
+    if(b.getAttribute('data-lt')==='strat'){
+      $('learnBody').innerHTML='<div class="learn-empty">Стратегии скоро появятся.</div>';
+    }else loadLearn();
+  });
+  $('nextLesson').addEventListener('click',function(){
+    var ls=$('learnBody').querySelectorAll('details:not([open])');
+    if(ls.length){ls[0].open=true;ls[0].scrollIntoView({behavior:'smooth',block:'center'});}
+  });
+  function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  var learnLoaded=false;
+  function loadLearn(){
+    var body=$('learnBody'); if(!body||learnLoaded)return; learnLoaded=true;
+    body.innerHTML='<div class="learn-empty">Загрузка…</div>';
+    fetch('/api/training').then(function(r){return r.json()}).then(function(d){
+      if(!d.ok){body.innerHTML='<div class="learn-empty">'+esc(d.message||'Раздел недоступен.')+'</div>';return;}
+      var ls=d.lessons||[];
+      body.innerHTML = ls.length ? ls.map(function(l,i){
+        return '<details class="lesson"'+(i===0?' open':'')+'><summary>'+esc(l.title)+'</summary><div class="lesson-body">'+esc(l.body)+'</div></details>';
+      }).join('') : '<div class="learn-empty">Уроков пока нет.</div>';
+    }).catch(function(){body.innerHTML='<div class="learn-empty">Не удалось загрузить. Проверьте подключение.</div>';});
+  }
+  window.setTab=setTab; window.loadLearn=loadLearn;
+  setTab('parse');
+})();
+/* ── Telegram tab ── */
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
+  var safeUrl=function(u){u=(u==null?'':String(u)).trim();return /^(https?:\/\/|tg:\/\/)/i.test(u)?u:'#';};
+  var rows=[];
+  function render(){
+    $('tgGrid').innerHTML=rows.map(function(r){
+      var d=r.date?new Date(r.date).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+      return '<article class="tg-card"><div class="head"><h2>'+esc(r.name)+(r.username?' <span style="font-weight:400;color:var(--muted)">@'+esc(r.username)+'</span>':'')+'</h2><span class="meta">'+esc(d)+'</span></div><div class="meta">'+esc(r.chat)+'</div><div class="txt">'+esc(r.text.length>400?r.text.slice(0,400)+'…':r.text)+'</div><div class="acts"><a class="b tg" target="_blank" rel="noopener" href="'+esc(safeUrl(r.link))+'">Написать</a></div></article>';
+    }).join('');
+    var csv=$('tgCsv'); if(csv) csv.style.display=rows.length?'':'none';
+  }
+  window.tgRender=render;
+  function run(){
+    var raw=$('tgPhrase').value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+    var phrase=raw[0]||'';
+    if(phrase.length<3){$('tgMsg').textContent='Опишите, что ищут: например, «нужен сайт».';return;}
+    var btn=$('tgGo'), orig=btn.textContent; btn.disabled=true; btn.textContent='Ищем…';
+    $('tgMsg').textContent='Поиск идёт до 40 секунд…';
+    fetch('/api/tg/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phrase:phrase,days:parseInt($('tgDays').value,10)})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(!d.ok){$('tgMsg').textContent=d.error==='license'?'Подписка закончилась.':(d.error||'Ошибка поиска');return;}
+        rows=d.rows||[]; render();
+        $('tgMsg').textContent=rows.length?('Найдено: '+rows.length):'Ничего свежего не нашлось — попробуйте другую формулировку.';
+      })
+      .catch(function(){$('tgMsg').textContent='Нет связи с программой.';})
+      .then(function(){btn.disabled=false;btn.textContent=orig;});
+  }
+  $('tgGo').addEventListener('click',run);
+  $('tgPhrase').addEventListener('keydown',function(e){if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))run();});
+  $('tgGenBtn').addEventListener('click',function(){$('tgMsg').textContent='FracsAI: генерация похожих фраз скоро будет доступна.';});
+  $('tgCsv').addEventListener('click',function(){
+    var cell=function(v){var s=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
+    var cols=[['Username','username'],['Имя','name'],['Чат','chat'],['Сообщение','text'],['Дата','date'],['Ссылка','link']];
+    var csv='\uFEFF'+[cols.map(function(c){return cell(c[0]);}).join(';')].concat(rows.map(function(r){return cols.map(function(c){return cell(r[c[1]]);}).join(';');})).join('\r\n');
+    var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download='telegram-leads.csv';document.body.appendChild(a);a.click();a.remove();
+  });
+  $('tgGrid').addEventListener('click',function(e){
+    var ext=e.target.closest('a[target="_blank"]');if(!ext)return;e.preventDefault();
+    var u=ext.getAttribute('href');
+    fetch('/api/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})})
+      .then(function(r){if(!r.ok)window.open(u,'_blank','noopener');})
+      .catch(function(){window.open(u,'_blank','noopener');});
+  });
+})();
+/* AI-Агент tab — real chat that drives site generation through the backend. */
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  function addMsg(cls,text){var c=$('aiChat');var m=document.createElement('div');m.className='ai-msg '+cls;m.textContent=text;c.appendChild(m);c.scrollTop=c.scrollHeight;}
+  function setFiles(files){
+    var box=document.querySelector('.ai-files'); if(!box)return;
+    box.innerHTML=files.map(function(f){
+      var ic=f.type==='png'
+        ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>'
+        :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>';
+      return '<a class="ai-file" href="'+f.url+'" download><span class="fic">'+ic+'</span>'+
+        '<span class="fn">'+f.name+'</span>'+
+        '<span class="fup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span></a>';
+    }).join('');
+  }
+
+  var currentJob=null, poller=null;
+
+  function statusMsg(s){
+    return {queued:'В очереди…',running:'Генерируем сайт…',preview:'Готов превью — посмотрите и одобрите.',
+      building:'Собираем ZIP и открытку с QR…',done:'Готово! Файлы можно скачать справа.',
+      failed:'Ошибка генерации.',cancelled:'Отменено.'}[s]||s;
+  }
+
+  function poll(){
+    if(!currentJob)return;
+    fetch('/api/ai/status/'+currentJob).then(function(r){return r.json()}).then(function(d){
+      if(!d.ok){addMsg('sys',d.error||'Ошибка статуса');clearInterval(poller);poller=null;return;}
+      if(d.logs&&d.logs.length){d.logs.forEach(function(l){addMsg('bot',l);});}
+      if(d.preview_url){
+        var link='/api/ai/preview/'+currentJob;
+        addMsg('bot','Превью готово: '+link+' — откройте в новой вкладке. Если устраивает — нажмите «Одобрить».');
+        var approveBtn=$('aiApprove'); if(approveBtn)approveBtn.style.display='';
+        var openBtn=$('aiOpenPreview'); if(openBtn){openBtn.style.display='';openBtn.href=link;openBtn.target='_blank';}
+      }
+      if(d.files&&d.files.length){setFiles(d.files);}
+      if(d.status==='done'||d.status==='failed'||d.status==='cancelled'){
+        clearInterval(poller);poller=null;
+        var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
+        if(d.status==='done'){addMsg('bot','Файлы собраны: ZIP со всем сайтом и PNG-открытка с QR-кодом — справа в «Передача файлов». Их можно переслать клиентам.');}
+        if(d.status==='failed'){addMsg('sys','Генерация не удалась: '+(d.error||''));
+          var ap=$('aiApprove');if(ap)ap.style.display='none';
+          var op=$('aiOpenPreview');if(op)op.style.display='none';}
+      }
+      setStatusPill(d.status);
+    }).catch(function(){});
+  }
+
+  function setStatusPill(s){
+    var pill=$('aiStatusPill'); if(!pill)return;
+    pill.className='ai-status '+s;
+    pill.textContent=statusMsg(s);
+  }
+
+  function startAgent(prompt){
+    var key=$('aiKey').value.trim();
+    if(!key){addMsg('sys','Введите API-ключ в поле слева.');return;}
+    var model=$('aiModel').value||'glm-4.6';
+    var provider=$('aiProvider').value||'Z.ai';
+    var extra=$('aiExtra').value||'';
+    addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
+    addMsg('bot','Запускаю агента…');
+    fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({prompt:prompt||'',api_key:key,model:model,provider:provider,extra:extra})})
+      .then(function(r){return r.json()}).then(function(d){
+        if(!d.ok){addMsg('sys',d.error||'Не удалось запустить агент.');return;}
+        currentJob=d.job_id;
+        var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
+        var ap=$('aiApprove');if(ap)ap.style.display='none';
+        var op=$('aiOpenPreview');if(op)op.style.display='none';
+        if(poller)clearInterval(poller);poller=setInterval(poll,1200);poll();
+      }).catch(function(e){addMsg('sys','Нет связи с бэкендом: '+e);});
+  }
+
+  $('aiRun').addEventListener('click',function(){
+    var p=$('aiPrompt')&&$('aiPrompt').value.trim()||'';
+    startAgent(p);
+  });
+  $('aiSend').addEventListener('click',function(){
+    var inp=$('aiPrompt'); if(!inp)return; var v=inp.value.trim(); if(!v)return;
+    inp.value=''; startAgent(v);
+  });
+  $('aiPrompt').addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('aiSend').click();}
+  });
+  $('aiApprove').addEventListener('click',function(){
+    if(!currentJob)return;
+    addMsg('user','Одобряю — соберите ZIP и открытку.');
+    fetch('/api/ai/approve/'+currentJob,{method:'POST'}).then(function(r){return r.json()})
+      .then(function(d){if(!d.ok)addMsg('sys',d.error||'Не удалось начать сборку.');else addMsg('bot','Сборка пошла — ZIP и PNG-открытка появятся через несколько секунд.');})
+      .catch(function(){addMsg('sys','Нет связи.');});
+  });
+  $('aiTestBtn').addEventListener('click',function(){
+    var r=$('aiTestRes');r.textContent='Пингуем API…';
+    var key=$('aiKey').value.trim();
+    fetch('/api/ai/test',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({api_key:key,model:$('aiModel').value||'glm-4.6',provider:$('aiProvider').value||'Z.ai'})})
+      .then(function(r){return r.json()}).then(function(d){
+        r.textContent=d.ok?('OK · модель ответила за '+(d.ms||'?')+' мс'):(d.error||'Ошибка');
+        r.style.color=d.ok?'#34d399':'#f87171';
+      }).catch(function(){r.textContent='Нет связи с бэкендом.';r.style.color='#f87171';});
+  });
+  $('aiExport').addEventListener('click',function(){
+    if(!currentJob){addMsg('sys','Сначала запустите генерацию.');return;}
+    addMsg('bot','Скачиваю ZIP со всем сайтом…');
+    window.location='/api/ai/download/'+currentJob+'?type=zip';
+  });
+})();
+
+</script>
+<script>
+(function(){
+  var box=document.getElementById('lic'),err=document.getElementById('lic-err'),txt=document.getElementById('lic-text');
+  var MSG={no_key:'',invalid:'Ключ не подошёл. Скопируйте его из кабинета на сайте.',expired:'Подписка закончилась. Оформите продление на сайте Fracs.',
+    offline:'Нет связи с сервером Fracs. Проверьте подключение.',not_configured:'Сайт Fracs не настроен (обратитесь к разработчику).'};
+
+  function renderPlans(plans, current){
+    var grid=document.getElementById('lic-plans');
+    if(!plans||!plans.length){grid.innerHTML='<div class="hint">Тарифы загружаются…</div>';return;}
+    grid.innerHTML=plans.map(function(p){
+      var isCurrent=current&&current.plan===p.id;
+      var price=p.priceRub?p.priceRub.toLocaleString('ru-RU')+' ₽':'—';
+      var days=p.days?(' / '+p.days+' дн.'):'';
+      return '<div class="plan'+(isCurrent?' active-plan':'')+'" data-plan="'+p.id+'">'+
+        '<div><div class="pn">'+p.title+(p.badge?(' · '+p.badge):'')+'</div>'+
+        '<div class="pd">'+(p.description||'')+'</div></div>'+
+        '<div class="pp">'+price+'<small>'+days+'</small></div></div>';
+    }).join('');
+    [].forEach.call(grid.querySelectorAll('.plan'),function(el){
+      el.addEventListener('click',function(){
+        var pid=el.getAttribute('data-plan');
+        var site=document.getElementById('lic-site');
+        if(site&&site.href){window.open(site.href+'?plan='+encodeURIComponent(pid)+'&renew=1','_blank','noopener');}
+        else{window.open('/app?plan='+encodeURIComponent(pid),'_blank','noopener');}
+      });
+    });
+  }
+
+  function show(st){
+    if(st.site){var a=document.getElementById('lic-site');a.href=st.site+'/app';}
+    txt.textContent=st.reason==='expired'?'Подписка закончилась — оформите продление.':(st.ok?'Подписка активна. Здесь можно продлить или сменить тариф.':'Выберите тариф, чтобы открыть парсинг 2ГИС, Telegram-поиск и AI-Агент.');
+    err.textContent=(st.reason&&st.reason!=='expired'&&MSG[st.reason])||'';
+    var sb=document.getElementById('lic-status');
+    if(st.ok&&st.until){
+      var d=new Date(st.until).toLocaleDateString('ru-RU');
+      sb.style.display='block';sb.textContent='Подписка активна до '+d+' (тариф: '+(st.plan||'?')+')';
+    }else{sb.style.display='none';}
+    box.style.display='flex';
+    loadPlans();
+  }
+
+  function loadPlans(){
+    fetch('/api/plans').then(function(r){return r.json()}).then(function(d){
+      var lic=fracs_license_state||{};
+      renderPlans(d.plans||[], lic);
+    }).catch(function(){renderPlans([],null);});
+  }
+
+  var fracs_license_state={};
+  function check(){fetch('/api/license').then(function(r){return r.json()}).then(function(st){
+    fracs_license_state=st;
+    if(st.ok){box.style.display='none';}else{show(st);}}).catch(function(){});}
+  document.getElementById('lic-go').onclick=function(){
+    err.textContent='';
+    fetch('/api/license',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:document.getElementById('lic-key').value})})
+      .then(function(r){return r.json()}).then(function(st){if(st.ok){location.reload();}else{show(st);if(!st.reason||st.reason==='no_key')err.textContent=MSG.invalid;}});
+  };
+  var toggle=document.createElement('button');toggle.className='toggle-key';toggle.textContent='Уже есть ключ? Ввести вручную';
+  toggle.onclick=function(){var b=document.getElementById('lic-key-block');b.style.display=b.style.display==='none'?'block':'none';};
+  var tk=document.getElementById('lic-key-block');if(tk){tk.parentNode.insertBefore(toggle,tk);}
+  var of=window.fetch;window.fetch=function(){return of.apply(this,arguments).then(function(r){if(r.status===402){check();}return r;});};
+  check();setInterval(check,60000);
+})();
+</script>
