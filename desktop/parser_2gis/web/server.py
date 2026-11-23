@@ -279,7 +279,7 @@ def create_app():
         site = fracs_license._site()
         if site:
             try:
-                r = requests.get(site + '/api/config', timeout=8)
+                r = requests.get(site + '/api/plans', timeout=8)
                 if r.ok:
                     data = r.json()
                     plans = data.get('plans') or []
