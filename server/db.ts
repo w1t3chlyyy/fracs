@@ -11,7 +11,7 @@ export interface User {
   firstName: string;
   createdAt: string;
   subscriptionUntil: string | null;
-  /** Тариф, по которому выдана подписка (base/month/quarter/pro). */
+  /** Тариф, по которому выдана подписка (start/pro/ultra; legacy: month/quarter). */
   planId: string | null;
 }
 
@@ -173,7 +173,9 @@ export async function getActiveFeatures(u: User): Promise<string[]> {
   if (!isSubscribed(u)) return [];
   if (!u.planId) return ['base'];
   const plans = await getPlans();
-  const plan = plans.find((p) => p.id === u.planId);
+  // Подписки, купленные до перехода на Start/PRO/Ultra: month/quarter = уровень Start.
+  const planId = u.planId === 'month' || u.planId === 'quarter' ? 'start' : u.planId;
+  const plan = plans.find((p) => p.id === planId);
   return plan?.features ?? ['base'];
 }
 

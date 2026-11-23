@@ -557,6 +557,12 @@
     <!-- ═══ AI-АГЕНТ — side panel ═══ -->
     <div class="side-panel" data-panel="ai" hidden>
       <span class="tab-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/></svg>Настройка</span>
+      <button type="button" id="aiFracsBtn" style="display:none;width:100%;margin-bottom:12px;
+        padding:12px 16px;border-radius:14px;border:1px solid rgba(52,211,153,.35);cursor:pointer;
+        background:linear-gradient(135deg,rgba(52,211,153,.16),rgba(52,211,153,.05));color:#34d399;
+        font-weight:600;font-size:14px;text-align:left">
+        ⚡ Fracs AI — встроенная нейросеть<span style="display:block;font-weight:400;font-size:11.5px;color:#9ba1a6;margin-top:2px">Включена в Ultra · свой ключ не нужен</span>
+      </button>
       <div class="group">
         <label class="h">API ключ агента</label>
         <textarea id="aiKey" placeholder="sk_..." style="min-height:90px;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
@@ -738,7 +744,7 @@
 <div id="lic"><div class="box">
   <div class="lic-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6z"/></svg></div>
   <h2>Подписка Fracs</h2>
-  <p id="lic-text">Выберите тариф, чтобы открыть парсинг 2ГИС, Telegram-поиск и AI-Агент.</p>
+  <p id="lic-text">Выберите тариф: Start (Telegram + карты), PRO (владельцы, обучение, AI со своим провайдером) или Ultra (всё + Fracs AI).</p>
   <div id="lic-status" style="display:none;font-size:13px;color:#34d399;font-weight:600;margin-bottom:10px"></div>
   <div id="lic-plans" class="plans-grid"></div>
   <div id="lic-key-block" style="margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:14px;display:none">
@@ -777,7 +783,7 @@
       st_ready:'Ready', st_running:'Parsing…', st_done:'Done', st_stopped:'Stopped', st_error:'Error', mark:'Contacted', mark_on:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Contacted', note_ph:'Note…', hist_open:'Open', hist_merge:' Merge selected (dedup)', recs_short:'rec.', more:'more',
       a_need_url:'Provide at least one 2GIS link', a_need_query:'Enter a query', a_need_city:'Select at least one city', a_server:'Server unavailable: ', a_start_err:'Start error', a_need_select:'Check the records to merge', a_merge_err:'Merge error', c_del:'Delete this record from history?',
       lt_lessons:'Training', lt_strat:'Strategies', next_lesson:'Next lesson ',
-      tg_ai_hint:'Enter a phrase — FracsAI will generate 20 similar ones and parse them after your approval.', tg_d1:'1 day', tg_d2:'2 days', tg_d3:'3 days', tg_days:'Period', tg_gen_btn:'Generate similar', tg_phrase_hint:'One phrase per line. Multiple phrases allowed.', tg_phrase_label:'Phrases', owners_btn:'Business owners', owners_title:'Third pass: look up company owners (director / sole trader) in open registries (PRO)', auto_owners:'Look up business owners after parsing'
+      tg_ai_hint:'Enter a phrase — FracsAI will generate 20 similar ones and parse them after your approval.', tg_d1:'1 day', tg_d2:'2 days', tg_d3:'3 days', tg_days:'Period', tg_gen_btn:'Generate similar', tg_phrase_hint:'One phrase per line. Multiple phrases allowed.', tg_phrase_label:'Phrases', owners_btn:'Business owners', owners_title:'Third pass: look up company owners (director / sole trader) in open registries (PRO и Ultra)', auto_owners:'Look up business owners after parsing'
     },
     ru:{
       urls_label:'Направления', urls_hint:'По одной ссылке 2GIS на строку. Можно несколько городов и рубрик.',
@@ -814,7 +820,7 @@
       a_need_select:'Отметьте галочками записи для объединения', a_merge_err:'Ошибка объединения',
       c_del:'Удалить эту запись из истории?',
       lt_lessons:'Обучение', lt_strat:'Стратегии', next_lesson:'Следующий урок ',
-      tg_ai_hint:'Введите фразу — FracsAI сделает 20 похожих и по ним будет идти парсинг после вашего одобрения.', tg_d1:'За 1 день', tg_d2:'За 2 дня', tg_d3:'За 3 дня', tg_days:'Период', tg_gen_btn:'Сгенерировать похожие', tg_phrase_hint:'По одной фразе на строку. Можно несколько фраз.', tg_phrase_label:'Фразы', owners_btn:'Владельцы', owners_title:'Третий проход: поиск владельцев компании (директор / ИП) в открытых реестрах (PRO)', auto_owners:'искать владельцев после парсинга'
+      tg_ai_hint:'Введите фразу — FracsAI сделает 20 похожих и по ним будет идти парсинг после вашего одобрения.', tg_d1:'За 1 день', tg_d2:'За 2 дня', tg_d3:'За 3 дня', tg_days:'Период', tg_gen_btn:'Сгенерировать похожие', tg_phrase_hint:'По одной фразе на строку. Можно несколько фраз.', tg_phrase_label:'Фразы', owners_btn:'Владельцы', owners_title:'Третий проход: поиск владельцев компании (директор / ИП) в открытых реестрах (PRO и Ultra)', auto_owners:'искать владельцев после парсинга'
     }
   };
   var LANG='en', lastStatus='idle';
@@ -1406,9 +1412,36 @@
 })();
 </script>
 <script>
-/* ── Tab switching (icon rail) + Обучение ── */
+/* ── Tab switching (icon rail) + Обучение + тарифные фичи ── */
 (function(){
   var $=function(id){return document.getElementById(id)};
+  /* Скрытие недоступного по тарифу: Start — Telegram+карты; PRO — +владельцы,
+     обучение и AI со своим провайдером; Ultra — +Fracs AI. */
+  window.FRACS_FEATURES=[];
+  window.applyFracsFeatures=function(features){
+    try{features=features||[];window.FRACS_FEATURES=features;
+      var has=function(c){return features.indexOf(c)>=0;};
+      var aiOk=has('ai_provider')||has('fracs_ai');
+      var tab=function(t,ok){var b=document.querySelector('.rail button[data-tab="'+t+'"]');
+        if(b)b.style.display=ok?'':'none';};
+      tab('learn',has('training'));
+      tab('ai',aiOk);
+      var ow=$('owners');if(ow)ow.style.display=has('owners')?'':'none';
+      var aow=$('auto_owners_wrap');if(aow)aow.style.display=has('owners')?'':'none';
+      var fb=$('aiFracsBtn');
+      if(fb){fb.style.display=(has('fracs_ai')||has('ai')||has('business'))?'':'none';
+        fb.onclick=function(){var sel=$('aiProvider');
+          if(sel&&[].some.call(sel.options,function(o){return o.value==='Fracs AI';})){
+            sel.value='Fracs AI';if(typeof window.onFracsProviderChange==='function')window.onFracsProviderChange();
+            var p=$('aiFracsBtn').closest('.side-panel');
+            if(p)p.scrollTop=0;}
+        };}
+    }catch(e){}
+  };
+  fetch('/api/license').then(function(r){return r.json()}).then(function(st){
+    window.applyFracsFeatures(st.features||[]);
+    if(st.ok&&window.applyFracsPlanName)window.applyFracsPlanName(st.name||'');
+  }).catch(function(){});
   function setTab(tab){
     [].forEach.call(document.querySelectorAll('.side-panel'),function(p){p.hidden=p.getAttribute('data-panel')!==tab;});
     [].forEach.call(document.querySelectorAll('.work-panel'),function(p){p.hidden=p.getAttribute('data-panel')!==tab;});
@@ -1429,7 +1462,7 @@
     fetch('/api/license').then(function(r){return r.json()}).then(function(st){
       if(st.ok){
         var until=st.until?new Date(st.until).toLocaleDateString('ru-RU'):'—';
-        alert('Лицензия активна. Тариф: '+(st.plan||'—')+'. Действует до: '+until+'.');
+        alert('Лицензия активна'+(st.name?' ('+st.name+', Ultra)':', Ultra')+'. Действует до: '+until+'.');
       }else{ document.getElementById('lic').style.display='flex'; }
     }).catch(function(){ document.getElementById('lic').style.display='flex'; });
   });
@@ -1529,7 +1562,7 @@
     var cfg=window.aiGetConfig?window.aiGetConfig():null;
     if(!cfg){$('tgMsg').textContent='Нет связи с настройками AI-Агента.';return;}
     if(cfg.need_key&&!cfg.key){$('tgMsg').textContent='Вставьте API-ключ на вкладке AI-Агент — генератор фраз работает через вашу нейросеть.';return;}
-    if(!cfg.allowed){$('tgMsg').textContent='Fracs AI доступен только на тарифе PRO. Выберите другого провайдера в AI-Агенте или оформите PRO.';return;}
+    if(!cfg.allowed){$('tgMsg').textContent='Fracs AI доступен только на тарифе Ultra. Оформите Ultra или используйте AI-агент со своим провайдером (PRO).';return;}
     var btn=this,orig=btn.textContent; btn.disabled=true;btn.textContent='Генерируем…';
     $('tgMsg').textContent='FracsAI ('+cfg.provider+(cfg.model?(' · '+cfg.model):'')+') придумывает фразы…';
     fetch('/api/ai/phrases',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1541,7 +1574,7 @@
           $('tgMsg').textContent='FracsAI предложил '+genPhrases.length+' фраз. Отмечайте нужные («+») или добавьте все — фразы встанут в поле слева, потом «Запустить».';
           renderGenPhrases();
         }else{
-          $('tgMsg').textContent=(d&&d.pro_required)?'Fracs AI доступен только на тарифе PRO.':((d&&d.error)||'Не удалось сгенерировать фразы.');
+          $('tgMsg').textContent=(d&&d.pro_required)?'Fracs AI доступен только на тарифе Ultra.':((d&&d.error)||'Не удалось сгенерировать фразы.');
         }
       })
       .catch(function(){$('tgMsg').textContent='Нет связи с программой.';})
@@ -1564,7 +1597,7 @@
 })();
 /* AI-Агент tab — real chat that drives site generation through the backend.
    Провайдеры и модели подтягиваются автоматически; файлы — скрепкой прямо в чате;
-   Fracs AI включается только на тарифе PRO. */
+   Fracs AI включается только на тарифе Ultra. */
 (function(){
   var $=function(id){return document.getElementById(id)};
   function addMsg(cls,text){var c=$('aiChat');var m=document.createElement('div');m.className='ai-msg '+cls;m.textContent=text;c.appendChild(m);c.scrollTop=c.scrollHeight;}
@@ -1652,16 +1685,17 @@
     fetch('/api/ai/providers').then(function(r){return r.json()}).then(function(d){
       providers=(d&&d.providers)||[];
       var sel=$('aiProvider');if(!sel)return;
-      sel.innerHTML=providers.map(function(p){
-        var badge=p.pro_only?' · PRO':'';
-        return '<option value="'+p.id+'"'+(p.allowed?'':' disabled')+'>'+p.id+badge+'</option>';
+      sel.innerHTML=providers.filter(function(p){return p.allowed!==false;}).map(function(p){
+        var badge=p.pro_only?' · Ultra':'';
+        return '<option value="'+p.id+'">'+p.id+badge+'</option>';
       }).join('');
-      if(!providers.length){sel.innerHTML='<option>Z.ai</option>';}
-      var preferred=providers.some(function(p){return p.id==='Fracs AI'&&p.allowed;})?'Fracs AI':'Z.ai';
+      if(!sel.options.length){sel.innerHTML='<option>—</option>';}
+      var preferred=providers.some(function(p){return p.id==='Fracs AI'&&p.allowed;})?'Fracs AI':(sel.options[0]?sel.options[0].value:'Z.ai');
       if(providers.some(function(p){return p.id===preferred;}))sel.value=preferred;
       onProviderChange();
     }).catch(function(){var sel=$('aiProvider');if(sel){sel.innerHTML='<option>Z.ai</option><option>OpenAI</option><option>Anthropic</option>';}onProviderChange();});
   }
+  window.onFracsProviderChange=onProviderChange;
   function providerInfo(id){for(var i=0;i<providers.length;i++){if(providers[i].id===id)return providers[i];}return null;}
 
   function onProviderChange(){
@@ -1672,7 +1706,7 @@
     if(hint){
       if(info.pro_only&&info.allowed){hint.style.display='';
         if(info.configured===false){hint.textContent='Fracs AI ещё не настроен на этой сборке (нет ключа FRACS_AI_API_KEY на сервере). Пока выберите другого провайдера.';hint.style.color='#F26522';}
-        else{hint.textContent='Fracs AI активен — свой ключ не нужен, моделями управляет Fracs (OpenRouter + Bazaar).';hint.style.color='#34d399';}}
+        else{hint.textContent='Fracs AI активен (Ultra) — свой ключ не нужен, моделями управляет Fracs (OpenRouter + Bazaar).';hint.style.color='#34d399';}}
       else{hint.style.display='none';hint.textContent='';}
     }
     var keyWrap=$('aiKey'),keyHint=$('aiKeyHint');
@@ -1680,7 +1714,7 @@
       var needKey=!info.pro_only&&info.needs_key!==false;
       keyWrap.disabled=!needKey;
       keyWrap.placeholder=needKey?'Вставьте API ключ выбранной нейросети':'Ключ не нужен — работает подписка Fracs';
-      if(keyHint)keyHint.textContent=needKey?'Вставьте API ключ '+currentProvider:'Fracs AI работает на подписке PRO — ключ вводить не нужно.';
+      if(keyHint)keyHint.textContent=needKey?'Вставьте API ключ '+currentProvider:'Fracs AI работает на подписке Ultra — ключ вводить не нужно.';
     }
     var bu=$('aiBaseUrlWrap');if(bu)bu.hidden=currentProvider!=='Custom';
     loadModels(false);
@@ -1779,7 +1813,7 @@
     var key=$('aiKey')&&$('aiKey').value.trim()||'';
     var info=providerInfo(currentProvider)||{};
     if(info.pro_only&&!info.allowed){
-      addMsg('sys','Fracs AI доступен только на тарифе PRO (и Бизнес). Оформите подписку в кабинете или выберите другого провайдера со своим ключом.');
+      addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
       return;
     }
     var needKey=!info.pro_only&&info.needs_key!==false;
@@ -1799,7 +1833,7 @@
     fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json()}).then(function(d){
         if(!d.ok){
-          addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе PRO.':(d.error||'Не удалось запустить агент.')));
+          addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе Ultra.':(d.error||'Не удалось запустить агент.')));
           if(d.pro_required){loadProviders();}
           return;}
         currentJob=d.job_id;
@@ -1842,7 +1876,7 @@
     var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
     var info=providerInfo(currentProvider)||{};
     var key=$('aiKey')&&$('aiKey').value.trim()||'';
-    if(info.pro_only&&!info.allowed){r.textContent='Fracs AI доступен только на тарифе PRO.';r.style.color='#f87171';return;}
+    if(info.pro_only&&!info.allowed){r.textContent='Fracs AI доступен только на тарифе Ultra.';r.style.color='#f87171';return;}
     if(!info.pro_only&&info.needs_key!==false&&!key){r.textContent='Сначала вставьте API-ключ.';r.style.color='#f87171';return;}
     fetch('/api/ai/test',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({api_key:key,model:model,provider:currentProvider,base_url:($('aiBaseUrl')&&$('aiBaseUrl').value.trim())||''})})

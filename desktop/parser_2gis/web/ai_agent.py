@@ -865,10 +865,14 @@ class AiAgentManager:
               session_id: str = '', prev_job: str = '', base_url: str = '',
               temperature: float = 0.7, max_tokens: int = 4096,
               style: str = '', key21st: str = '') -> dict:
-        if provider == 'Fracs AI':
-            gate = fracs_ai_allowed()
-            if not gate.get('allowed'):
-                return {'ok': False, 'error': gate.get('reason', 'pro_required'), 'pro_required': True}
+        need = _provider_feature(provider)
+        if not _has_feature(need):
+            if need == 'fracs_ai':
+                gate = fracs_ai_allowed()
+                return {'ok': False, 'error': gate.get('reason', 'pro_required'),
+                        'pro_required': True}
+            return {'ok': False, 'error': 'AI-агент со своим провайдером доступен '
+                    'на тарифах PRO и Ultra.', 'pro_required': True}
         job_id = secrets.token_urlsafe(12)
         job = AiJob(job_id=job_id, prompt=prompt or '', model=model or '',
                     provider=provider or 'Z.ai')
@@ -1179,6 +1183,35 @@ def _draw_postcard(png_path: str, target: str, prompt: str):
 
 # ── Fracs AI gate ─────────────────────────────────────────────────────────────
 
+def _plan_features() -> list:
+    """Коды возможностей текущего тарифа (из лицензии; при ошибке — пусто)."""
+    global _LIC_MOD
+    try:
+        if _LIC_MOD is None:
+            try:
+                from .. import license as _lic
+            except Exception:
+                from parser_2gis import license as _lic
+            _LIC_MOD = _lic
+        return [str(f).lower() for f in (_LIC_MOD.check().get('features') or [])]
+    except Exception:
+        return []
+
+
+def _has_feature(*codes: str) -> bool:
+    feats = set(_plan_features())
+    return any(c in feats for c in codes)
+
+
+_LIC_MOD = None
+
+
+def _provider_feature(provider: str) -> str:
+    """Код тарифа, необходимый для провайдера: Fracs AI — 'fracs_ai',
+    любой свой провайдер — 'ai_provider'."""
+    return 'fracs_ai' if _provider_cfg(provider).get('pro_only') else 'ai_provider'
+
+
 def fracs_ai_allowed() -> dict:
     """Fracs AI доступен только на PRO (и Бизнес — это PRO на 90 дней).
     Проверяем активную лицензию Fracs и её тариф/фичи."""
@@ -1195,12 +1228,12 @@ def fracs_ai_allowed() -> dict:
         return {'allowed': False, 'reason': 'Подписка Fracs не активна. Fracs AI доступен на тарифе PRO.' if reason != 'offline'
                 else 'Нет связи с сервером Fracs — Fracs AI временно недоступен.'}
     features = [str(f).lower() for f in (st.get('features') or [])]
-    name = str(st.get('name') or '').lower()
-    if ('pro' in features or 'fracs_ai' in features or 'ai' in features or 'business' in features
-            or 'pro' in name or 'business' in name):
+    if ('fracs_ai' in features or 'ai' in features or 'business' in features
+            or 'ultra' in features):
         return {'allowed': True}
     return {'allowed': False,
-            'reason': 'Fracs AI доступен только на тарифе PRO (и Бизнес). Оформите PRO в кабинете.'}
+            'reason': 'Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете '
+                      'или выберите своего провайдера (доступен на PRO).'}
 
 
 # ── Singleton и маршруты ──────────────────────────────────────────────────────
@@ -1227,24 +1260,31 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
     mgr = init_manager(base_url)
 
     def _providers_payload() -> dict:
-        try:
-            gate = fracs_ai_allowed()
-        except Exception:
-            gate = {'allowed': False}
         items = []
         for pid, cfg in _PROVIDERS.items():
+            need = _provider_feature(pid)
+            if need == 'fracs_ai':
+                try:
+                    ok = bool(fracs_ai_allowed().get('allowed'))
+                    reason = '' if ok else 'Fracs AI доступен только на тарифе Ultra.'
+                except Exception:
+                    ok, reason = False, 'Лицензия недоступна.'
+            else:
+                ok = _has_feature('ai_provider')
+                reason = '' if ok else ('AI-агент со своим провайдером доступен на тарифах '
+                                        'PRO и Ultra. Оформите PRO в кабинете.')
             items.append({
                 'id': pid, 'name': pid, 'desc': cfg.get('desc', ''),
                 'needs_key': bool(cfg.get('needs_key', True)),
                 'vision': bool(cfg.get('vision')),
                 'pro_only': bool(cfg.get('pro_only')),
-                'allowed': (not cfg.get('pro_only')) or bool(gate.get('allowed')),
-                'reason': '' if (not cfg.get('pro_only')) or gate.get('allowed')
-                          else str(gate.get('reason') or 'pro_required'),
+                'feature': need,
+                'allowed': ok,
+                'reason': reason,
                 'configured': (not cfg.get('pro_only')) or bool(_FRACS_AI_KEY),
                 'models': list(cfg.get('default_models') or []),
             })
-        return {'ok': True, 'providers': items}
+        return {'ok': True, 'features': _plan_features(), 'providers': items}
 
     @app.route('/api/ai/providers')
     def ai_providers():
@@ -1255,8 +1295,9 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         provider = request.args.get('provider', 'Z.ai')
         api_key = request.args.get('api_key', '')
         base_url_q = request.args.get('base_url', '')
-        if _provider_cfg(provider).get('pro_only'):
-            gate = fracs_ai_allowed()
+        need = _provider_feature(provider)
+        if not _has_feature(need):
+            gate = fracs_ai_allowed() if need == 'fracs_ai' else {'allowed': False}
             if not gate.get('allowed'):
                 return jsonify({'ok': False, 'error': str(gate.get('reason') or 'pro_required'),
                                 'pro_required': True, 'models': [], 'auto': False})

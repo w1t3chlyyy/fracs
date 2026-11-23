@@ -23,6 +23,18 @@ OFFLINE_GRACE_S = 3600
 RECHECK_S = 60
 PARSE_COOLDOWN_S = 6 * 60 * 60
 
+# Режим владельца (создателя программы): полный доступ ко всем тарифам без
+# проверки подписки. Включается переменной окружения FRACS_OWNER_MODE=1.
+OWNER_ENV = 'FRACS_OWNER_MODE'
+# Ultra до 2099: все коды возможностей тарифов Start/PRO/Ultra.
+_ALL_FEATURES = ['base', 'telegram', 'cards', 'owners', 'training', 'ai_provider',
+                 'fracs_ai', 'ai', 'business', 'pro']
+_OWNER_UNTIL = '2099-12-31T00:00:00.000Z'
+
+
+def _owner_mode() -> bool:
+    return (os.environ.get(OWNER_ENV) or '').strip().lower() in ('1', 'true', 'yes', 'on')
+
 _lock = threading.Lock()
 _cache: dict[str, Any] = {'at': 0.0, 'state': None}
 
@@ -96,6 +108,14 @@ def check(force: bool = False) -> dict:
             if not cached.get('ok') or _is_until_active(cached.get('until'), now):
                 return cached
 
+        if _owner_mode():
+            state = {'ok': True, 'reason': '', 'until': _OWNER_UNTIL,
+                     'name': 'Ultra (владелец)',
+                     'offline': False, 'site': _site(),
+                     'features': list(_ALL_FEATURES)}
+            _cache.update(at=now, state=state)
+            return state
+
         data = _load()
         key = data.get('key')
         state: dict[str, Any] = {'ok': False, 'reason': 'no_key', 'until': None, 'name': None,
@@ -137,6 +157,8 @@ def activate(key: str) -> dict:
     key = (key or '').strip()
     if not key:
         return {'ok': False, 'reason': 'no_key'}
+    if _owner_mode():
+        return check(force=True)
     if not _site():
         return {'ok': False, 'reason': 'not_configured'}
     try:
@@ -157,6 +179,8 @@ def activate(key: str) -> dict:
 
 def claim_parse_slot() -> dict:
     """Reserve a subscribed Maps parse slot across the website and desktop app."""
+    if _owner_mode():
+        return {'ok': True, 'owner': True}
     site = _site()
     key = _load().get('key')
     if not site or not key:
@@ -216,6 +240,8 @@ def app_fetch(path: str, payload: dict[str, Any] | None = None) -> dict:
     {'ok': False, 'error': 'offline'}. Не кэшируется: запросы тарифицируются
     на стороне сайта, поэтому вызывающая сторона сама решает, когда звать.
     """
+    if _owner_mode():
+        return {'ok': True, 'owner': True}
     site = _site()
     key = _load().get('key')
     if not site or not key:

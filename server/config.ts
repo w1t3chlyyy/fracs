@@ -73,37 +73,38 @@ export interface Plan {
   badge?: string;
   description?: string;
   /** Коды возможностей, открываемых тарифом. Гейтятся на сервере и в программе.
-   *  Базовые тарифы — ['base']; PRO добавляет 'owners' (поиск владельцев) и
-   *  'training' (раздел «Обучение»). Админ видит всё. */
+   *  Start — ['base','telegram','cards'] (парсинг Telegram + карты). PRO добавляет
+   *  'owners', 'training' и 'ai_provider' (свой провайдер в AI-агенте). Ultra добавляет
+   *  'fracs_ai' (встроенный Fracs AI). Админ (ADMIN_TG_ID) видит всё. */
   features?: string[];
 }
 
 export const PLANS: Plan[] = [
   {
-    id: 'month',
-    title: '1 месяц',
+    id: 'start',
+    title: 'Start',
     days: 30,
     priceRub: 1800,
-    features: ['base'],
-    description: 'Доступ к программе Fracs Parser, базе контактов и выгрузкам на 30 дней.',
-  },
-  {
-    id: 'quarter',
-    title: '3 месяца',
-    days: 90,
-    priceRub: 4500,
-    badge: 'Выгоднее на 17%',
-    features: ['base'],
-    description: 'Доступ на 90 дней: экономия 900 ₽ при оплате сразу за квартал.',
+    features: ['base', 'telegram', 'cards'],
+    description: 'Парсинг Telegram и карт 2ГИС: база контактов и выгрузки CSV/HTML на 30 дней.',
   },
   {
     id: 'pro',
-    title: 'PRO 1 месяц',
+    title: 'PRO',
     days: 30,
     priceRub: 2700,
     badge: 'Владельцы + Обучение',
-    features: ['base', 'owners', 'training'],
-    description: 'Всё из базового тарифа + поиск владельцев (руководитель / ИП, ИНН, контакты) и раздел «Обучение».',
+    features: ['base', 'telegram', 'cards', 'owners', 'training', 'ai_provider'],
+    description: 'Всё из «Start» + поиск владельцев (руководитель / ИП, ИНН, контакты), раздел «Обучение» и AI-агент со своим провайдером (свой API-ключ).',
+  },
+  {
+    id: 'ultra',
+    title: 'Ultra',
+    days: 30,
+    priceRub: 4500,
+    badge: 'Максимум',
+    features: ['base', 'telegram', 'cards', 'owners', 'training', 'ai_provider', 'fracs_ai', 'ai', 'business'],
+    description: 'Всё из «PRO» + встроенный Fracs AI (генерация сайтов и фраз на встроенном ключе, отдельная кнопка в AI-агенте). Максимум возможностей.',
   },
 ];
 

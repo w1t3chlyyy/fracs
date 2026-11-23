@@ -105,13 +105,13 @@ api.get('/me', h(async (req, res) => {
   });
 }));
 
-/** Раздел «Обучение»: только для подписчиков с features.training (тариф PRO). */
+/** Раздел «Обучение»: только для подписчиков с features.training (тарифы PRO и Ultra). */
 api.get('/training', requireAuth, h(async (req, res) => {
   const u = req.user!;
   if (!isSubscribed(u)) return void res.status(402).json({ error: 'subscription_required', message: 'Раздел доступен по подписке.' });
   const features = await getActiveFeatures(u);
   if (!features.includes('training')) {
-    return void res.status(402).json({ error: 'training_required', message: 'Раздел «Обучение» доступен на тарифе PRO.' });
+    return void res.status(402).json({ error: 'training_required', message: 'Раздел «Обучение» доступен на тарифах PRO и Ultra.' });
   }
   res.json({ lessons: await getTraining() });
 }));

@@ -200,7 +200,7 @@ const ADMIN_HELP = `Админ-панель Fracs
 /setdays <id|1|2|3> <дней> — изменить длительность
 /resetplans — сбросить тарифы к стандартным
 
-Раздел «Обучение» (виден в программе на тарифе PRO):
+Раздел «Обучение» (виден в программе на тарифах PRO и Ultra):
 /training — список уроков
 /addlesson Заголовок
 <пустая строка>
@@ -277,8 +277,8 @@ async function renderUserView(chatId: number, messageId: number, tgId: number) {
     `Регистрация: ${fmt(u.createdAt)}`;
   const kb = {
     inline_keyboard: [
-      [{ text: 'PRO 30 дней', callback_data: `adm:g:${tgId}:pro:30` }, { text: 'База 30 дней', callback_data: `adm:g:${tgId}:month:30` }],
-      [{ text: 'PRO 90 дней', callback_data: `adm:g:${tgId}:pro:90` }, { text: 'База 90 дней', callback_data: `adm:g:${tgId}:month:90` }],
+      [{ text: 'Ultra 30 дней', callback_data: `adm:g:${tgId}:ultra:30` }, { text: 'PRO 30 дней', callback_data: `adm:g:${tgId}:pro:30` }],
+      [{ text: 'Start 30 дней', callback_data: `adm:g:${tgId}:start:30` }],
       [{ text: '✕ Снять подписку', callback_data: `adm:r:${tgId}` }],
       [{ text: '← К списку', callback_data: 'adm:users' }],
     ],
