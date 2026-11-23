@@ -162,9 +162,9 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
       <div className="mb-4 ember-card-2 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
         <p className="text-[13px] leading-snug text-[#cccccc]">
           {blurDemo ? (
-            <><b>Демо-режим.</b> Запуск показывает вымышленные бизнесы с блюром. Реальные данные — по подписке.</>
+            <><b>Демо-режим.</b> Этот режим может выдавать сайты без фильтров и ваших настроек. Для лучшего поиска воспользуйтесь программой</>
           ) : (
-            <><b>Демо-режим.</b> Данные сгенерированы в браузере. Реальный парсинг 2ГИС выполняет программа Fracs Parser на вашем ПК.</>
+            <><b>Демо-режим.</b> Этот режим может выдавать сайты без фильтров и ваших настроек. Для лучшего поиска воспользуйтесь программой</>
           )}
         </p>
         <button onClick={onGetProgram} className={`${btnOrange} !px-4 !py-2 !text-[13px]`}>
