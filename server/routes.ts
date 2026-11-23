@@ -61,6 +61,12 @@ api.get('/config', h(async (_req, res) => {
   });
 }));
 
+/** Публичный список тарифов — для десктопной программы (модалка подписки дёргает
+ *  локальный Flask /api/plans, который проксирует сюда) и для любого внешнего клиента. */
+api.get('/plans', h(async (_req, res) => {
+  res.json({ ok: true, plans: await getPlans() });
+}));
+
 api.get('/cities', (req, res) => {
   res.json({ items: searchCities(String(req.query.q || '').slice(0, 40), 8) });
 });
