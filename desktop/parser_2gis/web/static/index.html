@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <link rel="icon" href="/static/logo.png">
 <meta charset="utf-8">
@@ -55,7 +55,7 @@
   .langbtns button.on{opacity:1;filter:none;border-color:var(--line);background:var(--surface)}
   .langbtns svg{display:block}
 
-  .side-panel{display:none;flex-direction:column;gap:14px;padding:16px;flex:1;min-height:0;overflow:auto}
+  .side-panel{display:none;flex-direction:column;gap:14px;padding:16px;padding-bottom:84px;flex:1;min-height:0;overflow:auto}
   .side-panel:not([hidden]){display:flex}
   .side-panel>.actions-bar{position:sticky;bottom:0;z-index:3;background:#0d0d0d;margin-top:auto;padding-top:14px}
   .tab-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:var(--primary);
@@ -403,7 +403,7 @@
       <span class="tab-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>Парсинг</span>
       <div class="group">
         <label class="h" for="urls" data-i18n="urls_label">Направления</label>
-        <textarea id="urls" placeholder="https://2gis.kz/almaty/search/Кафе&#10;https://2gis.ru/moscow/search/Аптеки"></textarea>
+        <textarea id="urls" placeholder="https://2gis.kz/almaty/search/Cafe&#10;https://2gis.ru/moscow/search/Pharmacy"></textarea>
         <div class="hint" id="urlsHint" data-i18n="urls_hint">По одной ссылке 2GIS на строку. Можно несколько городов и рубрик.</div>
       </div>
 
@@ -587,8 +587,8 @@
         <label class="check mini"><input type="checkbox" id="ya_missing" checked> <span data-i18n="ya_missing">только без сайта</span></label>
         <label class="check mini"><input type="checkbox" id="ya_remove" checked> <span data-i18n="ya_remove">убрать тех, у кого найден сайт</span></label>
         <label class="check mini"><input type="checkbox" id="ya_remove_nf"> <span data-i18n="ya_remove_nf">убрать не найденных на Яндексе</span></label>
-        <button class="btn-ya dark" id="owners" style="display:none" disabled>Владельцы</button>
-        <label class="check mini" id="auto_owners_wrap" style="display:none"><input type="checkbox" id="auto_owners"> <span>искать владельцев после парсинга</span></label>
+        <button class="btn-ya dark" id="owners" data-i18n="owners_btn" data-i18n-title="owners_title" title="Third pass: look up business owners (director / ИП) in open registries (PRO)" disabled>Владельцы</button>
+        <label class="check mini" id="auto_owners_wrap"><input type="checkbox" id="auto_owners"> <span data-i18n="auto_owners">искать владельцев после парсинга</span></label>
       </div>
       <button class="btn-clear" id="clear" data-i18n="clear" data-i18n-title="clear_title" title="Очистить результаты (останутся в Истории)" disabled data-tabs="parse tg"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span> Очистить</button>
       <button class="btn-clear" id="tgCsv" style="display:none" data-tabs="tg"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3M7 12l5 5 5-5M5 21h14"/></svg></span> CSV</button>
@@ -708,7 +708,7 @@
       st_ready:'Ready', st_running:'Parsing…', st_done:'Done', st_stopped:'Stopped', st_error:'Error', mark:'Contacted', mark_on:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Contacted', note_ph:'Note…', hist_open:'Open', hist_merge:' Merge selected (dedup)', recs_short:'rec.', more:'more',
       a_need_url:'Provide at least one 2GIS link', a_need_query:'Enter a query', a_need_city:'Select at least one city', a_server:'Server unavailable: ', a_start_err:'Start error', a_need_select:'Check the records to merge', a_merge_err:'Merge error', c_del:'Delete this record from history?',
       lt_lessons:'Training', lt_strat:'Strategies', next_lesson:'Next lesson ',
-      tg_ai_hint:'Enter a phrase — FracsAI will generate 20 similar ones and parse them after your approval.', tg_d1:'1 day', tg_d2:'2 days', tg_d3:'3 days', tg_days:'Period', tg_gen_btn:'Generate similar', tg_phrase_hint:'One phrase per line. Multiple phrases allowed.', tg_phrase_label:'Phrases'
+      tg_ai_hint:'Enter a phrase — FracsAI will generate 20 similar ones and parse them after your approval.', tg_d1:'1 day', tg_d2:'2 days', tg_d3:'3 days', tg_days:'Period', tg_gen_btn:'Generate similar', tg_phrase_hint:'One phrase per line. Multiple phrases allowed.', tg_phrase_label:'Phrases', owners_btn:'Business owners', owners_title:'Third pass: look up company owners (director / sole trader) in open registries (PRO)', auto_owners:'Look up business owners after parsing'
     },
     ru:{
       urls_label:'Направления', urls_hint:'По одной ссылке 2GIS на строку. Можно несколько городов и рубрик.',
@@ -745,10 +745,10 @@
       a_need_select:'Отметьте галочками записи для объединения', a_merge_err:'Ошибка объединения',
       c_del:'Удалить эту запись из истории?',
       lt_lessons:'Обучение', lt_strat:'Стратегии', next_lesson:'Следующий урок ',
-      tg_ai_hint:'Введите фразу — FracsAI сделает 20 похожих и по ним будет идти парсинг после вашего одобрения.', tg_d1:'За 1 день', tg_d2:'За 2 дня', tg_d3:'За 3 дня', tg_days:'Период', tg_gen_btn:'Сгенерировать похожие', tg_phrase_hint:'По одной фразе на строку. Можно несколько фраз.', tg_phrase_label:'Фразы'
+      tg_ai_hint:'Введите фразу — FracsAI сделает 20 похожих и по ним будет идти парсинг после вашего одобрения.', tg_d1:'За 1 день', tg_d2:'За 2 дня', tg_d3:'За 3 дня', tg_days:'Период', tg_gen_btn:'Сгенерировать похожие', tg_phrase_hint:'По одной фразе на строку. Можно несколько фраз.', tg_phrase_label:'Фразы', owners_btn:'Владельцы', owners_title:'Третий проход: поиск владельцев компании (директор / ИП) в открытых реестрах (PRO)', auto_owners:'искать владельцев после парсинга'
     }
   };
-  var LANG='ru', lastStatus='idle';
+  var LANG='en', lastStatus='idle';
   function t(k){return (T[LANG]&&T[LANG][k]!=null)?T[LANG][k]:(T.en[k]!=null?T.en[k]:k);}
   function applyLang(lang){
     LANG=(lang==='ru')?'ru':'en'; var d=T[LANG];
@@ -1294,7 +1294,7 @@
 
   // Restore state on load: preload generator data, show last results / resume a job.
   (function init(){
-    var savedLang='ru'; try{savedLang=localStorage.getItem('lang')||'ru';}catch(_){}
+    var savedLang='en'; try{savedLang=localStorage.getItem('lang')||'en';}catch(_){}
     applyLang(savedLang);
     loadGenerator();
     loadHistory();
