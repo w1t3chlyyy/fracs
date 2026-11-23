@@ -9,13 +9,13 @@
   var box = document.createElement('details');
   box.className = 'log'; box.id = 'tgbox';
   box.innerHTML =
-    '<summary>✈️ Telegram: люди, которым это нужно</summary>' +
+    '<summary>✈ Telegram: люди, которым это нужно</summary>' +
     '<div style="padding:14px 16px;border-top:1px solid var(--line)">' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<input id="tgPhrase" maxlength="120" placeholder="Что ищут: «нужен сайт», «ищу бухгалтера»…" style="flex:1;min-width:220px">' +
     '<select id="tgDays" style="width:auto"><option value="1">За 1 день</option><option value="2">За 2 дня</option><option value="3" selected>За 3 дня</option></select>' +
     '<button id="tgGo" class="btn-run" style="flex:none">Найти людей</button>' +
-    '<button id="tgCsv" class="btn-clear" style="display:none">⬇ CSV</button></div>' +
+    '<button id="tgCsv" class="btn-clear" style="display:none"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3M7 12l5 5 5-5M5 21h14"/></svg></span> CSV</button></div>' +
     '<div class="hint" id="tgMsg" style="margin-top:8px">Свежие сообщения (до 3 дней) в публичных группах Telegram: автор, чат, текст и ссылка, чтобы написать человеку.</div>' +
     '<div class="grid" id="tgGrid" style="margin-top:14px"></div></div>';
   content.insertBefore(box, content.firstChild);

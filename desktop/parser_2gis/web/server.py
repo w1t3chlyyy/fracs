@@ -12,6 +12,8 @@ from functools import lru_cache
 from typing import Any
 from urllib.parse import urlsplit
 
+import requests
+
 from ..config import Configuration
 from ..logger import logger
 from ..paths import data_path
@@ -21,6 +23,7 @@ from .. import license as fracs_license
 from .history import History
 from .job import ParseJob
 from . import tg_routes
+from . import ai_agent
 
 # Sheet name for documents that carry no district label (manual URLs, etc.).
 _DEFAULT_SHEET = 'Прочее'
@@ -231,6 +234,10 @@ def create_app():
         path = request.path
         if path.startswith('/api/internal/trial/'):
             return None
+        # Публичные эндпоинты: статус лицензии, тарифы (чтобы пользователь мог оформить),
+        # и AI-Агент (использует собственный API-ключ пользователя, а не лицензию Fracs).
+        if path.startswith('/api/license') or path.startswith('/api/plans') or path.startswith('/api/ai/'):
+            return None
         if path.startswith('/api/') and not path.startswith('/api/license'):
             if not fracs_license.check().get('ok'):
                 return jsonify({'ok': False, 'error': 'license'}), 402
@@ -256,6 +263,32 @@ def create_app():
     def license_reset():
         fracs_license.reset()
         return jsonify({'ok': True})
+
+    # ── Подписки: 3 тарифа + продление. Прокси к /api/config сайта Fracs, fallback на встроенные.
+    _FALLBACK_PLANS = [
+        {'id': 'start', 'title': 'Старт', 'days': 30, 'priceRub': 990,
+         'badge': '', 'description': 'Парсинг 2ГИС и Telegram-поиск. Выгрузка CSV/HTML.'},
+        {'id': 'pro', 'title': 'PRO', 'days': 30, 'priceRub': 1990,
+         'badge': 'Популярный', 'description': 'Всё из «Старт» + поиск владельцев и раздел «Обучение».'},
+        {'id': 'business', 'title': 'Бизнес', 'days': 90, 'priceRub': 4990,
+         'badge': 'Выгодно', 'description': 'PRO на 90 дней + AI-Агент без ограничений по числу генераций.'},
+    ]
+
+    @app.route('/api/plans')
+    def api_plans():
+        site = fracs_license._site()
+        if site:
+            try:
+                r = requests.get(site + '/api/config', timeout=8)
+                if r.ok:
+                    data = r.json()
+                    plans = data.get('plans') or []
+                    if plans:
+                        return jsonify({'ok': True, 'plans': plans, 'site': site})
+            except Exception:
+                pass
+        return jsonify({'ok': True, 'plans': _FALLBACK_PLANS,
+                        'site': site or ''})
 
     @app.route('/')
     def index():
@@ -551,12 +584,16 @@ def create_app():
         return jsonify({'ok': history.delete(hid)})
 
     tg_routes.register(app)
+    ai_agent.register(app, base_url='http://127.0.0.1:8666')
     return app
 
 
 def run_server(host: str = '127.0.0.1', port: int = 8666, open_browser: bool = True) -> None:
     """Run the dashboard server (blocking)."""
     app = create_app()
+    # Refresh the AI-Агент manager with the actual host/port so the QR-encoded
+    # preview URL points at this server.
+    ai_agent.init_manager(f'http://{host}:{port}')
     url = f'http://{host}:{port}/'
     logger.info('Веб-интерфейс запущен: %s', url)
     if open_browser:
