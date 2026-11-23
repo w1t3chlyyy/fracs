@@ -33,6 +33,7 @@ import io
 import json
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -201,36 +202,320 @@ _MAX_IMAGE_BYTES = 5 * 1024 * 1024
 # Один общий промт для ЛЮБОЙ подключённой нейросети. ExtraПромт пользователя
 # добавляется поверх и имеет приоритет.
 
+# Жёсткие типографические правила: против «нейрослопа» в вёрстке.
+TYPO_RULES = (
+    '\n\nТИПОГРАФИКА (соблюдать точно, отступления = брак):\n'
+    '— Максимум ДВА семейства шрифтов на страницу. Дисплейный — только H1, цифры-статы и '
+    'логотип. Весь остальной текст (подписи, карточки, FAQ, футер) — одним текстовым '
+    'семейством: вес 400 обычный, 500-600 выделения, БЕЗ жирного капса.\n'
+    '— H1: вес 500-600 (не 900), размер clamp(42px,6vw,72px), line-height 1.04, '
+    'letter-spacing -0.02em, длина максимум 10 слов. Акцентная вторая строка — тот же кегль, '
+    'вес 400, курсив, цвет accent-light. Любой text-shadow/glow на заголовках запрещён.\n'
+    '— Подпись под H1: 17px, цвет muted, максимум 36 символов на строку (max-width:36ch).\n'
+    '— Надзаголовки секций: 12px, uppercase, letter-spacing 0.14em, вес 500, цвет accent. '
+    'H2 секции: clamp(26px,3.5vw,40px), вес 600. Между надзаголовком и H2 — 12px.\n'
+    '— Основной текст: 15-17px, line-height 1.55, максимум 62 символа на строку (max-width:62ch). '
+    'В карточках 14-15px.\n'
+    '— Бегущая строка: 12px, uppercase, letter-spacing 0.12em, вес 400, цвет muted, '
+    'без жирных акцентов внутри.\n'
+    '— Цифры-статы: дисплейный шрифт, вес 400-500, размер clamp(40px,5vw,60px). Внутри числа '
+    'никаких слов («87 отзывов» — неверно; число 87, слово в подписи снизу 13px muted).\n'
+    '— Кнопки: высота 48px (padding 14px 26px), border-radius 999px, вес 600, размер 15px. '
+    'Одна акцентная кнопка на экран.\n'
+    '— Отступы: между секциями 96-128px; от H2 до контента 40px; внутри карточек 8-12px.\n'
+    '— Запрещено: больше 2 шрифтов, жирный капс в подписях, эмодзи в заголовках, центрирование '
+    'длинных абзацев, рамки-обводки вокруг всего подряд, тени у текста.'
+)
+
 _SYSTEM_PROMPT = (
-    'Ты — senior веб-дизайнер и копирайтер Fracs. Задача: собрать одностраничный '
-    'сайт-визитку на чистом HTML+CSS+JS в ОДНОМ файле.\n'
+    'Ты — senior веб-дизайнер и арт-директор. Твой уровень: дорогие премиальные лендинги '
+    '(планка — fracs.cc). Задача: собрать одностраничный сайт бизнеса на чистом HTML+CSS+JS '
+    'в ОДНОМ файле.\n'
+    '\n'
+    'ДИЗАЙН: ниже в этом промте дан СТИЛЕВОЙ РЕЦЕПТ, подобранный под этот конкретный бизнес. '
+    'Следуй ему точно: палитра, шрифты, композиция героя и секции заданы в нём. Прочие '
+    'палитры и шрифты по своей инициативе не заменяй.\n'
+    '\n'
+    'СТРУКТУРА: плавающая навигация-пилюля → герой (по рецепту) → бегущая строка фактов → '
+    'услуги → цифры → о компании → отзывы (если в задании есть рейтинг) → FAQ → CTA-баннер → '
+    'подвал. Секцию можно опустить, если данных нет, но герой и контакты — всегда. '
+    'В начале HTML вставь комментарий: <!-- design brief: 2-3 предложения, почему этот стиль '
+    'подходит бизнесу -->.\n'
     '\n'
     'ТЕХНИЧЕСКИЕ ПРАВИЛА:\n'
-    '— Тёмная тема, акцент оранжевый #F26522, фон #0a0a0a–#141414, поверхности #161616/#1f1f1f.\n'
-    '— Всё inline: стили в <style>, скрипты в <script>. Никаких CDN, шрифтов снаружи и внешних зависимостей.\n'
-    '— Адаптив обязательно: meta viewport, grid/flex, clamp() для шрифтов, брейкпоинт на 640px.\n'
-    '— Секции минимум: герой, услуги/продукты, о компании, контакты (телефон/WhatsApp/мессенджер).\n'
-    '— Верни ТОЛЬКО полный HTML-документ, без пояснений и без markdown-обёртки.\n'
+    '— Всё inline: стили в <style>, скрипты в <script>. Единственная внешняя ссылка — Google Fonts.\n'
+    '— Адаптив обязательно: grid/flex, clamp(), брейкпоинт 760px (навигация без ссылок, '
+    'сетки в 1 колонку, H1 меньше).\n'
+    '— Телефон — кликабельный href="tel:", WhatsApp/Telegram — ссылками.\n'
     '\n'
     'АНТИ-НЕЙРОСЛОП (главное):\n'
     '— Никакого шаблонного бюллетень-языка: «инновационный», «динамично развивающаяся», '
     '«мы рады представить», «индивидуальный подход», «высокое качество по доступным ценам», '
-    '«ваш надёжный партнёр» — запрещены. Это маркеры генерации.\n'
+    '«ваш надёжный партнёр», «которым доверяют» — запрещены. Это маркеры генерации.\n'
+    '— H1 несёт конкретику бизнеса: что делаете и чем отличаетесь («Тормоза за час, '
+    'диагностика бесплатно»), а не абстрактное обещание.\n'
     '— Пиши конкретно: реальные цифры, сроки, гарантии, материалы, бренды, районы города — '
     'всё, что есть в задании пользователя. Нет данных — пиши нейтрально и по делу, не выдумывай факты.\n'
-    '— Разные по длине предложения. Ритм живого текста, а не рекламного лозунга на каждой строке.\n'
-    '— Заголовки говорящие, не «Наши услуги», а «Что мы делаем» / «Ремонт за 2 дня, а не за 2 недели».\n'
-    '— Не более 1 эмодзи на секцию и только если он реально уместен. Без рядов одинаковых карточек '
-    'с одинаковым объёмом текста.\n'
-    '— Текста должно быть столько, сколько нужно для решения клиента, без воды ради объёма.\n'
-    '— Цены/сроки/контакты, которых нет в задании, помечай заметно для правки, например [ЦЕНА УТОЧНЯЕТСЯ], '
-    'чтобы владелец бизнеса сразу их увидел.'
+    '— Заголовки говорящие, не «Наши услуги», а «Ремонт за 2 дня, а не за 2 недели».\n'
+    '— Не более 1 эмодзи на секцию и только если он реально уместен.\n'
+    '— Цены/сроки/контакты, которых нет в задании, помечай заметно для правки, например '
+    '[ЦЕНА УТОЧНЯЕТСЯ], чтобы владелец бизнеса сразу их увидел.\n'
+    '\n'
+    'Верни ТОЛЬКО полный HTML-документ, без пояснений и без markdown-обёртки.'
 )
 
 _EXTRA_PREFIX = (
     '\n\nДОПОЛНИТЕЛЬНЫЕ ТРЕБОВАНИЯ ПОЛЬЗОВАТЕЛЯ '
     '(имеют приоритет над правилами выше, если прямо противоречат):'
 )
+
+
+# Стилевые рецепты «точная реконструкция» (формат промтов motionsites.ai):
+# каждый — точная спецификация одного дизайна. В промт генерации идёт ОДИН,
+# выбранный по рубрике бизнеса. Вместо имён-плейсхолдеров — данные карточки.
+STYLE_PROMPTS = {
+    'auto': (
+        'СТИЛЕВОЙ РЕЦЕПТ — «Цех» (автосервисы, детейлинг, шины, СТО):\n'
+        'Тёмный индустриальный. Фон #111214, поверхности #1a1d20, линии #2b2f33, текст #ececec, '
+        'muted #9ba1a6, акцент сигнал-красный #e63b2e, контраст акцента #fff.\n'
+        'Шрифты: заголовки и цифры — Oswald (Google Fonts), текст — Inter. ОДНА внешняя ссылка.\n'
+        'ГЕРОЙ (100vh, композиция «сетка чертежа»): фон с тонкой сеткой 1px (repeating-linear-gradient, '
+        'шаг 64px, прозрачность 4%) и одной диагональной линией акцента через угол. Слева по '
+        'вертикали: надзаголовок-рубрика 12px uppercase accent → H1 в 2 строки (вторая строка '
+        'весом 400 курсивом цветом #ff6a5c) → подпись 36ch → ряд из 2 кнопок (акцентная с '
+        'телефоном + вторая призрачная «Услуги»). Справа внизу крупная цифра рейтинга Oswald '
+        '60px и под ней 13px muted подпись «рейтинг на 2ГИС». H1 = конкретика: услуга + выгода.\n'
+        'СЕКЦИИ: услуги — 3 колонки с номерами 01/02/03 (номер Oswald 40px цветом акцента, '
+        'заголовок 20px, текст 14.5px); полоса-статы на линиях; о компании слева, справа '
+        'рамочный блок «Приём: [ЧАСЫ УТОЧНЯЕТСЯ]»; FAQ; CTA-баннер акцентного цвета с тёмным '
+        'текстом; футер 2 строки.\n'
+        'АНИМАЦИЯ: hero-элементы въезжают каскадом 60ms; hover карточек — подъём 4px и линия '
+        'акцента сверху; числа-статы считаются от 0 до значения за 0.8s.'
+    ),
+    'coffee': (
+        'СТИЛЕВОЙ РЕЦЕПТ — «Обжарка» (кофейни, пекарни, кондитерские, кафе):\n'
+        'Тёплый editorial. Фон кремовый #f6f1ea, поверхности #fffdf9, линии #e5dccc, текст #2c241c, '
+        'muted #8a7d6d, акцент терракота #c2571f, контраст акцента #fffdf9.\n'
+        'Шрифты: заголовки — Fraunces (вес 400, не жирный!), текст — Manrope. ОДНА внешняя ссылка.\n'
+        'ГЕРОЙ (90vh, «журнальный разворот»): выравнивание по центру-слева; сверху декоративная '
+        'линия с маленьким кружком акцента; H1 Fraunces в 2-3 строки с ОДНИМ выделенным словом '
+        'курсивом терракотой; под ним 36ch подпись; кнопка-пилюля терракота. Фон героя: крупный '
+        'полупрозрачный круг #eaddc9 (radius 50%, 500px) за текстом справа + зерно-фактура '
+        '(мелкий noise через repeating-conic-gradient, прозрачность 3%).\n'
+        'СЕКЦИИ: меню/услуги — СТРОКИ-таблица (не карточки!): название 18px слева, описание '
+        '14px по центру, цена справа, между строками 1px линия; это даёт дорогой вид. Цифры-статы '
+        'Fraunces 56px. Отзывы в 2 колонки с кавычкой Fraunces. FAQ. CTA-баннер тёмный #2c241c '
+        'с кремовым текстом. Футер.\n'
+        'АНИМАЦИЯ: строки меню подсвечиваются фоном при hover; появление блоков плавное.'
+    ),
+    'medical': (
+        'СТИЛЕВОЙ РЕЦЕПТ — «Доверие» (стоматологии, клиники, медицина, массаж, салоны процедур):\n'
+        'Светлый чистый. Фон #f8fafc, поверхности #ffffff, линии #e2e8f0, текст #0f172a, '
+        'muted #64748b, акцент глубокий бирюзово-синий #0e7490, контраст акцента #ffffff.\n'
+        'Шрифты: заголовки — Sora, текст — Inter. ОДНА внешняя ссылка.\n'
+        'ГЕРОЙ (90vh, «панель-карта»): слева контент — надзаголовок 12px uppercase акцент → H1 '
+        'в 2 строки, одно слово выделено цветом акцента (не курсивом — цветом) → подпись 36ch → '
+        'кнопка + подпись-успокоение 13px («Работаем по записи»). Справа скруглённая панель '
+        '(radius 24px, белая, мягкая тень 0 20px 60px rgba(14,116,144,.12)) с «картой приёма»: '
+        'список из 3-4 пунктов услуг с ценой «от [ЦЕНА]», снизу телефон в рамке.\n'
+        'СЕКЦИИ: услуги сеткой 2×2 белых карточек с лёгкой тенью (без обводок); doctors-блок '
+        '«Как проходит приём» — 3 шага с номерами в кружках; статы; FAQ (фон белый); CTA-баннер '
+        'акцентного цвета. Футер светлый.\n'
+        'АНИМАЦИЯ: панель героя всплывает с лёгким scale(0.98→1); hover карточек — тень глубже.'
+    ),
+    'beauty': (
+        'СТИЛЕВОЙ РЕЦЕПТ — «Латунь» (барбершопы, салоны красоты, ногтевые студии, SPA):\n'
+        'Тёмный люкс. Фон #141210, поверхности #1d1a17, линии #2e2a26, текст #efe9df, '
+        'muted #a39a8b, акцент латунь #c9a45c, контраст акцента #141210.\n'
+        'Шрифты: заголовки — Bebas Neue (только капс, у него свой трекинг — не добавлять), '
+        'текст — PT Sans. ОДНА внешняя ссылка.\n'
+        'ГЕРОЙ (100vh, «вывеска»): в центре H1 Bebas Neue капс в 2 строки clamp(56px,9vw,110px), '
+        'вторая строка цветом латуни; над ним тонкая линия с ромбом; под ним подпись 36ch и '
+        'кнопка. Фон: диагональные полосы барберполос (repeating-linear-gradient 45°, ширина '
+        'полосы 14px, прозрачность 4%) только в нижней трети героя, остальное — чистый фон.\n'
+        'СЕКЦИИ: услуги — вертикальный прайс-лист строками (название капсом 16px, точечная '
+        'линия-заполнитель, цена справа); статы Bebas Neue 64px; о компании; FAQ; CTA-баннер '
+        'латунный. Футер с диагональными полосами сверху.\n'
+        'АНИМАЦИЯ: полосы медленно сдвигаются (background-position, 30s); hover прайс-строк — '
+        'отступ слева 8px и цвет латуни.'
+    ),
+    'build': (
+        'СТИЛЕВОЙ РЕЦЕПТ — «Бетон» (строительство, ремонт, мебель, производство, склады):\n'
+        'Строгий модульный. Фон #1b1f24, поверхности #232830, линии #343b45, текст #e8e6e1, '
+        'muted #98a0ab, акцент янтарь #e8a33d, контраст акцента #1b1f24.\n'
+        'Шрифты: заголовки — Oswald, текст — Inter. ОДНА внешняя ссылка.\n'
+        'ГЕРОЙ (90vh, «модульная сетка»): контент в жёстких рамках — слева и справа вертикальные '
+        'линии (1px) на всю высоту, у каждой секции номер-глаза. H1 Oswald капс в 2 строки; '
+        'второе слово/строка цветом янтаря. Подпись 36ch. Кнопка + призрачная. Фон героя: '
+        'крупный контурный прямоугольник (border 1px янтарь, прозрачность 30%) как «план».\n'
+        'СЕКЦИИ: услуги — сетка 2×2 ячеек с общими границами (border-collapse вид): каждая ячейка '
+        'с номером и заголовком, hover — заливка янтарём с 8% прозрачностью; статы; о компании '
+        'в 2 колонки; FAQ; CTA-баннер янтарный. Футер с номером объекта и годом.\n'
+        'АНИМАЦИЯ: линии сетки «прочерчиваются» scaleX при появлении; hover ячеек — заливка.'
+    ),
+    'neutral': (
+        'СТИЛЕВОЙ РЕЦЕПТ — «Люкс» (всё остальное: юристы, агентства, магазины, услуги):\n'
+        'Нейтральный премиум. Фон #0e0e10, поверхности #191921, линии #2b2b33, текст #f1f1f3, '
+        'muted #a0a0ab, акцент тёплый латунно-золотой #d8a24a, контраст акцента #141414.\n'
+        'Шрифты: заголовки — Manrope (вес 600, трекинг -0.02em), текст — Manrope же в весе 400 '
+        '(одно семейство, два веса — это допустимая пара). ОДНА внешняя ссылка.\n'
+        'ГЕРОЙ (90vh): выравнивание по центру; сверху маленький бейдж-рубрика в рамке; H1 в 2 '
+        'строки, вторая строка курсивом И ТОЙ ЖЕ гарнитурой цветом акцента; подпись 36ch; '
+        'кнопка. Фон: одно огромное radial-gradient пятно акцента (прозрачность 14%) сверху '
+        'по центру + halftone-точки 2px шаг 16px прозрачность 7%.\n'
+        'СЕКЦИИ: услуги сеткой 3 колонки; статы; о компании 62ch; отзывы 2 колонки; FAQ; '
+        'CTA-баннер акцентный. Футер.\n'
+        'АНИМАЦИЯ: аккуратное появление секций; hover карточек — подъём и линия акцента.'
+    ),
+}
+
+_STYLE_KEYS = (
+    (('автосервис', 'детейлинг', 'автомойк', 'шиномонтаж', 'сто ', 'автосалон', 'авто'), 'auto'),
+    (('кофе', 'кондитер', 'пекар', 'кафе', 'бар ', 'пицц', 'ресторан', 'столовая'), 'coffee'),
+    (('стомат', 'клиник', 'медиц', 'массаж', 'косметол', 'медцентр', 'аптека', 'ветерина'), 'medical'),
+    (('барбер', 'парикмах', 'салон красоты', 'ногт', 'маник', 'спа', 'массажн'), 'beauty'),
+    (('строй', 'ремонт', 'мебель', 'производств', 'монтаж', 'мебельн', 'склад', 'логист'), 'build'),
+)
+
+
+def _pick_style(user_text: str) -> str:
+    low = (user_text or '').lower()
+    for keys, style in _STYLE_KEYS:
+        if any(k in low for k in keys):
+            return style
+    return 'neutral'
+
+
+# ── Готовые блоки: берёшь как есть, подставляешь свой текст в {{...}} ─────────
+BLOCKS_LIB = (
+    '\n\nБИБЛИОТЕКА ГОТОВЫХ БЛОКОВ (бери как есть, заменяй {{ТЕКСТ}} данными бизнеса '
+    'и цвет — переменными своего стиля):\n'
+    '— [ФОН · точки] background-image:radial-gradient(circle,{{ЦВЕТ ТОЧЕК}} 1.2px,transparent '
+    '1.6px);background-size:16px 16px; цвет точек с альфой 5-10%.\n'
+    '— [ФОН · сетка-чертёж] repeating-linear-gradient(0deg,transparent 0 63px,{{ЛИНИЯ}} 63px 64px),'
+    'repeating-linear-gradient(90deg,transparent 0 63px,{{ЛИНИЯ}} 63px 64px); линия 1px, альфа 4-6%.\n'
+    '— [ФОН · полосы] repeating-linear-gradient(45deg,{{ЦВЕТ}} 0 14px,transparent 14px 28px), '
+    'альфа 4-8% — полоса внизу героя или в футере.\n'
+    '— [ФОН · пятно] radial-gradient(600px at 70% 20%,{{ЦВЕТ}} 0%,transparent 70%), альфа 10-20%.\n'
+    '— [КНОПКА основная] .btn{display:inline-flex;align-items:center;height:48px;padding:0 26px;'
+    'border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-weight:600;'
+    'font-size:15px;text-decoration:none;transition:filter .2s} .btn:hover{filter:brightness(1.12)}\n'
+    '— [КНОПКА призрачная] .btn.ghost{background:transparent;color:var(--text);'
+    'border:1px solid var(--line)} hover: border-color:var(--accent).\n'
+    '— [КНОПКА-ссылка] .link{color:var(--accent);font-weight:600;text-decoration:none} '
+    '.link:after{content:"→";margin-left:8px;transition:margin .2s} hover: margin-left:12px.\n'
+    '— [ПРАЙС-СТРОКА] <div class="rowp"><b>{{УСЛУГА}}</b><i></i><span>{{ЦЕНА}}</span></div>; '
+    '.rowp{display:flex;align-items:baseline;font-size:16px} .rowp i{flex:1;'
+    'border-bottom:1px dotted var(--line);margin:0 12px} .rowp span{color:var(--accent);'
+    'font-weight:600;white-space:nowrap}.\n'
+    '— [СТАТЫ] <div class="stats"><div class="stat"><b>{{ЧИСЛО}}</b><span>{{ПОДПИСЬ}}</span></div>'
+    '…</div>; flex, разделители 1px var(--line).\n'
+    '— [FAQ] <details><summary>{{ВОПРОС}}<span class="plus">+</span></summary><p>{{ОТВЕТ}}</p>'
+    '</details>; details[open] .plus{rotate:45deg}.\n'
+    '— [КАРТОЧКА] .card{background:var(--surface);border:1px solid var(--line);'
+    'border-radius:16px;padding:26px;transition:transform .25s} hover: translateY(-4px) '
+    'и линия акцента 2px сверху (pseudo-element scaleX).\n'
+    '— [МАРКИЗА] .strip{overflow:hidden;border-block:1px solid var(--line);padding:15px 0} '
+    '.track{display:flex;gap:56px;animation:mq 30s linear infinite;white-space:nowrap} '
+    '@keyframes mq{to{transform:translateX(-50%)}} — содержимое задвоить.\n'
+    '— [ПОЯВЛЕНИЕ] .r{opacity:0;transform:translateY(14px);transition:opacity .5s,transform .5s} '
+    '.r.in{opacity:1;transform:none}; IntersectionObserver добавляет .in; стаггер через '
+    'inline transition-delay.\n'
+    '— [ПОДВАЛ] центрированные 2 строки: {{ИМЯ}} · {{АДРЕС}} · {{ТЕЛЕФОН}} / © {{ИМЯ}}.\n'
+)
+
+
+# ── Сохранение сайтов в проект: sites/<slug>/index.html + versions/ ───────────
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SITES_DIR = os.environ.get('FRACS_SITES_DIR') or os.path.join(_PROJECT_ROOT, 'sites')
+
+_TRANSLIT = {'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+             'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+             'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+             'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch',
+             'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'}
+
+
+def _slugify(text: str, fallback: str = 'site') -> str:
+    s = (text or '').lower()
+    s = ''.join(_TRANSLIT.get(ch, ch) for ch in s)
+    s = re.sub(r'[^a-z0-9]+', '-', s).strip('-')
+    s = re.sub(r'-{2,}', '-', s)[:48]
+    return s or fallback
+
+
+def _slug_from_prompt(prompt: str, fallback: str = 'site') -> str:
+    """Слаг из названия бизнеса: строка «Название: …» в промте-карточке."""
+    m = re.search(r'^Название:\s*(.+)$', prompt or '', re.M)
+    return _slugify(m.group(1) if m else (prompt or '')[:60], fallback)
+
+
+def _save_site_files(job) -> str:
+    """Пишет сайт в <проект>/sites/<slug>/ : index.html (последняя версия) и
+    versions/v<N>.html (история). Возвращает локальный URL /sites/<slug>/."""
+    try:
+        d = os.path.join(_SITES_DIR, job.site_slug)
+        os.makedirs(os.path.join(d, 'versions'), exist_ok=True)
+        with open(os.path.join(d, 'index.html'), 'w', encoding='utf-8') as f:
+            f.write(job.html)
+        with open(os.path.join(d, 'versions', f'v{job.version:02d}.html'), 'w',
+                  encoding='utf-8') as f:
+            f.write(job.html)
+        meta = {'slug': job.site_slug, 'version': job.version, 'job_id': job.job_id,
+                'updated': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'prompt': (job.prompt or '')[:300]}
+        with open(os.path.join(d, 'meta.json'), 'w', encoding='utf-8') as f:
+            json.dump(meta, f, ensure_ascii=False, indent=1)
+        return f'/sites/{job.site_slug}/'
+    except OSError as e:
+        job.logs.append(f'Не удалось сохранить файлы сайта: {e}')
+        return ''
+
+
+# ── 21st.dev: бесплатный поиск референсов-компонентов (metadata only) ─────────
+_21ST_MCP = 'https://21st.dev/api/mcp'
+_21ST_KEY_ENV = (os.environ.get('TWENTYFIRST_API_KEY')
+                 or os.environ.get('API_KEY_21ST_DEV') or '').strip()
+
+
+def _21st_query_from_prompt(prompt: str) -> str:
+    """Запрос для поиска: рубрика бизнеса + hero landing, иначе общий."""
+    m = re.search(r'^Рубрики:\s*(.+)$', prompt or '', re.M)
+    if m:
+        return (m.group(1)[:60] + ' hero landing page').strip()
+    return 'hero section landing page'
+
+
+def _21st_search(query: str, key: str, limit: int = 3) -> str:
+    """MCP-поиск компонентов 21st.dev (режим metadata — бесплатный).
+    Возвращает текст со списком найденных компонентов или '' при ошибке."""
+    if not key or not query:
+        return ''
+    try:
+        s = requests.Session()
+        s.headers.update({'Authorization': 'Bearer ' + key.strip(),
+                          'Accept': 'application/json, text/event-stream',
+                          'Content-Type': 'application/json'})
+        r = s.post(_21ST_MCP, json={'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+                                    'params': {'protocolVersion': '2024-11-05',
+                                               'capabilities': {},
+                                               'clientInfo': {'name': 'fracs-agent',
+                                                              'version': '1.0'}}}, timeout=20)
+        sid = r.headers.get('mcp-session-id', '')
+        if sid:
+            s.headers['mcp-session-id'] = sid
+            s.post(_21ST_MCP, json={'jsonrpc': '2.0',
+                                    'method': 'notifications/initialized'}, timeout=15)
+        r = s.post(_21ST_MCP, json={'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call',
+                                    'params': {'name': 'search',
+                                               'arguments': {'query': query[:120],
+                                                             'mode': 'metadata',
+                                                             'limit': limit}}}, timeout=30)
+        data = r.json()
+        text = (data.get('result', {}).get('content') or [{}])[0].get('text', '')
+        return text if 'result(s)' in text else ''
+    except Exception:
+        return ''
 
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
@@ -296,8 +581,9 @@ def _build_user_content(provider: str, cfg: dict, prompt: str,
 
 def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str = '',
               base_url: str = '', uploads: list[dict] | None = None,
-              temperature: float = 0.7, max_tokens: int = 4096) -> dict:
-    """Вызов LLM. Возвращает {ok, text, error, ms}."""
+              temperature: float = 0.7, max_tokens: int = 4096,
+              system: str | None = None, style: str = '') -> dict:
+    """Вызов LLM. Возвращает {ok, text, error, ms}. system=None → общий промт сборщика сайтов."""
     started = time.time()
     cfg = _provider_cfg(provider)
     # Fracs AI работает на встроенном ключе, свой не нужен.
@@ -318,7 +604,11 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     uploads = uploads or []
     vision_ok = bool(cfg.get('vision'))
     skipped = [a['name'] for a in uploads if a['kind'] == 'image' and not vision_ok]
-    system = _SYSTEM_PROMPT
+    system = _SYSTEM_PROMPT if system is None else system
+    if system is _SYSTEM_PROMPT:
+        # типографика + готовые блоки + ОДИН стилевой рецепт под рубрику бизнеса
+        style_key = style if style in STYLE_PROMPTS else _pick_style(prompt)
+        system += TYPO_RULES + BLOCKS_LIB + '\n\n' + STYLE_PROMPTS[style_key]
     if extra:
         system += _EXTRA_PREFIX + '\n' + extra.strip()
     user_content = _build_user_content(provider, cfg, prompt, uploads, vision_ok)
@@ -475,6 +765,9 @@ class AiJob:
     zip_path: str = ''
     png_path: str = ''
     preview_url: str = ''
+    site_slug: str = ''   # папка в <проект>/sites/<slug>/
+    site_url: str = ''    # локальный URL для ручной проверки, /sites/<slug>/
+    version: int = 0      # номер версии (1, 2, … — растёт при «Изменить макет»)
 
     def to_dict(self, base_url: str = '') -> dict:
         files = []
@@ -484,11 +777,16 @@ class AiJob:
         if self.png_path and os.path.exists(self.png_path):
             files.append({'name': 'postcard.png', 'type': 'png',
                           'url': f'/api/ai/download/{self.job_id}?type=png'})
+        local_url = self.site_url or ''
         return {
             'ok': True,
             'status': self.status,
             'logs': self.logs[-30:],
             'preview_url': self.preview_url if self.status in ('preview', 'building', 'done') else '',
+            'local_url': local_url,
+            'site_dir': (os.path.join(_SITES_DIR, self.site_slug)
+                         if self.site_slug else ''),
+            'version': self.version,
             'files': files,
             'uploads': [{'name': a['name'], 'kind': a['kind'], 'size': a['size']}
                         for a in self.uploads],
@@ -565,7 +863,8 @@ class AiAgentManager:
     # ── запуск ──
     def start(self, prompt: str, api_key: str, model: str, provider: str, extra: str = '',
               session_id: str = '', prev_job: str = '', base_url: str = '',
-              temperature: float = 0.7, max_tokens: int = 4096) -> dict:
+              temperature: float = 0.7, max_tokens: int = 4096,
+              style: str = '', key21st: str = '') -> dict:
         if provider == 'Fracs AI':
             gate = fracs_ai_allowed()
             if not gate.get('allowed'):
@@ -581,7 +880,14 @@ class AiAgentManager:
                     'id': 'prev', 'name': 'текущая-версия-сайта.html', 'kind': 'text',
                     'mime': 'text/html', 'size': len(prev.html),
                     'content': prev.html[:_MAX_TEXT_CHARS], 'b64': ''}]
-                self._log(job, 'Учитываю предыдущую версию сайта — правки будут поверх неё.')
+                # редактирование макета: та же папка, номер версии растёт
+                job.site_slug = prev.site_slug or _slug_from_prompt(prev.prompt, prev.job_id)
+                job.version = prev.version + 1
+                self._log(job, f'Правки поверх версии v{prev.version or 1} — '
+                               f'новая будет v{job.version} в той же папке.')
+        if not job.site_slug:
+            job.site_slug = _slug_from_prompt(prompt, job_id)
+            job.version = 1
         job.uploads = uploads
         if uploads:
             names = ', '.join(a['name'] for a in uploads[:6])
@@ -589,7 +895,8 @@ class AiAgentManager:
         with self._lock:
             self._jobs[job_id] = job
         t = threading.Thread(target=self._run,
-                             args=(job, api_key, extra, base_url, temperature, max_tokens),
+                             args=(job, api_key, extra, base_url, temperature,
+                                   max_tokens, style, key21st),
                              daemon=True)
         t.start()
         return {'ok': True, 'job_id': job_id}
@@ -607,14 +914,31 @@ class AiAgentManager:
         job.logs.append(msg)
 
     def _run(self, job: AiJob, api_key: str, extra: str, base_url: str,
-             temperature: float, max_tokens: int):
+             temperature: float, max_tokens: float, style: str = '',
+             key21st: str = ''):
         try:
             job.status = 'running'
             self._log(job, f'Агент запущен. Модель: {job.model or "default"} ({job.provider}).')
+            if style and style in STYLE_PROMPTS:
+                self._log(job, f'Стиль задан вручную: «{style}».')
+            # бесплатные референсы с 21st.dev (metadata-поиск компонентов)
+            if key21st:
+                q = _21st_query_from_prompt(job.prompt)
+                self._log(job, f'Ищу референсы на 21st.dev: «{q}»…')
+                ref = _21st_search(q, key21st, limit=3) or \
+                    _21st_search('hero section landing page', key21st, limit=2)
+                if ref:
+                    self._log(job, 'Референсы найдены — идеи компонентов уйдут в задание.')
+                    job.prompt = (job.prompt + '\n\nРЕФЕРЕНСЫ 21st.dev (метаданные: '
+                                  'название/описание — переосмысли идеи под бизнес, '
+                                  'не копируй чужой код и тексты):\n' + ref[:3000])
+                else:
+                    self._log(job, '21st.dev: референсы не найдены — собираю без них.')
             self._log(job, 'Отправляю промт в нейросеть…')
             res = _call_llm(job.provider, api_key, job.model, job.prompt, extra,
                             base_url=base_url, uploads=job.uploads,
-                            temperature=temperature, max_tokens=max_tokens)
+                            temperature=temperature, max_tokens=max_tokens,
+                            style=style)
             if res.get('skipped_images'):
                 self._log(job, 'Картинки пропущены (провайдер без vision): '
                            + ', '.join(res['skipped_images']))
@@ -627,10 +951,19 @@ class AiAgentManager:
             html = _extract_html(res['text'])
             job.html = html
             job.preview_url = f'/api/ai/preview/{job.job_id}'
+            saved = _save_site_files(job)
+            if saved:
+                job.site_url = saved
+                self._log(job, 'Файлы сайта сохранены: '
+                           f'{os.path.join(_SITES_DIR, job.site_slug)} (v{job.version}).')
+                self._log(job, 'Локальная проверка (откройте в браузере): '
+                           f'{self.base_url}{saved}')
             job.status = 'preview'
-            self._log(job, 'Превью готово — откройте его и посмотрите.')
+            self._log(job, 'Превью готово — посмотрите его перед сборкой.')
             self._log(job, 'Если устраивает — нажмите «Одобрить и собрать». '
-                           'Если нет — напишите правки в чат, агент учтёт текущую версию.')
+                           'Если нет — нажмите «Изменить макет»: напишите правки и, '
+                           'если нужно, смените стиль; сайт перегенерируется '
+                           'в ту же папку следующей версией.')
             if not job.approved.wait(timeout=3600):
                 job.status = 'cancelled'
                 self._log(job, 'Превью устарело (прошёл час). Запустите заново.')
@@ -669,7 +1002,8 @@ class AiAgentManager:
     def _build_postcard(self, job: AiJob):
         d = tempfile.mkdtemp(prefix='fracs_ai_png_')
         png_path = os.path.join(d, 'postcard.png')
-        target = f'{self.base_url}/api/ai/preview/{job.job_id}'
+        target = (f'{self.base_url}{job.site_url}' if job.site_url
+                  else f'{self.base_url}/api/ai/preview/{job.job_id}')
         if not _HAVE_QR:
             try:
                 img = Image.new('RGB', (720, 400), color=(0, 0, 0))
@@ -945,15 +1279,20 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         except (TypeError, ValueError):
             temperature = 0.7
         try:
-            max_tokens = int(data.get('max_tokens', 4096))
+            # премиум-страница с блоками из библиотеки крупнее, чем 4К токенов;
+            # максимум ограничиваем, чтобы не ругались строгие API
+            max_tokens = min(16384, max(4096, int(data.get('max_tokens', 16384))))
         except (TypeError, ValueError):
-            max_tokens = 4096
+            max_tokens = 16384
         res = mgr.start(prompt, api_key, model, provider,
                         extra=str(data.get('extra', '')).strip(),
                         session_id=str(data.get('session_id', '')).strip(),
                         prev_job=str(data.get('prev_job', '')).strip(),
                         base_url=str(data.get('base_url', '')).strip(),
-                        temperature=temperature, max_tokens=max_tokens)
+                        temperature=temperature, max_tokens=max_tokens,
+                        style=str(data.get('style', '')).strip(),
+                        key21st=str(data.get('key21st', '')).strip()
+                        or _21ST_KEY_ENV)
         status = 403 if (not res.get('ok') and res.get('pro_required')) else 200
         return jsonify(res), status
 
@@ -970,6 +1309,41 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         if not job or not job.html:
             return Response('Превью ещё не готово.', status=404, mimetype='text/plain')
         return Response(job.html, mimetype='text/html; charset=utf-8')
+
+    # Локальная проверка сохранённых файлов сайта (стабильный URL).
+    @app.route('/sites/<path:subpath>')
+    def sites_files(subpath: str):
+        full = os.path.realpath(os.path.join(_SITES_DIR, subpath))
+        if not full.startswith(os.path.realpath(_SITES_DIR) + os.sep) and \
+                full != os.path.realpath(_SITES_DIR):
+            return Response('forbidden', status=403, mimetype='text/plain')
+        if not os.path.isfile(full):
+            if os.path.isdir(full):
+                full = os.path.join(full, 'index.html')
+            if not os.path.isfile(full):
+                return Response('Сайт ещё не собран в эту папку.', status=404,
+                                mimetype='text/plain')
+        return send_file(full)
+
+    @app.route('/api/ai/sites')
+    def sites_list():
+        """Список собранных сайтов в <проект>/sites/ (для повторного открытия)."""
+        out = []
+        if os.path.isdir(_SITES_DIR):
+            for slug in sorted(os.listdir(_SITES_DIR)):
+                d = os.path.join(_SITES_DIR, slug)
+                meta_path = os.path.join(d, 'meta.json')
+                if os.path.isfile(os.path.join(d, 'index.html')):
+                    meta = {}
+                    try:
+                        with open(meta_path, encoding='utf-8') as f:
+                            meta = json.load(f)
+                    except (OSError, ValueError):
+                        pass
+                    out.append({'slug': slug, 'url': f'/sites/{slug}/',
+                                'version': meta.get('version', 1),
+                                'prompt': (meta.get('prompt') or '')[:120]})
+        return jsonify({'ok': True, 'sites': out})
 
     @app.route('/api/ai/approve/<job_id>', methods=['POST'])
     def ai_approve(job_id: str):
@@ -1023,6 +1397,17 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             {'name': a['name'], 'kind': a['kind'], 'size': a['size']}
             for a in mgr.list_uploads(session_id)]})
 
+    @app.route('/api/ai/test21st', methods=['POST'])
+    def ai_test21st():
+        data = request.get_json(force=True, silent=True) or {}
+        key = str(data.get('key21st', '')).strip() or _21ST_KEY_ENV
+        if not key:
+            return jsonify({'ok': False, 'error': 'no_key'}), 400
+        ref = _21st_search('hero section landing page', key, limit=2)
+        if not ref:
+            return jsonify({'ok': False, 'error': 'bad_key_or_no_results'})
+        return jsonify({'ok': True, 'sample': ref[:220]})
+
     @app.route('/api/ai/test', methods=['POST'])
     def ai_test():
         data = request.get_json(force=True, silent=True) or {}
@@ -1040,8 +1425,67 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                 return jsonify({'ok': False, 'error': 'no_api_key'}), 400
         res = _call_llm(provider, api_key, str(data.get('model', '')).strip(),
                         'Проверка связи. Ответь одним словом: ok.', '',
-                        base_url=str(data.get('base_url', '')).strip())
+                        base_url=str(data.get('base_url', '')).strip(),
+                        system='Ты — сервис проверки связи. Отвечай одним словом.')
         if not res.get('ok'):
             return jsonify({'ok': False, 'error': res.get('error', 'unknown'),
                             'ms': res.get('ms', 0)})
         return jsonify({'ok': True, 'ms': res.get('ms', 0)})
+
+    @app.route('/api/ai/phrases', methods=['POST'])
+    def ai_phrases():
+        """FracsAI-генератор поисковых фраз: из одной фразы делает до 20 похожих
+        для Telegram-поиска. Провайдер/ключ/модель берутся из конфига AI-Агента."""
+        data = request.get_json(force=True, silent=True) or {}
+        phrase = str(data.get('phrase', '')).strip()
+        provider = str(data.get('provider', 'Z.ai')).strip()
+        api_key = str(data.get('api_key', '')).strip()
+        if not phrase:
+            return jsonify({'ok': False, 'error': 'no_phrase'}), 400
+        if provider == 'Fracs AI':
+            gate = fracs_ai_allowed()
+            if not gate.get('allowed'):
+                return jsonify({'ok': False, 'error': str(gate.get('reason') or 'pro_required'),
+                                'pro_required': True})
+            if not _FRACS_AI_KEY:
+                return jsonify({'ok': False, 'error': 'Fracs AI не настроен (нет ключа на сервере).'})
+        else:
+            if _provider_cfg(provider).get('needs_key') and not api_key:
+                return jsonify({'ok': False, 'error': 'no_api_key'}), 400
+        try:
+            temperature = min(1.2, max(0.2, float(data.get('temperature', 0.9))))
+        except (TypeError, ValueError):
+            temperature = 0.9
+        system = (
+            'Ты — специалист по контекстной рекламе и парсингу заявок в Telegram. '
+            'Пользователь даёт одну поисковую фразу людей, ищущих услугу или товар. '
+            'Сгенерируй до 20 РЕАЛЬНЫХ, живых формулировок, которые пишут люди в чатах, '
+            'когда ищут то же самое: с опечатками, разговорные, короткие и длинные, '
+            '«посоветуйте», «где заказать», «сколько стоит», с городом и без. '
+            'Не повторяй одну и ту же фразу с разными словами — разнообразь структуру. '
+            'ВАЖНО: верни только сами фразы — по одной на строку, без нумерации, '
+            'без кавычек и без каких-либо пояснений.')
+        res = _call_llm(provider, api_key, str(data.get('model', '')).strip(),
+                        'Исходная фраза: ' + phrase, '',
+                        base_url=str(data.get('base_url', '')).strip(),
+                        temperature=temperature, max_tokens=1200, system=system)
+        if not res.get('ok'):
+            return jsonify({'ok': False, 'error': res.get('error', 'unknown')})
+        # парсим ответ: по строке на фразу, снимаем нумерацию/буллеты/кавычки
+        phrases, seen = [], set()
+        for line in res['text'].splitlines():
+            s = line.strip().strip('«»"\'')
+            s = re.sub(r'^\s*(?:\d+[\).\s:-]+|[-•*]\s+)', '', s).strip().strip('«»"\'')
+            if len(s) < 3 or len(s) > 120:
+                continue
+            low = s.lower()
+            if low in seen:
+                continue
+            seen.add(low)
+            phrases.append(s)
+            if len(phrases) >= 20:
+                break
+        if not phrases:
+            return jsonify({'ok': False, 'error': 'Не удалось разобрать фразы из ответа модели.'})
+        return jsonify({'ok': True, 'phrases': phrases, 'ms': res.get('ms', 0)})
+
