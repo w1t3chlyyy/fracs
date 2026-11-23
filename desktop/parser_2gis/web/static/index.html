@@ -57,6 +57,9 @@
 
   .side-panel{display:none;flex-direction:column;gap:14px;padding:16px;padding-bottom:84px;flex:1;min-height:0;overflow:auto}
   .side-panel:not([hidden]){display:flex}
+  /* FIX: дети flex-колонки не должны сжиматься — иначе details.sect (overflow:hidden) схлопываются, а скролла нет */
+  .side-panel>*{flex-shrink:0}
+  .side-panel>.actions-bar{flex-shrink:0}
   .side-panel>.actions-bar{position:sticky;bottom:0;z-index:3;background:#0d0d0d;margin-top:auto;padding-top:14px}
   .tab-pill{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:var(--primary);
     color:var(--on-primary);font-weight:700;font-size:13.5px;padding:9px 16px;border-radius:999px;border:none;cursor:default}
