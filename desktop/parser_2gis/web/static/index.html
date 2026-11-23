@@ -301,6 +301,22 @@
   .ai-msg.user{background:var(--primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
   .ai-msg.sys{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--warn);align-self:center;font-size:12.5px;text-align:center;max-width:90%}
   .ai-side{display:flex;flex-direction:column;gap:14px}
+  .ai-side-h{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 6px}
+  .ai-files-empty{font-size:12.5px;color:var(--muted);border:1px dashed var(--line);border-radius:12px;padding:12px 14px;line-height:1.45}
+  .btn-clip{flex:none;width:44px;height:48px;border-radius:12px;background:var(--surface);border:1px solid var(--line);
+    color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s}
+  .btn-clip:hover{color:var(--text);border-color:rgba(255,255,255,.25)}
+  .btn-clip svg{width:19px;height:19px}
+  .btn-clip.has{color:var(--primary);border-color:rgba(242,101,34,.5)}
+  .ai-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .ai-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text);background:var(--surface);
+    border:1px solid var(--line);border-radius:999px;padding:5px 6px 5px 11px;max-width:260px}
+  .ai-chip .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
+  .ai-chip .cs{color:var(--muted);flex:none}
+  .ai-chip button{flex:none;width:18px;height:18px;border-radius:50%;border:0;background:rgba(255,255,255,.08);
+    color:var(--muted);cursor:pointer;font-size:11px;line-height:18px;padding:0;text-align:center}
+  .ai-chip button:hover{background:rgba(248,113,113,.2);color:#f87171}
+  .ai-chip .cic{width:13px;height:13px;flex:none;color:var(--primary)}
   .ai-desc{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;
     font-size:13px;color:var(--muted);line-height:1.55}
   .ai-side h3{margin:0 0 10px;font-size:15px;color:var(--text)}
@@ -532,12 +548,20 @@
       <span class="tab-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/></svg>Настройка</span>
       <div class="group">
         <label class="h">API ключ агента</label>
-        <textarea id="aiKey" placeholder="sk_kw..." style="min-height:90px;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
-        <div class="hint">Вставьте API ключ вашего агента</div>
+        <textarea id="aiKey" placeholder="sk_..." style="min-height:90px;font-family:ui-monospace,Menlo,Consolas,monospace"></textarea>
+        <div class="hint" id="aiKeyHint">Вставьте API ключ выбранной нейросети</div>
       </div>
-      <details class="sect"><summary>Модель</summary><div class="sectbody">
-        <label class="field"><span>Провайдер</span><select id="aiProvider"><option>Z.ai</option><option>OpenAI</option><option>Anthropic</option></select></label>
-        <label class="field"><span>Модель</span><input type="text" id="aiModel" placeholder="glm-4.6" value="glm-4.6"></label>
+      <details class="sect" open><summary>Модель</summary><div class="sectbody">
+        <label class="field"><span>Провайдер</span><select id="aiProvider"><option>Загрузка…</option></select></label>
+        <label class="field" id="aiBaseUrlWrap" hidden><span>Base URL (…/v1)</span><input type="text" id="aiBaseUrl" placeholder="http://127.0.0.1:8000/v1"></label>
+        <label class="field"><span>Модель (подтягивается сама)</span>
+          <span style="display:flex;gap:6px">
+            <select id="aiModel" style="flex:1"></select>
+            <button type="button" id="aiModelRefresh" class="dl-fmt" style="flex:none;padding:0 10px" title="Обновить список моделей">↻</button>
+          </span></label>
+        <label class="check mini"><input type="checkbox" id="aiModelManual"> ввести модель вручную</label>
+        <label class="field" id="aiModelManualWrap" hidden><input type="text" id="aiModelManualInput" placeholder="glm-4.6"></label>
+        <div class="hint" id="aiProHint" style="display:none;color:#F26522"></div>
       </div></details>
       <details class="sect"><summary>Нейросеть</summary><div class="sectbody">
         <label class="check"><input type="checkbox" id="aiGenSite" checked> Создавать сайты по карточкам бизнеса</label>
@@ -644,9 +668,12 @@
               <div class="ai-msg sys">Опишите задание: «сделай сайт для автосервиса по карточкам 2ГИС» или вставьте свой промт. Агент соберёт сайт, покажет превью на localhost и после одобрения упакует ZIP и открытку с QR-кодом.</div>
             </div>
             <div class="ai-input-bar">
+              <button type="button" class="btn-clip" id="aiAttach" title="Прикрепить файл (текст уйдёт в промт, картинка — как изображение)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+              <input type="file" id="aiFile" multiple hidden>
               <textarea id="aiPrompt" placeholder="Опишите задание для агента…" rows="2"></textarea>
               <button type="button" class="btn-run" id="aiSend">Отправить</button>
             </div>
+            <div class="ai-chips" id="aiChips" hidden></div>
             <div class="ai-actions" style="display:flex;gap:8px">
               <a class="btn-clear" id="aiOpenPreview" style="display:none" href="#" target="_blank" rel="noopener">Открыть превью</a>
               <button type="button" class="btn-export" id="aiApprove" style="display:none">Одобрить и собрать</button>
@@ -654,11 +681,16 @@
             <div class="ai-status" id="aiStatusPill" style="font-size:12px;color:#888;margin-top:4px"></div>
           </div>
           <div class="ai-side">
-            <div class="ai-desc">Настройте своего AI агента за пару минут. Нейросеть будет создавать сайты, анализируя карточки бизнеса или по вашему промту и будет выдавать QR-код на макет.</div>
-            <div><h3 style="margin:0 0 10px;font-size:15px;color:var(--text)">Передача файлов</h3>
-              <div class="ai-files">
-                <div class="ai-file"><div class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg></div><span class="fn">files-projects.zip</span><span class="fup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span></div>
-                <div class="ai-file"><div class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg></div><span class="fn">qr-code.png</span><span class="fup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span></div>
+            <div class="ai-desc">Настройте своего AI агента за пару минут. Нейросеть создаёт сайты по карточкам бизнеса или промту и выдаёт открытку с QR-кодом. Один общий промт Fracs защищает от «нейрослопа», ваш ExtraПромт добавляется поверх.</div>
+            <div>
+              <h3 style="margin:0 0 10px;font-size:15px;color:var(--text)">Передача файлов</h3>
+              <div class="ai-side-h">Файлы агента</div>
+              <div class="ai-files" id="aiFilesOut">
+                <div class="ai-files-empty">Появятся здесь после одобрения: site.zip и открытка с QR</div>
+              </div>
+              <div class="ai-side-h">Мои файлы (в чате)</div>
+              <div class="ai-files" id="aiFilesIn">
+                <div class="ai-files-empty">Пусто — нажмите скрепку в чате и приложите прайс, фото или текст</div>
               </div>
             </div>
           </div>
@@ -1151,13 +1183,13 @@
     // Preserve which curated districts were already checked across re-renders.
     var wasChecked={};
     [].forEach.call(box.querySelectorAll('input[data-city]:checked'),function(i){
-      wasChecked[i.getAttribute('data-city')+' '+i.getAttribute('data-name')]=1;});
+      wasChecked[i.getAttribute('data-city')+''+i.getAttribute('data-name')]=1;});
     cities.forEach(function(c){
       var ds=GEN.districts[c.code]||[];
       if(!ds.length)return;
       if(multi)html+='<div class="distGroup">'+esc(c.name)+'</div>';
       html+=ds.map(function(d){
-        var on=wasChecked[c.code+' '+d]?' checked':'';
+        var on=wasChecked[c.code+''+d]?' checked':'';
         return '<label><input type="checkbox" data-city="'+esc(c.code)+'" data-name="'+esc(d)+'"'+on+'> '+esc(d)+'</label>';
       }).join('');
     });
@@ -1415,26 +1447,174 @@
       .catch(function(){window.open(u,'_blank','noopener');});
   });
 })();
-/* AI-Агент tab — real chat that drives site generation through the backend. */
+/* AI-Агент tab — real chat that drives site generation through the backend.
+   Провайдеры и модели подтягиваются автоматически; файлы — скрепкой прямо в чате;
+   Fracs AI включается только на тарифе PRO. */
 (function(){
   var $=function(id){return document.getElementById(id)};
   function addMsg(cls,text){var c=$('aiChat');var m=document.createElement('div');m.className='ai-msg '+cls;m.textContent=text;c.appendChild(m);c.scrollTop=c.scrollHeight;}
-  function setFiles(files){
-    var box=document.querySelector('.ai-files'); if(!box)return;
-    box.innerHTML=files.map(function(f){
-      var ic=f.type==='png'
-        ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>'
-        :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>';
-      return '<a class="ai-file" href="'+f.url+'" download><span class="fic">'+ic+'</span>'+
-        '<span class="fn">'+f.name+'</span>'+
-        '<span class="fup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span></a>';
+  var ICON={zip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>',
+    png:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>',
+    file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v5h5M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg>',
+    img:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>'};
+  function fmtSize(n){if(!n&&n!==0)return'';if(n<1024)return n+' Б';if(n<1048576)return (n/1024).toFixed(1)+' КБ';return (n/1048576).toFixed(1)+' МБ';}
+
+  /* ── файлы справа ── */
+  function renderFileList(boxId, files, emptyText, downloadable){
+    var box=$(boxId); if(!box)return;
+    if(!files||!files.length){box.innerHTML='<div class="ai-files-empty">'+emptyText+'</div>';return;}
+    box.innerHTML=files.map(function(f,ix){
+      var ic=f.type==='png'||f.kind==='image'?ICON.img:(f.type==='zip'?ICON.zip:(f.kind==='text'?ICON.file:ICON.file));
+      var right=downloadable
+        ?'<span class="fup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span>'
+        :'<button type="button" data-rm="'+ix+'" title="Убрать">×</button>';
+      return '<a class="ai-file"'+(f.url?' href="'+f.url+'" download':'')+'><span class="fic">'+ic+'</span>'+
+        '<span class="fn">'+f.name+'</span><span class="cs" style="margin-left:auto;color:var(--muted);font-size:11.5px">'+fmtSize(f.size)+'</span>'+
+        right+'</a>';
     }).join('');
+    [].forEach.call(box.querySelectorAll('[data-rm]'),function(btn){
+      btn.addEventListener('click',function(ev){ev.preventDefault();removeUpload(+btn.getAttribute('data-rm'));});
+    });
+  }
+  function setAgentFiles(files){renderFileList('aiFilesOut',files,'Появятся здесь после одобрения: site.zip и открытка с QR',true);}
+
+  /* ── сессия и вложения (скрепка) ── */
+  var sessionId=(function(){try{var s=localStorage.getItem('fracs_ai_session');if(s)return s;s='s'+Date.now()+Math.random().toString(36).slice(2,8);localStorage.setItem('fracs_ai_session',s);return s;}catch(e){return 's'+Date.now();}})();
+  var uploads=[]; /* {name,kind,size} — отражение на бэкенде */
+
+  function renderChips(){
+    var wrap=$('aiChips'),clip=$('aiAttach');
+    if(!wrap)return;
+    if(!uploads.length){wrap.hidden=true;wrap.innerHTML='';if(clip)clip.classList.remove('has');return;}
+    wrap.hidden=false;if(clip)clip.classList.add('has');
+    wrap.innerHTML=uploads.map(function(u,ix){
+      var ic=u.kind==='image'?ICON.img:ICON.file;
+      return '<span class="ai-chip"><span class="cic">'+ic+'</span><span class="cn">'+u.name+'</span>'+
+        '<span class="cs">'+fmtSize(u.size)+'</span><button type="button" data-chip="'+ix+'" title="Убрать">×</button></span>';
+    }).join('');
+    [].forEach.call(wrap.querySelectorAll('[data-chip]'),function(btn){
+      btn.addEventListener('click',function(){removeUpload(+btn.getAttribute('data-chip'));});
+    });
+    renderFileList('aiFilesIn',uploads,'Пусто — нажмите скрепку в чате и приложите прайс, фото или текст',false);
+  }
+  function refreshServerUploads(){
+    fetch('/api/ai/uploads/'+sessionId).then(function(r){return r.json()}).then(function(d){
+      if(d&&d.ok){uploads=d.files||[];renderChips();}
+    }).catch(function(){});
+  }
+  function removeUpload(ix){
+    /* полный список приходит с бэкенда; снимаем по совпадению имени */
+    var gone=uploads[ix];if(!gone)return;
+    uploads.splice(ix,1);renderChips();
+    fetch('/api/ai/uploads/'+sessionId,{method:'DELETE'}).then(refreshServerUploads).catch(function(){});
+    if(gone){addMsg('sys','Файл «'+gone.name+'» убран из вложений.');}
+  }
+  function bindClip(){
+    var btn=$('aiAttach'),inp=$('aiFile');
+    if(!btn||!inp)return;
+    btn.addEventListener('click',function(){inp.click();});
+    inp.addEventListener('change',function(){
+      var fs=Array.prototype.slice.call(inp.files||[]);
+      inp.value='';
+      if(!fs.length)return;
+      var fd=new FormData();fd.append('session_id',sessionId);
+      fs.forEach(function(f){fd.append('files',f,f.name);});
+      if($('aiStatusPill'))$('aiStatusPill').textContent='Загружаю файлы…';
+      fetch('/api/ai/upload',{method:'POST',body:fd})
+        .then(function(r){return r.json()})
+        .then(function(d){
+          if(d&&d.ok){
+            addMsg('sys','Приложено: '+d.files.map(function(f){return f.name;}).join(', ')+'. Отправьте сообщение — файлы уйдут в контекст.');
+            refreshServerUploads();
+          }else{addMsg('sys','Не удалось загрузить файлы: '+(d&&d.error||'ошибка'));}
+        }).catch(function(){addMsg('sys','Нет связи с бэкендом при загрузке файлов.');});
+    });
   }
 
+  /* ── провайдеры и модели ── */
+  var providers=[],currentProvider='';
+  function loadProviders(){
+    fetch('/api/ai/providers').then(function(r){return r.json()}).then(function(d){
+      providers=(d&&d.providers)||[];
+      var sel=$('aiProvider');if(!sel)return;
+      sel.innerHTML=providers.map(function(p){
+        var badge=p.pro_only?' · PRO':'';
+        return '<option value="'+p.id+'"'+(p.allowed?'':' disabled')+'>'+p.id+badge+'</option>';
+      }).join('');
+      if(!providers.length){sel.innerHTML='<option>Z.ai</option>';}
+      var preferred=providers.some(function(p){return p.id==='Fracs AI'&&p.allowed;})?'Fracs AI':'Z.ai';
+      if(providers.some(function(p){return p.id===preferred;}))sel.value=preferred;
+      onProviderChange();
+    }).catch(function(){var sel=$('aiProvider');if(sel){sel.innerHTML='<option>Z.ai</option><option>OpenAI</option><option>Anthropic</option>';}onProviderChange();});
+  }
+  function providerInfo(id){for(var i=0;i<providers.length;i++){if(providers[i].id===id)return providers[i];}return null;}
+
+  function onProviderChange(){
+    var sel=$('aiProvider');if(!sel)return;
+    currentProvider=sel.value||'Z.ai';
+    var info=providerInfo(currentProvider)||{};
+    var hint=$('aiProHint');
+    if(hint){
+      if(info.pro_only&&info.allowed){hint.style.display='';
+        if(info.configured===false){hint.textContent='Fracs AI ещё не настроен на этой сборке (нет ключа FRACS_AI_API_KEY на сервере). Пока выберите другого провайдера.';hint.style.color='#F26522';}
+        else{hint.textContent='Fracs AI активен — свой ключ не нужен, моделями управляет Fracs (OpenRouter + Bazaar).';hint.style.color='#34d399';}}
+      else{hint.style.display='none';hint.textContent='';}
+    }
+    var keyWrap=$('aiKey'),keyHint=$('aiKeyHint');
+    if(keyWrap){
+      var needKey=!info.pro_only&&info.needs_key!==false;
+      keyWrap.disabled=!needKey;
+      keyWrap.placeholder=needKey?'Вставьте API ключ выбранной нейросети':'Ключ не нужен — работает подписка Fracs';
+      if(keyHint)keyHint.textContent=needKey?'Вставьте API ключ '+currentProvider:'Fracs AI работает на подписке PRO — ключ вводить не нужно.';
+    }
+    var bu=$('aiBaseUrlWrap');if(bu)bu.hidden=currentProvider!=='Custom';
+    loadModels(false);
+  }
+
+  function loadModels(showNote){
+    var sel=$('aiModel');if(!sel)return;
+    sel.innerHTML='<option>Загрузка моделей…</option>';
+    var info=providerInfo(currentProvider)||{};
+    var qs='?provider='+encodeURIComponent(currentProvider);
+    var key=($('aiKey')&&$('aiKey').value.trim())||'';
+    if(key)qs+='&api_key='+encodeURIComponent(key);
+    if(currentProvider==='Custom'&&$('aiBaseUrl'))qs+='&base_url='+encodeURIComponent($('aiBaseUrl').value.trim());
+    fetch('/api/ai/models'+qs).then(function(r){return r.json()}).then(function(d){
+      var models=(d&&d.models)||[];
+      if(!models.length){models=['glm-4.6'];}
+      sel.innerHTML=models.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
+      if($('aiModelManual')&&$('aiModelManual').checked){
+        var mi=$('aiModelManualInput');
+        if(mi&&mi.value){sel.innerHTML+='<option value="'+mi.value+'" selected>'+mi.value+' (вручную)</option>';sel.value=mi.value;}
+      }
+      if(showNote)addMsg('sys',(d&&d.auto?'Список моделей обновлён из API '+currentProvider+'.':'Показан базовый список моделей (API недоступен).')+' Всего: '+models.length);
+    }).catch(function(){
+      sel.innerHTML='<option value="glm-4.6">glm-4.6</option>';
+    });
+  }
+
+  function bindModelControls(){
+    var sel=$('aiProvider');
+    if(sel)sel.addEventListener('change',onProviderChange);
+    var ref=$('aiModelRefresh');
+    if(ref)ref.addEventListener('click',function(){loadModels(true);});
+    var man=$('aiModelManual'),mw=$('aiModelManualWrap');
+    if(man)man.addEventListener('change',function(){
+      if(mw)mw.hidden=!man.checked;
+      if(man.checked){loadModels(false);var mi=$('aiModelManualInput');if(mi&&mi.value){var s=$('aiModel');if(s){s.innerHTML+='<option value="'+mi.value+'" selected>'+mi.value+'</option>';s.value=mi.value;}}}
+    });
+    var bu=$('aiBaseUrl');
+    if(bu)bu.addEventListener('change',function(){if(currentProvider==='Custom')loadModels(false);});
+    /* при вводе ключа обновляем модели (некоторые API отдают список только со своим ключом) */
+    var key=$('aiKey');
+    if(key){var t=null;key.addEventListener('input',function(){clearTimeout(t);t=setTimeout(function(){loadModels(false);},1200);});}
+  }
+
+  /* ── статус и опрос задачи ── */
   var currentJob=null, poller=null;
 
   function statusMsg(s){
-    return {queued:'В очереди…',running:'Генерируем сайт…',preview:'Готов превью — посмотрите и одобрите.',
+    return {queued:'В очереди…',running:'Генерируем сайт…',preview:'Готово превью — посмотрите и одобрите.',
       building:'Собираем ZIP и открытку с QR…',done:'Готово! Файлы можно скачать справа.',
       failed:'Ошибка генерации.',cancelled:'Отменено.'}[s]||s;
   }
@@ -1446,15 +1626,14 @@
       if(d.logs&&d.logs.length){d.logs.forEach(function(l){addMsg('bot',l);});}
       if(d.preview_url){
         var link='/api/ai/preview/'+currentJob;
-        addMsg('bot','Превью готово: '+link+' — откройте в новой вкладке. Если устраивает — нажмите «Одобрить».');
         var approveBtn=$('aiApprove'); if(approveBtn)approveBtn.style.display='';
         var openBtn=$('aiOpenPreview'); if(openBtn){openBtn.style.display='';openBtn.href=link;openBtn.target='_blank';}
       }
-      if(d.files&&d.files.length){setFiles(d.files);}
+      if(d.files&&d.files.length){setAgentFiles(d.files);}
       if(d.status==='done'||d.status==='failed'||d.status==='cancelled'){
         clearInterval(poller);poller=null;
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
-        if(d.status==='done'){addMsg('bot','Файлы собраны: ZIP со всем сайтом и PNG-открытка с QR-кодом — справа в «Передача файлов». Их можно переслать клиентам.');}
+        if(d.status==='done'){addMsg('bot','Файлы собраны: ZIP со всем сайтом и открытка с QR-кодом — справа в «Передача файлов». Их можно переслать клиентам.');}
         if(d.status==='failed'){addMsg('sys','Генерация не удалась: '+(d.error||''));
           var ap=$('aiApprove');if(ap)ap.style.display='none';
           var op=$('aiOpenPreview');if(op)op.style.display='none';}
@@ -1470,17 +1649,30 @@
   }
 
   function startAgent(prompt){
-    var key=$('aiKey').value.trim();
-    if(!key){addMsg('sys','Введите API-ключ в поле слева.');return;}
-    var model=$('aiModel').value||'glm-4.6';
-    var provider=$('aiProvider').value||'Z.ai';
-    var extra=$('aiExtra').value||'';
+    var key=$('aiKey')&&$('aiKey').value.trim()||'';
+    var info=providerInfo(currentProvider)||{};
+    if(info.pro_only&&!info.allowed){
+      addMsg('sys','Fracs AI доступен только на тарифе PRO (и Бизнес). Оформите подписку в кабинете или выберите другого провайдера со своим ключом.');
+      return;
+    }
+    var needKey=!info.pro_only&&info.needs_key!==false;
+    if(needKey&&!key){addMsg('sys','Введите API-ключ в поле слева.');return;}
+    var man=$('aiModelManual');
+    var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
+    var extra=$('aiExtra')&&$('aiExtra').value||'';
+    var body={prompt:prompt||'',api_key:key,model:model,provider:currentProvider,extra:extra,
+      session_id:sessionId,prev_job:currentJob||'',
+      base_url:($('aiBaseUrl')&&$('aiBaseUrl').value.trim())||'',
+      temperature:parseFloat($('aiTemp')&&$('aiTemp').value)||0.7,
+      max_tokens:parseInt($('aiMaxTok')&&$('aiMaxTok').value)||4096};
     addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
     addMsg('bot','Запускаю агента…');
-    fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt:prompt||'',api_key:key,model:model,provider:provider,extra:extra})})
+    fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json()}).then(function(d){
-        if(!d.ok){addMsg('sys',d.error||'Не удалось запустить агент.');return;}
+        if(!d.ok){
+          addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе PRO.':(d.error||'Не удалось запустить агент.')));
+          if(d.pro_required){loadProviders();}
+          return;}
         currentJob=d.job_id;
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
         var ap=$('aiApprove');if(ap)ap.style.display='none';
@@ -1504,14 +1696,19 @@
     if(!currentJob)return;
     addMsg('user','Одобряю — соберите ZIP и открытку.');
     fetch('/api/ai/approve/'+currentJob,{method:'POST'}).then(function(r){return r.json()})
-      .then(function(d){if(!d.ok)addMsg('sys',d.error||'Не удалось начать сборку.');else addMsg('bot','Сборка пошла — ZIP и PNG-открытка появятся через несколько секунд.');})
+      .then(function(d){if(!d.ok)addMsg('sys',d.error||'Не удалось начать сборку.');else addMsg('bot','Сборка пошла — ZIP и открытка появятся через несколько секунд.');})
       .catch(function(){addMsg('sys','Нет связи.');});
   });
   $('aiTestBtn').addEventListener('click',function(){
     var r=$('aiTestRes');r.textContent='Пингуем API…';
-    var key=$('aiKey').value.trim();
+    var man=$('aiModelManual');
+    var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
+    var info=providerInfo(currentProvider)||{};
+    var key=$('aiKey')&&$('aiKey').value.trim()||'';
+    if(info.pro_only&&!info.allowed){r.textContent='Fracs AI доступен только на тарифе PRO.';r.style.color='#f87171';return;}
+    if(!info.pro_only&&info.needs_key!==false&&!key){r.textContent='Сначала вставьте API-ключ.';r.style.color='#f87171';return;}
     fetch('/api/ai/test',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({api_key:key,model:$('aiModel').value||'glm-4.6',provider:$('aiProvider').value||'Z.ai'})})
+      body:JSON.stringify({api_key:key,model:model,provider:currentProvider,base_url:($('aiBaseUrl')&&$('aiBaseUrl').value.trim())||''})})
       .then(function(r){return r.json()}).then(function(d){
         r.textContent=d.ok?('OK · модель ответила за '+(d.ms||'?')+' мс'):(d.error||'Ошибка');
         r.style.color=d.ok?'#34d399':'#f87171';
@@ -1522,6 +1719,12 @@
     addMsg('bot','Скачиваю ZIP со всем сайтом…');
     window.location='/api/ai/download/'+currentJob+'?type=zip';
   });
+
+  /* init */
+  bindClip();
+  bindModelControls();
+  loadProviders();
+  refreshServerUploads();
 })();
 
 </script>
