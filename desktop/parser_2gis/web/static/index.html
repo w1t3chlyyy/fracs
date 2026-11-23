@@ -380,7 +380,6 @@
 <body>
 <div class="shell">
   <nav class="rail">
-    <img class="logo" src="/static/logo.png" alt="Fracs">
     <button data-tab="parse" class="on" title="Парсинг 2ГИС"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg></button>
     <button data-tab="tg" title="Telegram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 4 3 11l5 2 2 6 3-4 5 4z"/><path d="m8 13 9-6"/></svg></button>
     <button data-tab="learn" title="Обучение"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 6c-2-1.2-5-1.6-8-1.6v14c3 0 6 .4 8 1.6 2-1.2 5-1.6 8-1.6v-14c-3 0-6 .4-8 1.6z"/><path d="M12 6v14"/></svg></button>
@@ -394,7 +393,7 @@
       <img class="logo2" src="/static/logo.png" alt="Fracs">
       <span class="name">Fracs Parser</span>
       <div class="langbtns" id="langbtns">
-        <button data-lang="kk" title="Қазақша"><svg width="24" height="16" viewBox="0 0 24 16"><rect width="24" height="16" rx="2" fill="#00AFCA"/><circle cx="12" cy="7" r="3.4" fill="#FEC50C"/><rect x="4" y="12.2" width="16" height="1.4" rx=".7" fill="#FEC50C"/></svg></button>
+        <button data-lang="en" title="English"><svg width="24" height="16" viewBox="0 0 24 16"><rect width="24" height="16" rx="2" fill="#012169"/><path d="M0 0l24 16M24 0L0 16" stroke="#fff" stroke-width="3.2"/><path d="M0 0l24 16M24 0L0 16" stroke="#C8102E" stroke-width="1.6"/><path d="M12 0v16M0 8h24" stroke="#fff" stroke-width="4"/><path d="M12 0v16M0 8h24" stroke="#C8102E" stroke-width="2"/></svg></button>
         <button data-lang="ru" title="Русский"><svg width="24" height="16" viewBox="0 0 24 16"><rect width="24" height="16" rx="2" fill="#fff" stroke="#444" stroke-width=".7"/><rect x=".5" y="5.5" width="23" height="5.3" fill="#0039A6"/><rect x=".5" y="10.8" width="23" height="4.7" rx="2" fill="#D52B1E"/></svg></button>
       </div>
     </div>
@@ -403,103 +402,103 @@
     <div class="side-panel" data-panel="parse">
       <span class="tab-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>Парсинг</span>
       <div class="group">
-        <label class="h" for="urls" data-i18n="urls_label">Сілтемелер</label>
+        <label class="h" for="urls" data-i18n="urls_label">Направления</label>
         <textarea id="urls" placeholder="https://2gis.kz/almaty/search/Кафе&#10;https://2gis.ru/moscow/search/Аптеки"></textarea>
-        <div class="hint" id="urlsHint" data-i18n="urls_hint">Әр жолда бір 2GIS сілтемесі. Бірнеше қала және айдар болуы мүмкін.</div>
+        <div class="hint" id="urlsHint" data-i18n="urls_hint">По одной ссылке 2GIS на строку. Можно несколько городов и рубрик.</div>
       </div>
 
       <details class="sect" id="gen">
-        <summary data-i18n="gen_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span> Сілтеме жасау</summary>
+        <summary data-i18n="gen_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span> Создать ссылки</summary>
         <div class="sectbody">
-          <label class="field"><span data-i18n="country">Ел</span><select id="genCountry"></select></label>
-          <div class="field"><span data-i18n="cities">Қалалар</span>
-            <div class="msel" id="genCitiesWrap"><button type="button" class="msel-btn" id="genCitiesBtn">Қалаларды таңдаңыз</button>
-              <div class="msel-panel" id="genCitiesPanel"><div class="msel-tools"><a href="#" id="genAll" data-i18n="select_all">барлығын таңдау</a> · <a href="#" id="genNone" data-i18n="reset">тазалау</a></div><div class="genCities" id="genCities"></div></div>
+          <label class="field"><span data-i18n="country">Страна</span><select id="genCountry"></select></label>
+          <div class="field"><span data-i18n="cities">Города</span>
+            <div class="msel" id="genCitiesWrap"><button type="button" class="msel-btn" id="genCitiesBtn">Выберите города</button>
+              <div class="msel-panel" id="genCitiesPanel"><div class="msel-tools"><a href="#" id="genAll" data-i18n="select_all">выбрать все</a> · <a href="#" id="genNone" data-i18n="reset">сбросить</a></div><div class="genCities" id="genCities"></div></div>
             </div></div>
-          <div class="field"><span data-i18n="district">Аудан (міндетті емес)</span>
-            <div class="msel" id="genDistWrap"><button type="button" class="msel-btn" id="genDistBtn">Аудансыз</button>
-              <div class="msel-panel" id="genDistPanel"><div class="msel-tools"><a href="#" id="genDistAll" data-i18n="select_all">барлығын таңдау</a> · <a href="#" id="genDistNone" data-i18n="reset">тазалау</a></div><div class="genCities" id="genDists"></div>
-                <input type="text" id="genDistCustom" data-i18n-ph="district_custom_ph" placeholder="Өз ауданыңыз + Enter" autocomplete="off" style="margin-top:7px"></div>
+          <div class="field"><span data-i18n="district">Район (необязательно)</span>
+            <div class="msel" id="genDistWrap"><button type="button" class="msel-btn" id="genDistBtn">Без района</button>
+              <div class="msel-panel" id="genDistPanel"><div class="msel-tools"><a href="#" id="genDistAll" data-i18n="select_all">выбрать все</a> · <a href="#" id="genDistNone" data-i18n="reset">сбросить</a></div><div class="genCities" id="genDists"></div>
+                <input type="text" id="genDistCustom" data-i18n-ph="district_custom_ph" placeholder="Свой район + Enter" autocomplete="off" style="margin-top:7px"></div>
             </div></div>
-          <label class="field"><span data-i18n="query">Сұраныс</span>
-            <input type="text" id="genQuery" data-i18n-ph="query_ph" placeholder="Тере бастаңыз: Кафе, Дәріхана…" autocomplete="off" list="genQueryList">
+          <label class="field"><span data-i18n="query">Запрос</span>
+            <input type="text" id="genQuery" data-i18n-ph="query_ph" placeholder="Начните печатать: Кафе, Аптеки…" autocomplete="off" list="genQueryList">
             <datalist id="genQueryList"></datalist></label>
-          <div class="field"><span data-i18n="rubric">Айдар (міндетті емес)</span>
-            <div class="msel" id="genRubWrap"><button type="button" class="msel-btn" id="genRubBtn">Айдарсыз</button>
-              <div class="msel-panel" id="genRubPanel"><input type="text" id="genRubricSearch" data-i18n-ph="rubric_search_ph" placeholder="Айдарды іздеу…" autocomplete="off"><div class="genRubList" id="genRubList"></div></div>
+          <div class="field"><span data-i18n="rubric">Рубрика (необязательно)</span>
+            <div class="msel" id="genRubWrap"><button type="button" class="msel-btn" id="genRubBtn">Без рубрики</button>
+              <div class="msel-panel" id="genRubPanel"><input type="text" id="genRubricSearch" data-i18n-ph="rubric_search_ph" placeholder="Поиск рубрики…" autocomplete="off"><div class="genRubList" id="genRubList"></div></div>
             </div></div>
-          <button type="button" class="btn-gen" id="genAdd">Сілтемелерді қосу</button>
+          <button type="button" class="btn-gen" id="genAdd">Добавить ссылки</button>
         </div>
       </details>
 
       <details class="sect" id="wa">
-        <summary data-i18n="wa_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp-тарату</summary>
+        <summary data-i18n="wa_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp-рассылка</summary>
         <div class="sectbody">
-          <label class="field"><span data-i18n="wa_mode_label">Қайда ашу</span>
-            <select id="waMode"><option value="web" data-i18n="wa_web">WhatsApp Web (браузерде)</option><option value="app" data-i18n="wa_app">Қосымша / телефон (wa.me)</option></select></label>
-          <div class="field"><span data-i18n="wa_templates">Хабарлама үлгілері</span>
+          <label class="field"><span data-i18n="wa_mode_label">Открывать в</span>
+            <select id="waMode"><option value="web" data-i18n="wa_web">WhatsApp Web (в браузере)</option><option value="app" data-i18n="wa_app">Приложение / телефон (wa.me)</option></select></label>
+          <div class="field"><span data-i18n="wa_templates">Шаблоны сообщений</span>
             <div id="waList" class="waList"></div>
-            <button type="button" class="btn-add" id="waAdd" data-i18n="wa_add">+ Үлгі қосу</button></div>
-          <div class="hint" data-i18n="wa_hint">Карточкадағы «WhatsApp» басқанда чат кездейсоқ үлгімен ашылады. Бірнеше үлгі <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> әр мекемеге өз нұсқасы.</div>
+            <button type="button" class="btn-add" id="waAdd" data-i18n="wa_add">+ Добавить шаблон</button></div>
+          <div class="hint" data-i18n="wa_hint">При клике на «WhatsApp» в карточке откроется чат с подставленным случайным шаблоном. Несколько шаблонов <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> каждому заведению свой вариант.</div>
         </div>
       </details>
 
       <details class="sect" id="filt">
-        <summary data-i18n="filters_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.36 2.64a2 2 0 0 0-2.83 0L9 10l5 5 7.36-7.36a2 2 0 0 0 0-2.83z"/><path d="M9 10 4 15l3 5 5-3"/></svg></span> Сүзгілер</summary>
+        <summary data-i18n="filters_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.36 2.64a2 2 0 0 0-2.83 0L9 10l5 5 7.36-7.36a2 2 0 0 0 0-2.83z"/><path d="M9 10 4 15l3 5 5-3"/></svg></span> Фильтры</summary>
         <div class="sectbody">
-          <label class="check"><input type="checkbox" id="f_dedup_niches" checked> <span data-i18n="f_dedup_niches">Ниша аралық қайталанусыз (1 мекеме — 1 рет)</span></label>
-          <label class="check"><input type="checkbox" id="f_dedup"> <span data-i18n="f_dedup">Франшизасыз (ұйымға 1)</span></label>
-          <label class="check"><input type="checkbox" id="f_phone"> <span data-i18n="f_phone">Тек телефоны барлар</span></label>
-          <label class="check"><input type="checkbox" id="f_wa"> <span data-i18n="f_wa">Тек WhatsApp барлар</span></label>
-          <label class="check"><input type="checkbox" id="f_social"> <span data-i18n="f_social">Тек әлеуметтік желілермен</span></label>
-          <label class="check"><input type="checkbox" id="f_email"> <span data-i18n="f_email">Тек e-mail барлар</span></label>
-          <label class="check"><input type="checkbox" id="f_site"> <span data-i18n="f_site">Тек сайты барлар</span></label>
-          <label class="check"><input type="checkbox" id="f_nosite"> <span data-i18n="f_nosite">Тек сайты жоқтар</span></label>
+          <label class="check"><input type="checkbox" id="f_dedup_niches" checked> <span data-i18n="f_dedup_niches">Без повторов между нишами (1 заведение — 1 раз)</span></label>
+          <label class="check"><input type="checkbox" id="f_dedup"> <span data-i18n="f_dedup">Без франшиз (1 на организацию)</span></label>
+          <label class="check"><input type="checkbox" id="f_phone"> <span data-i18n="f_phone">Только с телефоном</span></label>
+          <label class="check"><input type="checkbox" id="f_wa"> <span data-i18n="f_wa">Только с WhatsApp</span></label>
+          <label class="check"><input type="checkbox" id="f_social"> <span data-i18n="f_social">Только с соцсетями</span></label>
+          <label class="check"><input type="checkbox" id="f_email"> <span data-i18n="f_email">Только с e-mail</span></label>
+          <label class="check"><input type="checkbox" id="f_site"> <span data-i18n="f_site">Только с сайтом</span></label>
+          <label class="check"><input type="checkbox" id="f_nosite"> <span data-i18n="f_nosite">Только без сайта</span></label>
           <div class="rowmini">
-            <label class="field"><span data-i18n="rating_from">Рейтинг (бастап)</span><input type="number" id="f_rating" min="0" max="5" step="0.1" value="0"></label>
-            <label class="field"><span data-i18n="reviews_from">Пікірлер (бастап)</span><input type="number" id="f_reviews" min="0" step="1" value="0"></label>
+            <label class="field"><span data-i18n="rating_from">Рейтинг от</span><input type="number" id="f_rating" min="0" max="5" step="0.1" value="0"></label>
+            <label class="field"><span data-i18n="reviews_from">Отзывов от</span><input type="number" id="f_reviews" min="0" step="1" value="0"></label>
           </div>
         </div>
       </details>
 
       <details class="sect" id="params">
-        <summary data-i18n="params_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span> Параметрлер</summary>
+        <summary data-i18n="params_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span> Параметры</summary>
         <div class="sectbody">
-          <label class="field"><span data-i18n="maxrec">Бір URL-ден макс. жазба</span><input type="number" id="maxrec" min="1" step="1" value="50"></label>
-          <label class="check"><input type="checkbox" id="clean" checked> <span data-i18n="clean">Таза көрініс (қоқыссыз)</span></label>
-          <label class="check"><input type="checkbox" id="headless" checked> <span data-i18n="headless">Жасырын браузер (headless)</span></label>
+          <label class="field"><span data-i18n="maxrec">Макс. записей с одного URL</span><input type="number" id="maxrec" min="1" step="1" value="50"></label>
+          <label class="check"><input type="checkbox" id="clean" checked> <span data-i18n="clean">Чистый вид (без мусора)</span></label>
+          <label class="check"><input type="checkbox" id="headless" checked> <span data-i18n="headless">Скрытый браузер (headless)</span></label>
         </div>
       </details>
 
       <details class="sect" id="adv">
-        <summary data-i18n="adv_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Қосымша баптаулар</summary>
+        <summary data-i18n="adv_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Расширенные настройки</summary>
         <div class="sectbody">
-          <label class="check"><input type="checkbox" id="a_images" checked> <span data-i18n="a_images">Суреттерді өшіру (жылдамырақ)</span></label>
-          <label class="check"><input type="checkbox" id="a_max"> <span data-i18n="a_max">Браузерді жайып ашу</span></label>
-          <label class="check"><input type="checkbox" id="a_skip404" checked> <span data-i18n="a_skip404">Дәл сәйкестіктер («табылмады» өткізу)</span></label>
-          <label class="check"><input type="checkbox" id="a_rubrics" checked> <span data-i18n="a_rubrics">«Айдарлар» бағаны</span></label>
-          <label class="check"><input type="checkbox" id="a_comments" checked> <span data-i18n="a_comments">Ұяшықтардағы түсініктемелер (жұмыс уақыты т.б.)</span></label>
-          <label class="check"><input type="checkbox" id="a_rmempty" checked> <span data-i18n="a_rmempty">Бос бағандарды жою</span></label>
-          <label class="check"><input type="checkbox" id="a_rmdup" checked> <span data-i18n="a_rmdup">Қайталануларды жою</span></label>
+          <label class="check"><input type="checkbox" id="a_images" checked> <span data-i18n="a_images">Отключить изображения (быстрее)</span></label>
+          <label class="check"><input type="checkbox" id="a_max"> <span data-i18n="a_max">Запускать браузер развёрнутым</span></label>
+          <label class="check"><input type="checkbox" id="a_skip404" checked> <span data-i18n="a_skip404">Точные совпадения (пропуск «не найдено»)</span></label>
+          <label class="check"><input type="checkbox" id="a_rubrics" checked> <span data-i18n="a_rubrics">Колонка «Рубрики»</span></label>
+          <label class="check"><input type="checkbox" id="a_comments" checked> <span data-i18n="a_comments">Комментарии в ячейках (часы работы и т.д.)</span></label>
+          <label class="check"><input type="checkbox" id="a_rmempty" checked> <span data-i18n="a_rmempty">Удалять пустые колонки</span></label>
+          <label class="check"><input type="checkbox" id="a_rmdup" checked> <span data-i18n="a_rmdup">Удалять дубликаты</span></label>
           <div class="rowmini">
-            <label class="field"><span data-i18n="a_delay">Басу кідірісі, мс</span><input type="number" id="a_delay" min="0" step="50" value="0"></label>
-            <label class="field"><span data-i18n="a_cols">Өріске баған саны</span><input type="number" id="a_cols" min="1" max="5" value="3"></label>
+            <label class="field"><span data-i18n="a_delay">Задержка кликов, мс</span><input type="number" id="a_delay" min="0" step="50" value="0"></label>
+            <label class="field"><span data-i18n="a_cols">Колонок на поле</span><input type="number" id="a_cols" min="1" max="5" value="3"></label>
           </div>
           <div class="rowmini">
-            <label class="field"><span data-i18n="a_mem">RAM шегі, МБ</span><input type="number" id="a_mem" min="512" step="512" placeholder="авто"></label>
-            <label class="field"><span data-i18n="a_enc">Кодтау</span><select id="a_enc"><option value="utf-8-sig">UTF-8 (Excel)</option><option value="utf-8">UTF-8</option><option value="cp1251">Windows-1251</option></select></label>
+            <label class="field"><span data-i18n="a_mem">Лимит RAM, МБ</span><input type="number" id="a_mem" min="512" step="512" placeholder="авто"></label>
+            <label class="field"><span data-i18n="a_enc">Кодировка</span><select id="a_enc"><option value="utf-8-sig">UTF-8 (Excel)</option><option value="utf-8">UTF-8</option><option value="cp1251">Windows-1251</option></select></label>
           </div>
         </div>
       </details>
 
       <details class="sect" id="hist">
-        <summary data-i18n="hist_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> Парсинг тарихы</summary>
-        <div class="sectbody"><div id="histList" class="histList"><div class="hint" data-i18n="hist_empty">Әзірге бос. Аяқталған парсингтер осында сақталады.</div></div></div>
+        <summary data-i18n="hist_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> История парсинга</summary>
+        <div class="sectbody"><div id="histList" class="histList"><div class="hint" data-i18n="hist_empty">Пока пусто. Завершённые парсинги сохранятся здесь.</div></div></div>
       </details>
 
       <div class="actions-bar">
-        <button class="btn-run" id="run" data-i18n="run">Бастау</button>
-        <button class="btn-stop" id="stop" style="display:none" data-i18n="stop">Тоқтату</button>
+        <button class="btn-run" id="run" data-i18n="run">Запустить</button>
+        <button class="btn-stop" id="stop" style="display:none" data-i18n="stop">Остановить</button>
       </div>
     </div>
 
@@ -507,7 +506,7 @@
     <div class="side-panel" data-panel="tg" hidden>
       <span class="tab-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4 3 11l5 2 2 6 3-4 5 4z"/></svg>Telegram</span>
       <div class="group">
-        <label class="h" data-i18n="tg_phrase_label">Фразалар</label>
+        <label class="h" data-i18n="tg_phrase_label">Фразы</label>
         <textarea id="tgPhrase" placeholder="нужен сайт, ищу бухгалтер, дизайн" style="min-height:80px"></textarea>
         <div class="hint" data-i18n="tg_phrase_hint">По одной фразе на строку. Можно несколько фраз.</div>
       </div>
@@ -521,7 +520,7 @@
       <label class="field"><span data-i18n="tg_days">Период</span>
         <select id="tgDays"><option value="1" data-i18n="tg_d1">За 1 день</option><option value="2" data-i18n="tg_d2">За 2 дня</option><option value="3" selected data-i18n="tg_d3">За 3 дня</option></select></label>
       <div class="actions-bar">
-        <button class="btn-run" id="tgGo" data-i18n="run">Бастау</button>
+        <button class="btn-run" id="tgGo" data-i18n="run">Запустить</button>
       </div>
     </div>
 
@@ -558,18 +557,18 @@
 
   <main class="main">
     <div class="topbar">
-      <span class="pill" id="pill"><span class="dot"></span><span id="pilltext">Дайын</span></span>
+      <span class="pill" id="pill"><span class="dot"></span><span id="pilltext">Готов</span></span>
       <span id="count" data-tabs="parse tg"></span>
-      <input id="search" type="search" data-i18n-ph="search_ph" placeholder="Нәтижелерден іздеу…" autocomplete="off" data-tabs="parse tg">
-      <select id="sort" class="sortsel" data-i18n-title="sort_title" title="Сұрыптау" data-tabs="parse tg">
-        <option value="default" data-i18n="sort_default">Сұрыптаусыз</option>
-        <option value="name_asc" data-i18n="sort_name_asc">Атауы А–Я</option>
-        <option value="name_desc" data-i18n="sort_name_desc">Атауы Я–А</option>
+      <input id="search" type="search" data-i18n-ph="search_ph" placeholder="Поиск в результатах…" autocomplete="off" data-tabs="parse tg">
+      <select id="sort" class="sortsel" data-i18n-title="sort_title" title="Сортировка" data-tabs="parse tg">
+        <option value="default" data-i18n="sort_default">Сортировкасыз</option>
+        <option value="name_asc" data-i18n="sort_name_asc">Название А–Я</option>
+        <option value="name_desc" data-i18n="sort_name_desc">Название Я–А</option>
         <option value="rating_desc" data-i18n="sort_rating_desc">Рейтинг ↓</option>
         <option value="rating_asc" data-i18n="sort_rating_asc">Рейтинг ↑</option>
-        <option value="reviews_desc" data-i18n="sort_reviews_desc">Пікірлер ↓</option>
-        <option value="reviews_asc" data-i18n="sort_reviews_asc">Пікірлер ↑</option>
-        <option value="rubric_asc" data-i18n="sort_rubric">Айдар бойынша А–Я</option>
+        <option value="reviews_desc" data-i18n="sort_reviews_desc">Отзывов ↓</option>
+        <option value="reviews_asc" data-i18n="sort_reviews_asc">Отзывов ↑</option>
+        <option value="rubric_asc" data-i18n="sort_rubric">По рубрике А–Я</option>
       </select>
       <div class="viewbtns" id="viewbtns" data-tabs="parse">
         <button data-cols="1" title="1 колонка"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2" fill="currentColor"/></svg></button>
@@ -577,7 +576,7 @@
         <button data-cols="3" title="3 колонки"><svg width="16" height="16" viewBox="0 0 16 16"><rect x="1.5" y="2" width="3.2" height="12" rx="1" fill="currentColor"/><rect x="6.4" y="2" width="3.2" height="12" rx="1" fill="currentColor"/><rect x="11.3" y="2" width="3.2" height="12" rx="1" fill="currentColor"/></svg></button>
       </div>
       <div class="dl" id="dlbar" data-tabs="parse tg">
-        <span class="dl-label" data-i18n="dl_label">Жүктеу:</span>
+        <span class="dl-label" data-i18n="dl_label">Скачать:</span>
         <button class="dl-fmt" data-fmt="html" disabled>HTML</button>
         <button class="dl-fmt" data-fmt="csv" disabled>CSV</button>
         <button class="dl-fmt" data-fmt="xlsx" disabled>XLSX</button>
@@ -591,7 +590,7 @@
         <button class="btn-ya dark" id="owners" style="display:none" disabled>Владельцы</button>
         <label class="check mini" id="auto_owners_wrap" style="display:none"><input type="checkbox" id="auto_owners"> <span>искать владельцев после парсинга</span></label>
       </div>
-      <button class="btn-clear" id="clear" data-i18n="clear" data-i18n-title="clear_title" title="Нәтижелерді тазалау (Тарихта қалады)" disabled data-tabs="parse tg"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span> Тазалау</button>
+      <button class="btn-clear" id="clear" data-i18n="clear" data-i18n-title="clear_title" title="Очистить результаты (останутся в Истории)" disabled data-tabs="parse tg"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span> Очистить</button>
       <button class="btn-clear" id="tgCsv" style="display:none" data-tabs="tg"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3M7 12l5 5 5-5M5 21h14"/></svg></span> CSV</button>
       <div class="learn-tabs" id="learnTabs" data-tabs="learn" style="display:none">
         <button class="on" data-lt="lessons" data-i18n="lt_lessons">Обучение</button>
@@ -605,11 +604,11 @@
       <!-- ПАРСИНГ work -->
       <div class="work-panel" data-panel="parse">
         <details class="log" id="logwrap" style="display:none">
-          <summary data-i18n="log_title">Парсинг журналы</summary>
+          <summary data-i18n="log_title">Журнал парсинга</summary>
           <div id="logbox"></div>
         </details>
         <div class="grid" id="grid"></div>
-        <div class="empty" id="empty"><div class="big"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg></span></div><span data-i18n="empty_start">Сол жақта сілтемелерді көрсетіп, «Бастау» басыңыз.</span></div>
+        <div class="empty" id="empty"><div class="big"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg></span></div><span data-i18n="empty_start">Укажите направления слева и нажмите «Запустить».</span></div>
       </div>
 
       <!-- TELEGRAM work -->
@@ -686,42 +685,30 @@
   var poll=null, cursor=0, records=[], histId=null;
   var pendingOwners=false;
 
-  // ---- i18n (Қазақша default, Русский) ----
+  // ---- i18n (Русский default, English) ----
   var T={
-    kk:{
-      urls_label:'Сілтемелер', urls_hint:'Әр жолда бір 2GIS сілтемесі. Бірнеше қала және айдар болуы мүмкін.',
-      gen_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span> Сілтеме жасау', country:'Ел', cities:'Қалалар', select_all:'барлығын таңдау', reset:'тазалау',
-      district:'Аудан (міндетті емес)', no_district:'Аудансыз', district_sel:'Таңдалған аудан: ',
-      district_custom_ph:'Өз ауданыңыз + Enter', dist_pick_city:'Алдымен қаланы таңдаңыз.',
-      query:'Сұраныс', query_ph:'Тере бастаңыз: Кафе, Дәріхана…', rubric:'Айдар (міндетті емес)',
-      rubric_search_ph:'Айдарды іздеу…', wa_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp-тарату', wa_mode_label:'Қайда ашу',
-      wa_web:'WhatsApp Web (браузерде)', wa_app:'Қосымша / телефон (wa.me)', wa_templates:'Хабарлама үлгілері',
-      wa_add:'+ Үлгі қосу', wa_hint:'Карточкадағы «WhatsApp» басқанда чат кездейсоқ үлгімен ашылады. Бірнеше үлгі <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> әр мекемеге өз нұсқасы.',
-      filters_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.36 2.64a2 2 0 0 0-2.83 0L9 10l5 5 7.36-7.36a2 2 0 0 0 0-2.83z"/><path d="M9 10 4 15l3 5 5-3"/></svg></span> Сүзгілер', f_dedup_niches:'Ниша аралық қайталанусыз (1 мекеме — 1 рет)', f_dedup:'Франшизасыз (ұйымға 1)', f_phone:'Тек телефоны барлар',
-      f_wa:'Тек WhatsApp барлар', f_social:'Тек әлеуметтік желілермен', f_email:'Тек e-mail барлар',
-      f_site:'Тек сайты барлар', f_nosite:'Тек сайты жоқтар', ya_btn:'Яндекс Карталар', ya_missing:'тек сайтсыз', ya_remove:'сайты табылғандарды алып тастау', ya_remove_nf:'Яндекстен табылмағандарды алып тастау', ya_title:'2-ші өту: Яндекс Карталарда сайттың бар-жоғын тексеру (API-сыз)', ya_confirm:'Яндекс Карталардан іздеу басталсын ба? Бұл браузер арқылы жүреді және ұзақ болуы мүмкін.', rating_from:'Рейтинг (бастап)', reviews_from:'Пікірлер (бастап)',
-      params_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span> Параметрлер', maxrec:'Бір URL-ден макс. жазба', clean:'Таза көрініс (қоқыссыз)',
-      headless:'Жасырын браузер (headless)', adv_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Қосымша баптаулар', a_images:'Суреттерді өшіру (жылдамырақ)',
-      a_max:'Браузерді жайып ашу', a_skip404:'Дәл сәйкестіктер («табылмады» өткізу)', a_rubrics:'«Айдарлар» бағаны',
-      a_comments:'Ұяшықтардағы түсініктемелер (жұмыс уақыты т.б.)', a_rmempty:'Бос бағандарды жою',
-      a_rmdup:'Қайталануларды жою', a_delay:'Басу кідірісі, мс', a_cols:'Өріске баған саны', a_mem:'RAM шегі, МБ',
-      a_enc:'Кодтау', hist_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> Парсинг тарихы', hist_empty:'Әзірге бос. Аяқталған парсингтер осында сақталады.',
-      run:'Бастау', stop:'Тоқтату', search_ph:'Нәтижелерден іздеу…', sort_title:'Сұрыптау', sort_default:'Сұрыптаусыз',
-      sort_name_asc:'Атауы А–Я', sort_name_desc:'Атауы Я–А', sort_rating_desc:'Рейтинг ↓', sort_rating_asc:'Рейтинг ↑',
-      sort_reviews_desc:'Пікірлер ↓', sort_reviews_asc:'Пікірлер ↑', sort_rubric:'Айдар бойынша А–Я',
-      dl_label:'Жүктеу:', clear:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span> Тазалау', clear_title:'Нәтижелерді тазалау (Тарихта қалады)',
-      log_title:'Парсинг журналы', empty_start:'Сол жақта сілтемелерді көрсетіп, «Бастау» басыңыз.',
-      cities_btn:'Қалаларды таңдаңыз', cities_sel:'Таңдалған қала: ', no_cities:'қала жоқ', no_rubric:'Айдарсыз',
-      no_rubric_opt:'— айдарсыз —', add_links:'Сілтемелерді қосу', added:'Қосылды: ', wa_tpl_ph:'Хабарлама мәтіні…',
-      found:'табылды', collected:'жиналды…', from_history:'(тарихтан)', merged:'(біріктірілді, дубльдер жойылды)',
-      collecting:'Деректер жиналуда…', empty_notfound:'Сұраныс бойынша ештеңе табылмады.',
-      st_ready:'Дайын', st_running:'Парсинг жүруде…', st_done:'Дайын', st_stopped:'Тоқтатылды', st_error:'Қате',
-      mark:'Хабарластық', mark_on:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Хабарластық', note_ph:'Ескертпе…', hist_open:'Ашу',
-      hist_merge:' Таңдалғанды біріктіру (дедуп)', recs_short:'жзб.', more:'тағы',
-      a_need_url:'Кемінде бір 2GIS сілтемесін көрсетіңіз', a_need_query:'Сұранысты енгізіңіз',
-      a_need_city:'Кемінде бір қаланы таңдаңыз', a_server:'Сервер қолжетімсіз: ', a_start_err:'Іске қосу қатесі',
-      a_need_select:'Біріктіру үшін жазбаларды белгілеңіз', a_merge_err:'Біріктіру қатесі',
-      c_del:'Бұл жазбаны тарихтан жою керек пе?'
+    en:{
+      urls_label:'Directions', urls_hint:'One 2GIS link per line. Multiple cities and categories allowed.',
+      gen_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span> Create links', country:'Country', cities:'Cities', select_all:'select all', reset:'reset',
+      district:'District (optional)', no_district:'No district', district_sel:'Selected districts: ',
+      district_custom_ph:'Custom district + Enter', dist_pick_city:'Select a city first.',
+      query:'Query', query_ph:'Start typing: Cafe, Pharmacy…', rubric:'Category (optional)',
+      rubric_search_ph:'Search category…', wa_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp broadcast', wa_mode_label:'Open in',
+      wa_web:'WhatsApp Web (in browser)', wa_app:'App / phone (wa.me)', wa_templates:'Message templates',
+      wa_add:'+ Add template', wa_hint:'Clicking «WhatsApp» on a card opens a chat with a random template. Multiple templates <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> give each business its own version.',
+      filters_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.36 2.64a2 2 0 0 0-2.83 0L9 10l5 5 7.36-7.36a2 2 0 0 0 0-2.83z"/><path d="M9 10 4 15l3 5 5-3"/></svg></span> Filters', f_dedup_niches:'No cross-niche duplicates (1 business — 1 time)', f_dedup:'No franchises (1 per organization)', f_phone:'Only with phone',
+      f_wa:'Only with WhatsApp', f_social:'Only with social media', f_email:'Only with e-mail', f_site:'Only with website', f_nosite:'Only without website', ya_btn:'Yandex Maps', ya_missing:'only without website', ya_remove:'remove those with a website found', ya_remove_nf:'remove those not found on Yandex', ya_title:'Second pass: check website availability on Yandex Maps (no API)', ya_confirm:'Start Yandex Maps search? It runs through the browser and may take a while.', rating_from:'Rating from', reviews_from:'Reviews from',
+      params_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span> Parameters', maxrec:'Max records per URL', clean:'Clean view (no junk)', headless:'Hidden browser (headless)',
+      adv_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Advanced settings', a_images:'Disable images (faster)', a_max:'Launch browser maximized', a_skip404:'Exact matches (skip «not found»)', a_rubrics:'«Categories» column',
+      a_comments:'Comments in cells (working hours etc.)', a_rmempty:'Remove empty columns', a_rmdup:'Remove duplicates', a_delay:'Click delay, ms', a_cols:'Columns per field', a_mem:'RAM limit, MB', a_enc:'Encoding', hist_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> Parse history', hist_empty:'Empty so far. Completed parses will be saved here.',
+      run:'Start', stop:'Stop', search_ph:'Search in results…', sort_title:'Sort', sort_default:'No sorting', sort_name_asc:'Name A–Z', sort_name_desc:'Name Z–A', sort_rating_desc:'Rating ↓', sort_rating_asc:'Rating ↑', sort_reviews_desc:'Reviews ↓', sort_reviews_asc:'Reviews ↑', sort_rubric:'By category A–Z',
+      dl_label:'Download:', clear:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span> Clear', clear_title:'Clear results (kept in History)',
+      log_title:'Parse log', empty_start:'Enter directions on the left and click «Start».',
+      cities_btn:'Select cities', cities_sel:'Selected cities: ', no_cities:'no cities', no_rubric:'No category', no_rubric_opt:'— no category —', add_links:'Add links', added:'Added: ', wa_tpl_ph:'Message text…', found:'found', collected:'collected…', from_history:'(from history)', merged:'(merged, duplicates removed)', collecting:'Collecting data…', empty_notfound:'Nothing found for this query.',
+      st_ready:'Ready', st_running:'Parsing…', st_done:'Done', st_stopped:'Stopped', st_error:'Error', mark:'Contacted', mark_on:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Contacted', note_ph:'Note…', hist_open:'Open', hist_merge:' Merge selected (dedup)', recs_short:'rec.', more:'more',
+      a_need_url:'Provide at least one 2GIS link', a_need_query:'Enter a query', a_need_city:'Select at least one city', a_server:'Server unavailable: ', a_start_err:'Start error', a_need_select:'Check the records to merge', a_merge_err:'Merge error', c_del:'Delete this record from history?',
+      lt_lessons:'Training', lt_strat:'Strategies', next_lesson:'Next lesson ',
+      tg_ai_hint:'Enter a phrase — FracsAI will generate 20 similar ones and parse them after your approval.', tg_d1:'1 day', tg_d2:'2 days', tg_d3:'3 days', tg_days:'Period', tg_gen_btn:'Generate similar', tg_phrase_hint:'One phrase per line. Multiple phrases allowed.', tg_phrase_label:'Phrases'
     },
     ru:{
       urls_label:'Направления', urls_hint:'По одной ссылке 2GIS на строку. Можно несколько городов и рубрик.',
@@ -756,13 +743,15 @@
       a_need_url:'Укажите хотя бы одну ссылку 2GIS', a_need_query:'Введите запрос',
       a_need_city:'Выберите хотя бы один город', a_server:'Сервер недоступен: ', a_start_err:'Ошибка запуска',
       a_need_select:'Отметьте галочками записи для объединения', a_merge_err:'Ошибка объединения',
-      c_del:'Удалить эту запись из истории?'
+      c_del:'Удалить эту запись из истории?',
+      lt_lessons:'Обучение', lt_strat:'Стратегии', next_lesson:'Следующий урок ',
+      tg_ai_hint:'Введите фразу — FracsAI сделает 20 похожих и по ним будет идти парсинг после вашего одобрения.', tg_d1:'За 1 день', tg_d2:'За 2 дня', tg_d3:'За 3 дня', tg_days:'Период', tg_gen_btn:'Сгенерировать похожие', tg_phrase_hint:'По одной фразе на строку. Можно несколько фраз.', tg_phrase_label:'Фразы'
     }
   };
   var LANG='ru', lastStatus='idle';
-  function t(k){return (T[LANG]&&T[LANG][k]!=null)?T[LANG][k]:(T.kk[k]!=null?T.kk[k]:k);}
+  function t(k){return (T[LANG]&&T[LANG][k]!=null)?T[LANG][k]:(T.en[k]!=null?T.en[k]:k);}
   function applyLang(lang){
-    LANG=(lang==='ru')?'ru':'kk'; var d=T[LANG];
+    LANG=(lang==='ru')?'ru':'en'; var d=T[LANG];
     [].forEach.call(document.querySelectorAll('[data-i18n]'),function(el){var k=el.getAttribute('data-i18n'); if(d[k]!=null){el.innerHTML=d[k];}});
     [].forEach.call(document.querySelectorAll('[data-i18n-ph]'),function(el){var k=el.getAttribute('data-i18n-ph'); if(d[k]!=null)el.setAttribute('placeholder',d[k]);});
     [].forEach.call(document.querySelectorAll('[data-i18n-title]'),function(el){var k=el.getAttribute('data-i18n-title'); if(d[k]!=null)el.setAttribute('title',d[k]);});
@@ -1305,7 +1294,7 @@
 
   // Restore state on load: preload generator data, show last results / resume a job.
   (function init(){
-    var savedLang='kk'; try{savedLang=localStorage.getItem('lang')||'ru';}catch(_){}
+    var savedLang='ru'; try{savedLang=localStorage.getItem('lang')||'ru';}catch(_){}
     applyLang(savedLang);
     loadGenerator();
     loadHistory();
