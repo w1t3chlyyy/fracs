@@ -66,6 +66,42 @@ except Exception:  # pragma: no cover
 # models_url — откуда автоматически тянуть список моделей (None → только fallback).
 # needs_key=False → провайдер работает на ключе Fracs (Fracs AI).
 
+
+def _load_dotenv() -> None:
+    """Загружает .env при старте: ключи OPENROUTER_API_KEY, TWENTYFIRST_API_KEY и др.
+
+    Ищет .env в папке программы (для .exe — рядом с exe), корне проекта и в CWD.
+    Переменные, уже заданные в окружении, НЕ перезаписываются. Формат:
+    KEY=VALUE (кавычки и префикс 'export ' допускаются, # — комментарий).
+    """
+    import sys
+    here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidates = [os.path.join(here, '.env')]
+    if getattr(sys, 'frozen', False):
+        candidates.append(os.path.join(os.path.dirname(sys.executable), '.env'))
+    candidates.append(os.path.join(os.getcwd(), '.env'))
+    for path in candidates:
+        try:
+            if not os.path.isfile(path):
+                continue
+            with open(path, encoding='utf-8') as fh:
+                for raw in fh:
+                    line = raw.strip()
+                    if not line or line.startswith('#') or '=' not in line:
+                        continue
+                    if line.startswith('export '):
+                        line = line[7:]
+                    k, _, v = line.partition('=')
+                    k = k.strip()
+                    v = v.strip().strip('"').strip("'").strip()
+                    if k and k not in os.environ:
+                        os.environ[k] = v
+        except OSError:
+            continue
+
+
+_load_dotenv()
+
 _OPENROUTER_URL = 'https://openrouter.ai/api/v1'
 _FRACS_AI_KEY = (os.environ.get('FRACS_AI_API_KEY')
                  or os.environ.get('OPENROUTER_API_KEY') or '').strip()
