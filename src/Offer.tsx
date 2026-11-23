@@ -2,9 +2,9 @@ import { ArrowLeft } from 'lucide-react';
 
 export default function Offer() {
   return (
-    <div className="min-h-screen bg-[#EFEFEF] text-gray-900 font-sans antialiased selection:bg-[#F26522] selection:text-white">
+    <div className="min-h-screen bg-black text-white font-sans antialiased selection:bg-[#F26522] selection:text-black">
       <header className="max-w-[1100px] mx-auto p-2 sm:p-3">
-        <nav className="bg-white rounded-full p-[5px] flex items-center justify-between gap-3">
+        <nav className="bg-[#161616] rounded-full p-[5px] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <a href="/" aria-label="На главную" className="flex items-center gap-2 group">
               <img
@@ -12,20 +12,20 @@ export default function Offer() {
                 alt="Fracs"
                 className="w-10 h-10 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform shrink-0"
               />
-              <span className="font-heading text-lg font-semibold tracking-tight text-gray-900">Fracs</span>
+              <span className="font-heading text-lg font-semibold tracking-tight text-white">Fracs</span>
             </a>
-            <a href="/" className="inline-flex items-center gap-1.5 text-[13px] text-gray-600 hover:text-gray-900 pl-2">
+            <a href="/" className="inline-flex items-center gap-1.5 text-[13px] text-[#888888] hover:text-white pl-2">
               <ArrowLeft className="w-3.5 h-3.5" /> На сайт
             </a>
           </div>
           <div className="flex items-center gap-2 pr-1">
-            <a href="/privacy" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            <a href="/privacy" className="hidden md:inline-block text-[13px] text-[#888888] hover:text-white px-3 py-1.5">
               Конфиденциальность
             </a>
-            <a href="/terms" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            <a href="/terms" className="hidden md:inline-block text-[13px] text-[#888888] hover:text-white px-3 py-1.5">
               Соглашение
             </a>
-            <a href="/app" className="rounded-full bg-gray-900 hover:bg-black text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
+            <a href="/app" className="rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
               Личный кабинет
             </a>
           </div>
@@ -33,22 +33,22 @@ export default function Offer() {
       </header>
 
       <main className="max-w-[920px] mx-auto px-3 sm:px-4 pb-16 pt-6">
-        <article className="bg-white rounded-3xl p-6 sm:p-10 lg:p-12 border border-gray-200/80 shadow-sm space-y-8 text-[14.5px] sm:text-[15px] leading-relaxed text-gray-800">
-          <div className="text-center border-b border-gray-100 pb-6">
-            <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-gray-900">
+        <article className="bg-[#161616] rounded-3xl p-6 sm:p-10 lg:p-12 border border-white/10 shadow-sm space-y-8 text-[14.5px] sm:text-[15px] leading-relaxed text-[#cccccc]">
+          <div className="text-center border-b border-white/10 pb-6">
+            <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-white">
               ПУБЛИЧНАЯ ОФЕРТА
             </h1>
-            <p className="font-heading text-base sm:text-lg font-medium text-gray-700 mt-1">
+            <p className="font-heading text-base sm:text-lg font-medium text-[#aaaaaa] mt-1">
               о заключении договора об оказании услуг
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-3 text-[13px] md:hidden">
               <a href="/privacy" className="text-[#F26522] underline underline-offset-4">Политика конфиденциальности</a>
-              <a href="/terms" className="text-gray-600 underline underline-offset-4">Пользовательское соглашение</a>
+              <a href="/terms" className="text-[#888888] underline underline-offset-4">Пользовательское соглашение</a>
             </div>
           </div>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">1. Общие положения</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">1. Общие положения</h2>
             <p>
               В настоящей Публичной оферте содержатся условия заключения Договора об оказании услуг (далее по тексту — «Договор об оказании услуг» и/или «Договор»). Настоящей офертой признается предложение, адресованное одному или нескольким конкретным лицам, которое достаточно определенно и выражает намерение лица, сделавшего предложение, считать себя заключившим Договор с адресатом, которым будет принято предложение.
             </p>
@@ -63,7 +63,7 @@ export default function Offer() {
             </p>
 
             <div className="pt-2 space-y-2">
-              <p className="font-semibold text-gray-900">Термины и определения:</p>
+              <p className="font-semibold text-white">Термины и определения:</p>
               <p>
                 <strong>Договор</strong> — текст настоящей Оферты с Приложениями, являющимися неотъемлемой частью настоящей Оферты, акцептованный Заказчиком путем совершения конклюдентных действий, предусмотренных настоящей Офертой.
               </p>
@@ -84,7 +84,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">2. Предмет Договора</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">2. Предмет Договора</h2>
             <p>
               2.1. Исполнитель обязуется оказать Заказчику Услуги, а Заказчик обязуется оплатить их в размере, порядке и сроки, установленные настоящим Договором.
             </p>
@@ -110,8 +110,8 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">3. Права и обязанности Сторон</h2>
-            <p className="font-semibold text-gray-900">3.1. Права и обязанности Исполнителя:</p>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">3. Права и обязанности Сторон</h2>
+            <p className="font-semibold text-white">3.1. Права и обязанности Исполнителя:</p>
             <p>
               3.1.1. Исполнитель обязуется оказать Услуги в соответствии с положениями настоящего Договора, в сроки и объеме, указанные в настоящем Договоре и (или) в порядке, указанном на Сайте Исполнителя.
             </p>
@@ -125,7 +125,7 @@ export default function Offer() {
               3.1.4. Исполнитель оставляет за собой право изменять сроки (период) оказания Услуг и условия настоящей Оферты в одностороннем порядке без предварительного уведомления Заказчика, публикуя указанные изменения на Сайте Исполнителя в сети «Интернет». При этом новые / измененные условия, указываемые на Сайте, действуют только в отношении вновь заключаемых Договоров.
             </p>
 
-            <p className="font-semibold text-gray-900 pt-2">3.2. Права и обязанности Заказчика:</p>
+            <p className="font-semibold text-white pt-2">3.2. Права и обязанности Заказчика:</p>
             <p>
               3.2.1. Заказчик обязан предоставлять достоверную информацию о себе при получении соответствующих Услуг.
             </p>
@@ -144,7 +144,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">4. Цена и порядок расчетов</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">4. Цена и порядок расчетов</h2>
             <p>
               4.1. Стоимость услуг Исполнителя, оказываемых Заказчику, и порядок их оплаты определяются на основании сведений Исполнителя при оформлении заявки Заказчиком либо устанавливаются на Сайте Исполнителя в сети «Интернет»:{' '}
               <a href="https://fracs.cc.cd" target="_blank" rel="noreferrer" className="text-[#F26522] hover:underline">https://fracs.cc.cd</a>
@@ -155,7 +155,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">5. Конфиденциальность и безопасность</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">5. Конфиденциальность и безопасность</h2>
             <p>
               5.1. При реализации настоящего Договора Стороны обеспечивают конфиденциальность и безопасность персональных данных в соответствии с актуальной редакцией ФЗ от 27.07.2006 г. № 152-ФЗ «О персональных данных» и ФЗ от 27.07.2006 г. № 149-ФЗ «Об информации, информационных технологиях и о защите информации».
             </p>
@@ -171,7 +171,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">6. Форс-мажор</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">6. Форс-мажор</h2>
             <p>
               6.1. Стороны освобождаются от ответственности за неисполнение или ненадлежащее исполнение обязательств по Договору, если надлежащее исполнение оказалось невозможным вследствие непреодолимой силы, то есть чрезвычайных и непредотвратимых при данных условиях обстоятельств, под которыми понимаются: запретные действия властей, эпидемии, блокада, эмбарго, землетрясения, наводнения, пожары или другие стихийные бедствия.
             </p>
@@ -187,7 +187,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">7. Ответственность Сторон</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">7. Ответственность Сторон</h2>
             <p>
               7.1. В случае неисполнения и/или ненадлежащего исполнения своих обязательств по Договору, Стороны несут ответственность в соответствии с условиями настоящей Оферты.
             </p>
@@ -200,7 +200,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">8. Срок действия настоящей Оферты</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">8. Срок действия настоящей Оферты</h2>
             <p>
               8.1. Оферта вступает в силу с момента размещения на Сайте Исполнителя и действует до момента её отзыва Исполнителем.
             </p>
@@ -216,7 +216,7 @@ export default function Offer() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">9. Дополнительные условия</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">9. Дополнительные условия</h2>
             <p>
               9.1. Договор, его заключение и исполнение регулируется действующим законодательством Российской Федерации. Все вопросы, не урегулированные настоящей Офертой или урегулированные не полностью, регулируются в соответствии с материальным правом Российской Федерации.
             </p>
@@ -237,13 +237,13 @@ export default function Offer() {
             </p>
           </section>
 
-          <section className="space-y-2 border-t border-gray-100 pt-6">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900 mb-3">10. Реквизиты Исполнителя</h2>
+          <section className="space-y-2 border-t border-white/10 pt-6">
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">10. Реквизиты Исполнителя</h2>
             <p><strong>Полное наименование:</strong> Самозанятый Бенаи Тимур Рустамович</p>
             <p><strong>ИНН:</strong> 920159216794</p>
             <p>
               <strong>Контактный телефон:</strong>{' '}
-              <a href="tel:+79944821648" className="text-gray-900 hover:text-[#F26522]">+7 994 482-16-48</a>
+              <a href="tel:+79944821648" className="text-white hover:text-[#F26522]">+7 994 482-16-48</a>
             </p>
             <p>
               <strong>Контактный e-mail:</strong>{' '}

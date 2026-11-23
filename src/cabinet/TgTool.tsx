@@ -87,13 +87,13 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F26522] text-white text-[13px] font-medium">
           <Send className="w-4 h-4" /> Telegram
         </span>
-        {locked && <span className="text-[12px] text-[#ffb27c]">Пробный поиск использован</span>}
+        {locked && <span className="text-[12px] text-[#ffffff]">Пробный поиск использован</span>}
       </div>
 
       {locked && (
         <div className="mb-4 ember-card-2 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-          <p className="flex items-center gap-2 text-[13px] text-[#d9c4b5]">
-            <Lock className="w-4 h-4 shrink-0 text-[#ffb27c]" /> Пробный поиск в Telegram использован. Оформите подписку, чтобы искать дальше.
+          <p className="flex items-center gap-2 text-[13px] text-[#cccccc]">
+            <Lock className="w-4 h-4 shrink-0 text-[#ffffff]" /> Пробный поиск в Telegram использован. Оформите подписку, чтобы искать дальше.
           </p>
           <button onClick={onSubscribe} className={`${btnOrange} !px-4 !py-2 !text-[13px]`}>Оформить подписку</button>
         </div>
@@ -103,7 +103,7 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
         {/* Левая панель — настройки поиска */}
         <aside className="ember-card rounded-3xl p-4 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-[#a08c7c]">Фразы</span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[#888888]">Фразы</span>
             <textarea
               value={phrases}
               onChange={(e) => { setPhrases(e.target.value); setActive(''); }}
@@ -111,11 +111,11 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
               placeholder={'нужен сайт\nищу бухгалтера\nдизай'}
               className={`${inputCls} min-h-[92px] resize-y leading-snug`}
             />
-            <span className="text-[12px] text-[#a08c7c]">По одной фразе на строку. Можно несколько фраз.</span>
+            <span className="text-[12px] text-[#888888]">По одной фразе на строку. Можно несколько фраз.</span>
           </label>
 
           <Section title="Создать фразы" icon={<Wand2 className="w-4 h-4" />}>
-            <p className="text-[12px] leading-snug text-[#a08c7c]">
+            <p className="text-[12px] leading-snug text-[#888888]">
               FracsAI расширит активную фразу до 20 вариаций — выбирайте подходящие и запускайте по ним парсинг.
             </p>
             <button type="button" onClick={gen} disabled={!phrase} className={`${btnGhost} w-full disabled:opacity-50`}>
@@ -128,7 +128,7 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
                     key={v}
                     type="button"
                     onClick={() => setActive(active === v ? '' : v)}
-                    className={`px-2.5 py-1 rounded-full text-[12px] cursor-pointer transition-colors ${active === v ? 'bg-[#F26522] text-white' : 'bg-[rgba(255,178,124,0.08)] text-[#d9c4b5] hover:bg-[rgba(255,178,124,0.14)]'}`}
+                    className={`px-2.5 py-1 rounded-full text-[12px] cursor-pointer transition-colors ${active === v ? 'bg-[#F26522] text-white' : 'bg-[rgba(255,255,255,0.08)] text-[#cccccc] hover:bg-[rgba(255,255,255,0.14)]'}`}
                   >
                     {v}
                   </button>
@@ -136,13 +136,13 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
               </div>
             )}
             {active && (
-              <p className="text-[12px] text-[#ffb27c]">Активна: «{active}»</p>
+              <p className="text-[12px] text-[#ffffff]">Активна: «{active}»</p>
             )}
           </Section>
 
           <Section title="Фильтры" icon={<Search className="w-4 h-4" />}>
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] text-[#a08c7c]">Период поиска</span>
+              <span className="text-[12px] text-[#888888]">Период поиска</span>
               <select value={days} onChange={(e) => setDays(Number(e.target.value))} className={inputCls}>
                 <option value={1}>За 1 день</option>
                 <option value={2}>За 2 дня</option>
@@ -150,23 +150,23 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
                 <option value={7}>За 7 дней</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 text-[13px] text-[#d9c4b5] cursor-pointer mt-1">
+            <label className="flex items-center gap-2 text-[13px] text-[#cccccc] cursor-pointer mt-1">
               <input type="checkbox" checked={onlyWithUsername} onChange={(e) => setOnlyWithUsername(e.target.checked)} className="accent-[#F26522]" /> Только с @username
             </label>
           </Section>
 
           <Section title="Параметры" icon={<SlidersHorizontal className="w-4 h-4" />}>
             <label className="flex flex-col gap-1">
-              <span className="text-[12px] text-[#a08c7c]">Макс. сообщений на фразу</span>
+              <span className="text-[12px] text-[#888888]">Макс. сообщений на фразу</span>
               <input type="number" min={10} max={500} step={10} value={maxPer} onChange={(e) => setMaxPer(Number(e.target.value) || 50)} className={inputCls} />
             </label>
           </Section>
 
           <Section title="Расширенные настройки" icon={<Settings2 className="w-4 h-4" />}>
-            <label className="flex items-center gap-2 text-[13px] text-[#d9c4b5] cursor-pointer">
+            <label className="flex items-center gap-2 text-[13px] text-[#cccccc] cursor-pointer">
               <input type="checkbox" checked={dedupe} onChange={(e) => setDedupe(e.target.checked)} className="accent-[#F26522]" /> Удалять дубликаты людей
             </label>
-            <label className="flex items-center gap-2 text-[13px] text-[#d9c4b5] cursor-pointer">
+            <label className="flex items-center gap-2 text-[13px] text-[#cccccc] cursor-pointer">
               <input type="checkbox" checked={stream} onChange={(e) => setStream(e.target.checked)} className="accent-[#F26522]" /> Потоковый сбор
             </label>
           </Section>
@@ -179,15 +179,15 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
                     key={s.id}
                     type="button"
                     onClick={() => setResult(s)}
-                    className="text-left rounded-lg px-2.5 py-2 text-[12.5px] hover:bg-[rgba(255,178,124,0.08)] cursor-pointer"
+                    className="text-left rounded-lg px-2.5 py-2 text-[12.5px] hover:bg-[rgba(255,255,255,0.08)] cursor-pointer"
                   >
-                    <span className="font-medium text-[#fbf3ea]">{s.query.phrase ?? '—'}</span>
-                    <span className="text-[#a08c7c]"> · {s.rowsTotal} зап.</span>
+                    <span className="font-medium text-[#ffffff]">{s.query.phrase ?? '—'}</span>
+                    <span className="text-[#888888]"> · {s.rowsTotal} зап.</span>
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="text-[12.5px] text-[#a08c7c]">Пока пусто. Завершённые поиски сохранятся здесь.</p>
+              <p className="text-[12.5px] text-[#888888]">Пока пусто. Завершённые поиски сохранятся здесь.</p>
             )}
           </Section>
 
@@ -205,10 +205,10 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
         <div className="min-w-0 ember-card rounded-3xl p-4 flex flex-col gap-3">
           {/* Тулбар */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold ${loading ? 'bg-[rgba(242,101,34,0.15)] text-[#ffb27c]' : 'bg-[rgba(255,255,255,0.05)] text-[#a08c7c]'}`}>
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold ${loading ? 'bg-[rgba(242,101,34,0.15)] text-[#ffffff]' : 'bg-[rgba(255,255,255,0.05)] text-[#888888]'}`}>
               <span className={`w-1.5 h-1.5 rounded-full bg-current ${loading ? 'animate-pulse' : ''}`} /> {loading ? 'Идёт поиск…' : 'Готов'}
             </span>
-            {result && <span className="text-[13px] tabular-nums text-[#a08c7c]">{result.stats?.people ?? 0} людей</span>}
+            {result && <span className="text-[13px] tabular-nums text-[#888888]">{result.stats?.people ?? 0} людей</span>}
             <button type="button" onClick={clearAll} disabled={!result} className={`${btnGhost} ml-auto disabled:opacity-50`}>
               <X className="w-3.5 h-3.5" /> Очистить
             </button>
@@ -219,27 +219,27 @@ export default function TgTool({ subscribed, trialAvailable, onSubscribe, onSear
 
           {/* Подсказка FracsAI */}
           <div className="rounded-2xl bg-[rgba(242,101,34,0.08)] border border-[rgba(242,101,34,0.18)] px-3.5 py-3 flex items-start gap-2.5">
-            <Sparkles className="w-4 h-4 text-[#ffb27c] mt-0.5 shrink-0" />
-            <p className="text-[12.5px] leading-snug text-[#d9c4b5]">{FRACS_HINT}</p>
+            <Sparkles className="w-4 h-4 text-[#ffffff] mt-0.5 shrink-0" />
+            <p className="text-[12.5px] leading-snug text-[#cccccc]">{FRACS_HINT}</p>
           </div>
 
           {/* Журнал парсинга */}
           {logs.length > 0 && (
-            <details className="rounded-2xl border border-[rgba(255,178,124,0.12)] bg-[rgba(255,255,255,0.02)]">
-              <summary className="cursor-pointer select-none list-none px-4 py-3 text-[13px] font-semibold text-[#d9c4b5] [&::-webkit-details-marker]:hidden">Журнал парсинга</summary>
-              <pre className="m-0 max-h-52 overflow-auto whitespace-pre-wrap break-words border-t border-[rgba(255,178,124,0.1)] bg-[rgba(0,0,0,0.3)] px-4 py-3 font-mono text-[12px] leading-relaxed text-[#d9c4b5]">{logs.join('\n')}</pre>
+            <details className="rounded-2xl border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.02)]">
+              <summary className="cursor-pointer select-none list-none px-4 py-3 text-[13px] font-semibold text-[#cccccc] [&::-webkit-details-marker]:hidden">Журнал парсинга</summary>
+              <pre className="m-0 max-h-52 overflow-auto whitespace-pre-wrap break-words border-t border-[rgba(255,255,255,0.1)] bg-[rgba(0,0,0,0.3)] px-4 py-3 font-mono text-[12px] leading-relaxed text-[#cccccc]">{logs.join('\n')}</pre>
             </details>
           )}
 
-          {error && <p className="text-[13px] text-[#ff8a5b]">{error}</p>}
+          {error && <p className="text-[13px] text-[#F26522]">{error}</p>}
 
           {/* Результаты / empty-state */}
           <div>
             {result ? (
               <ResultPanel result={result} subscribed={subscribed} onSubscribe={onSubscribe} />
             ) : (
-              <div className="py-16 text-center text-[15px] leading-relaxed text-[#a08c7c]">
-                <Search className="w-8 h-8 text-[#a08c7c] mx-auto mb-3" />
+              <div className="py-16 text-center text-[15px] leading-relaxed text-[#888888]">
+                <Search className="w-8 h-8 text-[#888888] mx-auto mb-3" />
                 Укажите фразы слева и нажмите «Запустить».
               </div>
             )}

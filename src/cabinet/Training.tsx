@@ -11,13 +11,13 @@ export default function Training({ subscribed, onSubscribe }: { subscribed: bool
     <div className="max-w-[1400px] mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <h2 className="font-heading text-2xl sm:text-3xl font-medium tracking-[-0.02em] text-[#fbf3ea]">Обучение</h2>
+          <h2 className="font-heading text-2xl sm:text-3xl font-medium tracking-[-0.02em] text-[#ffffff]">Обучение</h2>
           <div className="inline-flex rounded-full bg-[rgba(255,255,255,0.04)] p-1">
             {([['learn', 'Обучение'], ['strategies', 'Стратегии']] as const).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => setTab(id)}
-                className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${tab === id ? 'bg-[#F26522] text-white' : 'text-[#d9c4b5] hover:text-[#fbf3ea]'}`}
+                className={`px-4 py-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${tab === id ? 'bg-[#F26522] text-white' : 'text-[#cccccc] hover:text-[#ffffff]'}`}
               >
                 {label}
               </button>
@@ -31,7 +31,7 @@ export default function Training({ subscribed, onSubscribe }: { subscribed: bool
           >
             <Play className="w-4 h-4" /> Следующий урок
           </button>
-          {notified && <span className="text-[12px] text-[#ffb27c]">Уроки скоро появятся — пришлём уведомление в Telegram.</span>}
+          {notified && <span className="text-[12px] text-[#ffffff]">Уроки скоро появятся — пришлём уведомление в Telegram.</span>}
         </div>
       </div>
 
@@ -41,29 +41,29 @@ export default function Training({ subscribed, onSubscribe }: { subscribed: bool
           aria-hidden="true"
           className="pointer-events-none select-none absolute inset-0 flex flex-col items-center justify-center text-center"
         >
-          <span className="font-serif-h italic font-medium leading-[0.85] tracking-tight text-[rgba(255,178,124,0.06)]" style={{ fontSize: 'clamp(40px, 8vw, 110px)' }}>
+          <span className="font-serif-h italic font-medium leading-[0.85] tracking-tight text-[rgba(255,255,255,0.06)]" style={{ fontSize: 'clamp(40px, 8vw, 110px)' }}>
             ТЕКСТ
           </span>
-          <span className="font-serif-h italic font-medium leading-[0.85] tracking-tight text-[rgba(255,178,124,0.06)]" style={{ fontSize: 'clamp(40px, 8vw, 110px)' }}>
+          <span className="font-serif-h italic font-medium leading-[0.85] tracking-tight text-[rgba(255,255,255,0.06)]" style={{ fontSize: 'clamp(40px, 8vw, 110px)' }}>
             ОБУЧЕНИЯ
           </span>
         </div>
 
         {/* Контент поверх водяного знака */}
         <div className="relative z-10 max-w-md text-center">
-          <div className="mx-auto mb-4 w-12 h-12 rounded-2xl bg-[rgba(255,178,124,0.1)] border border-[rgba(255,178,124,0.2)] flex items-center justify-center">
-            <GraduationCap className="w-6 h-6 text-[#ffb27c]" />
+          <div className="mx-auto mb-4 w-12 h-12 rounded-2xl bg-[rgba(255,255,255,0.1)] border border-[rgba(255,255,255,0.2)] flex items-center justify-center">
+            <GraduationCap className="w-6 h-6 text-[#ffffff]" />
           </div>
-          <h3 className="font-heading text-xl font-medium text-[#fbf3ea]">
+          <h3 className="font-heading text-xl font-medium text-[#ffffff]">
             {tab === 'learn' ? 'Уроки скоро появятся' : 'Стратегии скоро появятся'}
           </h3>
-          <p className="mt-2 text-[14px] text-[#d9c4b5] leading-relaxed">
+          <p className="mt-2 text-[14px] text-[#cccccc] leading-relaxed">
             {tab === 'learn'
               ? 'Раздел наполняется: пошаговые видео и инструкции по поиску клиентов на картах 2ГИС и в Telegram, настройке парсера и обработке выгрузок.'
               : 'Готовые сценарии поиска по нишам: от автосервисов до бухгалтерии — какие фильтры ставить, куда ходить в Яндекс Картах, как писать первым.'}
           </p>
-          <div className="mt-5 inline-flex items-center gap-2 rounded-full ember-chip px-3 py-1.5 text-[12px] text-[#d9c4b5]">
-            <Sparkles className="w-3.5 h-3.5 text-[#ffb27c]" /> Первый модуль — «Настройка парсера 2ГИС»
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full ember-chip px-3 py-1.5 text-[12px] text-[#cccccc]">
+            <Sparkles className="w-3.5 h-3.5 text-[#ffffff]" /> Первый модуль — «Настройка парсера 2ГИС»
           </div>
         </div>
       </section>

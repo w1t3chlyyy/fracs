@@ -2,9 +2,9 @@ import { ArrowLeft } from 'lucide-react';
 
 export default function Privacy() {
   return (
-    <div className="min-h-screen bg-[#EFEFEF] text-gray-900 font-sans antialiased selection:bg-[#F26522] selection:text-white">
+    <div className="min-h-screen bg-black text-white font-sans antialiased selection:bg-[#F26522] selection:text-black">
       <header className="max-w-[1100px] mx-auto p-2 sm:p-3">
-        <nav className="bg-white rounded-full p-[5px] flex items-center justify-between gap-3">
+        <nav className="bg-[#161616] rounded-full p-[5px] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <a href="/" aria-label="На главную" className="flex items-center gap-2 group">
               <img
@@ -12,20 +12,20 @@ export default function Privacy() {
                 alt="Fracs"
                 className="w-10 h-10 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform shrink-0"
               />
-              <span className="font-heading text-lg font-semibold tracking-tight text-gray-900">Fracs</span>
+              <span className="font-heading text-lg font-semibold tracking-tight text-white">Fracs</span>
             </a>
-            <a href="/" className="inline-flex items-center gap-1.5 text-[13px] text-gray-600 hover:text-gray-900 pl-2">
+            <a href="/" className="inline-flex items-center gap-1.5 text-[13px] text-[#888888] hover:text-white pl-2">
               <ArrowLeft className="w-3.5 h-3.5" /> На сайт
             </a>
           </div>
           <div className="flex items-center gap-2 pr-1">
-            <a href="/terms" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            <a href="/terms" className="hidden md:inline-block text-[13px] text-[#888888] hover:text-white px-3 py-1.5">
               Соглашение
             </a>
-            <a href="/offer" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            <a href="/offer" className="hidden md:inline-block text-[13px] text-[#888888] hover:text-white px-3 py-1.5">
               Оферта
             </a>
-            <a href="/app" className="rounded-full bg-gray-900 hover:bg-black text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
+            <a href="/app" className="rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
               Личный кабинет
             </a>
           </div>
@@ -33,22 +33,22 @@ export default function Privacy() {
       </header>
 
       <main className="max-w-[920px] mx-auto px-3 sm:px-4 pb-16 pt-6">
-        <article className="bg-white rounded-3xl p-6 sm:p-10 lg:p-12 border border-gray-200/80 shadow-sm space-y-8 text-[14.5px] sm:text-[15px] leading-relaxed text-gray-800">
-          <div className="text-center border-b border-gray-100 pb-6">
-            <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-gray-900">
+        <article className="bg-[#161616] rounded-3xl p-6 sm:p-10 lg:p-12 border border-white/10 shadow-sm space-y-8 text-[14.5px] sm:text-[15px] leading-relaxed text-[#cccccc]">
+          <div className="text-center border-b border-white/10 pb-6">
+            <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-white">
               ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ
             </h1>
-            <p className="font-heading text-base sm:text-lg font-medium text-gray-700 mt-1">
+            <p className="font-heading text-base sm:text-lg font-medium text-[#aaaaaa] mt-1">
               в отношении обработки персональных данных пользователей сервиса Fracs
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-3 text-[13px] md:hidden">
               <a href="/terms" className="text-[#F26522] underline underline-offset-4">Пользовательское соглашение</a>
-              <a href="/offer" className="text-gray-600 underline underline-offset-4">Публичная оферта</a>
+              <a href="/offer" className="text-[#888888] underline underline-offset-4">Публичная оферта</a>
             </div>
           </div>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">1. Общие положения</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">1. Общие положения</h2>
             <p>
               1.1. Настоящая Политика конфиденциальности (далее — «Политика») определяет порядок сбора, обработки, хранения и защиты персональных данных пользователей веб-сайта{' '}
               <a href="https://fracs.cc.cd" target="_blank" rel="noreferrer" className="text-[#F26522] hover:underline">https://fracs.cc.cd</a>, личного кабинета, Telegram-бота и программного обеспечения Fracs Parser (далее совместно — «Сервис»).
@@ -65,7 +65,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">2. Обрабатываемые данные</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">2. Обрабатываемые данные</h2>
             <p>2.1. В зависимости от используемого функционала Сервиса Оператор может обрабатывать следующие категории данных Пользователя:</p>
             <ul className="list-disc pl-6 space-y-1.5">
               <li>имя (first name) и публичное имя пользователя (@username) в мессенджере Telegram;</li>
@@ -85,7 +85,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">3. Цели обработки</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">3. Цели обработки</h2>
             <p>3.1. Персональные данные Пользователя обрабатываются исключительно в следующих целях:</p>
             <ul className="list-disc pl-6 space-y-1.5">
               <li>идентификация и авторизация Пользователя в личном кабинете через Telegram-бота;</li>
@@ -100,7 +100,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">4. Основания обработки</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">4. Основания обработки</h2>
             <p>
               4.1. Обработка персональных данных осуществляется на основании:
             </p>
@@ -113,7 +113,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">5. Передача данных третьим лицам</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">5. Передача данных третьим лицам</h2>
             <p>
               5.1. Оператор не продаёт, не сдаёт в аренду и не распространяет персональные данные Пользователей третьим лицам в рекламных или маркетинговых целях.
             </p>
@@ -126,7 +126,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">6. Платёжные данные</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">6. Платёжные данные</h2>
             <p>
               6.1. Безналичная оплата подписки может осуществляться с переходом на защищённую платёжную страницу стороннего платёжного провайдера (в частности, ЮKassa) либо по согласованию с администратором Сервиса.
             </p>
@@ -136,7 +136,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">7. Хранение и защита данных</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">7. Хранение и защита данных</h2>
             <p>
               7.1. Персональные данные хранятся в течение срока действия учётной записи/подписки или периода, необходимого для достижения целей обработки, либо в течение сроков, установленных законодательством. Записи истории поисковых запросов автоматически очищаются по истечении установленного срока хранения (по умолчанию — 30 дней).
             </p>
@@ -149,7 +149,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">8. Права Пользователя</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">8. Права Пользователя</h2>
             <p>
               8.1. Пользователь вправе запрашивать информацию об обрабатываемых Оператором персональных данных, требовать их уточнения, блокирования или удаления, а также отозвать согласие на обработку персональных данных в случаях, предусмотренных законодательством РФ.
             </p>
@@ -162,7 +162,7 @@ export default function Privacy() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">9. Изменение Политики</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">9. Изменение Политики</h2>
             <p>
               9.1. Оператор вправе вносить изменения в настоящую Политику в связи с развитием функциональности Сервиса, изменением используемых провайдеров или требований законодательства.
             </p>
@@ -172,14 +172,14 @@ export default function Privacy() {
             </p>
           </section>
 
-          <section className="space-y-2 border-t border-gray-100 pt-6">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900 mb-3">10. Контактная информация</h2>
+          <section className="space-y-2 border-t border-white/10 pt-6">
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">10. Контактная информация</h2>
             <p>По вопросам обработки персональных данных и работы Сервиса вы можете обратиться к Оператору:</p>
             <p><strong>Оператор:</strong> Самозанятый Бенаи Тимур Рустамович</p>
             <p><strong>ИНН:</strong> 920159216794</p>
             <p>
               <strong>Контактный телефон:</strong>{' '}
-              <a href="tel:+79944821648" className="text-gray-900 hover:text-[#F26522]">+7 994 482-16-48</a>
+              <a href="tel:+79944821648" className="text-white hover:text-[#F26522]">+7 994 482-16-48</a>
             </p>
             <p>
               <strong>Контактный e-mail:</strong>{' '}

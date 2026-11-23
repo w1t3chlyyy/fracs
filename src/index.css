@@ -57,50 +57,50 @@ h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-seri
   }
 
   /* —— Ember design system: same family as the HalftoneFlowHero (palette "ember") ——
-     ground #100c0a · flow #F26522 · hot #ffb27c · text #fbf3ea */
+     ground #000000 · flow #F26522 · hot #ffffff · text #ffffff */
   .ember-landing {
-    background-color: #100c0a;
-    color: #fbf3ea;
+    background-color: #000000;
+    color: #ffffff;
   }
   .ember-bg {
     /* Hero root (.hfh-root) reads --color-background for its frame; make it
        transparent so the hero sits on the same dark ember ground as the rest. */
     --color-background: transparent;
-    background-color: #100c0a;
+    background-color: #000000;
     background-image:
       radial-gradient(70% 55% at 50% -5%, rgba(217, 82, 29, 0.12), transparent 70%),
-      radial-gradient(circle at 1px 1px, rgba(255, 178, 124, 0.045) 1px, transparent 0);
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.045) 1px, transparent 0);
     background-size: auto, 22px 22px;
   }
   .ember-card {
-    background: linear-gradient(180deg, rgba(30, 22, 17, 0.92), rgba(18, 13, 10, 0.92));
-    border: 1px solid rgba(255, 178, 124, 0.09);
+    background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(18, 13, 10, 0.92));
+    border: 1px solid rgba(255,255,255,0.09);
     box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
   .ember-card-2 {
-    background: linear-gradient(180deg, rgba(38, 28, 21, 0.9), rgba(24, 17, 13, 0.9));
-    border: 1px solid rgba(255, 178, 124, 0.1);
+    background: linear-gradient(180deg, rgba(26,26,26,0.9), rgba(16,16,16,0.9));
+    border: 1px solid rgba(255,255,255,0.1);
   }
   .ember-chip {
-    background: rgba(255, 178, 124, 0.07);
-    color: #d9c4b5;
-    border: 1px solid rgba(255, 178, 124, 0.08);
+    background: rgba(255,255,255,0.07);
+    color: #cccccc;
+    border: 1px solid rgba(255,255,255,0.08);
   }
   .ember-chip:hover {
-    background: rgba(255, 178, 124, 0.13);
+    background: rgba(255,255,255,0.13);
   }
   .ember-input {
     background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 178, 124, 0.12);
-    color: #fbf3ea;
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #ffffff;
   }
-  .ember-input::placeholder { color: #8a7d70; }
+  .ember-input::placeholder { color: #666666; }
   .ember-input:focus { border-color: #F26522; outline: 0; }
   .ember-glass {
-    background: rgba(20, 14, 11, 0.55);
+    background: rgba(14,14,14,0.55);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
     backdrop-filter: blur(16px) saturate(140%);
-    border: 1px solid rgba(255, 178, 124, 0.14);
+    border: 1px solid rgba(255,255,255,0.14);
     box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
 }
@@ -108,56 +108,56 @@ h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-seri
 /* ── Cabinet ember scope: переводит светлые Tailwind-утилиты вложенных
    инструментов (AppPanel/TgTool/DemoTool/MapsTool/History/…) в тёмную палитру,
    не трогая оранжевые акценты (#F26522) и тёмные блоки. ── */
-.ember-cabinet { background-color: #100c0a; color: #fbf3ea; }
+.ember-cabinet { background-color: #000000; color: #ffffff; }
 .ember-cabinet .bg-white,
 .ember-cabinet .bg-\[\#F9F9F9\],
 .ember-cabinet .bg-\[\#F2F2F2\] {
-  background: linear-gradient(180deg, rgba(30, 22, 17, 0.92), rgba(18, 13, 10, 0.92));
-  border-color: rgba(255, 178, 124, 0.1);
+  background: linear-gradient(180deg, rgba(20,20,20,0.92), rgba(18, 13, 10, 0.92));
+  border-color: rgba(255,255,255,0.1);
 }
 .ember-cabinet .bg-\[\#EFEFEF\] { background-color: transparent; }
 .ember-cabinet .bg-gray-50,
 .ember-cabinet .bg-gray-100,
 .ember-cabinet .bg-gray-200 {
-  background: rgba(255, 178, 124, 0.05);
-  border-color: rgba(255, 178, 124, 0.1);
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.1);
 }
 .ember-cabinet .bg-gray-900,
 .ember-cabinet .bg-gray-800 {
-  background: linear-gradient(180deg, rgba(38, 28, 21, 0.9), rgba(24, 17, 13, 0.9));
-  border-color: rgba(255, 178, 124, 0.1);
+  background: linear-gradient(180deg, rgba(26,26,26,0.9), rgba(16,16,16,0.9));
+  border-color: rgba(255,255,255,0.1);
 }
 .ember-cabinet .bg-orange-50,
 .ember-cabinet .bg-amber-50 {
-  background: rgba(255, 178, 124, 0.08);
-  border-color: rgba(255, 178, 124, 0.18);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
 }
 .ember-cabinet .bg-emerald-50 { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.22); }
 
 .ember-cabinet .text-gray-900,
-.ember-cabinet .text-gray-800 { color: #fbf3ea; }
+.ember-cabinet .text-gray-800 { color: #ffffff; }
 .ember-cabinet .text-gray-700,
-.ember-cabinet .text-gray-600 { color: #d9c4b5; }
+.ember-cabinet .text-gray-600 { color: #cccccc; }
 .ember-cabinet .text-gray-500,
-.ember-cabinet .text-gray-400 { color: #a08c7c; }
+.ember-cabinet .text-gray-400 { color: #888888; }
 .ember-cabinet .text-amber-700,
 .ember-cabinet .text-amber-600,
-.ember-cabinet .text-orange-700 { color: #ffb27c; }
+.ember-cabinet .text-orange-700 { color: #ffffff; }
 .ember-cabinet .text-emerald-700 { color: #34d399; }
 
 .ember-cabinet .border-gray-200,
 .ember-cabinet .border-gray-100,
-.ember-cabinet .border-gray-300 { border-color: rgba(255, 178, 124, 0.12); }
+.ember-cabinet .border-gray-300 { border-color: rgba(255,255,255,0.12); }
 .ember-cabinet .border-orange-100,
 .ember-cabinet .border-amber-100,
-.ember-cabinet .border-amber-50 { border-color: rgba(255, 178, 124, 0.2); }
+.ember-cabinet .border-amber-50 { border-color: rgba(255,255,255,0.2); }
 
 .ember-cabinet input,
 .ember-cabinet select,
 .ember-cabinet textarea {
   background: rgba(0, 0, 0, 0.25);
-  border-color: rgba(255, 178, 124, 0.14);
-  color: #fbf3ea;
+  border-color: rgba(255,255,255,0.14);
+  color: #ffffff;
 }
 .ember-cabinet input::placeholder,
 .ember-cabinet textarea::placeholder { color: rgba(160, 140, 124, 0.6); }
@@ -166,9 +166,9 @@ h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-seri
 .ember-cabinet textarea:focus { border-color: #F26522; outline: 0; }
 
 .ember-cabinet .hover\:bg-gray-100:hover,
-.ember-cabinet .hover\:bg-gray-200:hover { background: rgba(255, 178, 124, 0.1); }
+.ember-cabinet .hover\:bg-gray-200:hover { background: rgba(255,255,255,0.1); }
 .ember-cabinet .hover\:text-gray-900:hover,
-.ember-cabinet .hover\:text-gray-700:hover { color: #fbf3ea; }
+.ember-cabinet .hover\:text-gray-700:hover { color: #ffffff; }
 .ember-cabinet .from-white\/30 { --tw-gradient-from: rgba(16, 12, 10, 0.3); }
 .ember-cabinet .via-white\/85 { --tw-gradient-via: rgba(16, 12, 10, 0.9); }
-.ember-cabinet .to-white { --tw-gradient-to: #100c0a; }
+.ember-cabinet .to-white { --tw-gradient-to: #000000; }

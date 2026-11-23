@@ -152,7 +152,7 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
           <Map className="w-4 h-4" /> Парсинг 2ГИС
         </span>
         {subscribed && (
-          <button onClick={onGetProgram} className="text-[13px] text-[#ffb27c] hover:text-[#fbf3ea] underline underline-offset-4 cursor-pointer">
+          <button onClick={onGetProgram} className="text-[13px] text-[#ffffff] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer">
             Программа для ПК и ключ →
           </button>
         )}
@@ -160,7 +160,7 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
 
       {/* Демо-баннер */}
       <div className="mb-4 ember-card-2 rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] leading-snug text-[#d9c4b5]">
+        <p className="text-[13px] leading-snug text-[#cccccc]">
           {blurDemo ? (
             <><b>Демо-режим.</b> Запуск показывает вымышленные бизнесы с блюром. Реальные данные — по подписке.</>
           ) : (
@@ -176,14 +176,14 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
         {/* Левая панель — настройки */}
         <aside className="ember-card rounded-3xl p-4 flex flex-col gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold uppercase tracking-wide text-[#a08c7c]">{t('urls_label')}</span>
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[#888888]">{t('urls_label')}</span>
             <textarea
               id="gis-urls" value={urls} rows={4}
               onChange={(e) => { setUrls(e.target.value); setUrlsInvalid(false); }}
               placeholder={'https://2gis.kz/almaty/search/кафе\nhttps://2gis.ru/moscow/search/Аптеки'}
-              className={`${inputCls} min-h-[92px] resize-y leading-snug ${urlsInvalid ? '!border-[#ff8a5b]' : ''}`}
+              className={`${inputCls} min-h-[92px] resize-y leading-snug ${urlsInvalid ? '!border-[#F26522]' : ''}`}
             />
-            <span className={`text-[12px] leading-snug ${urlsInvalid ? 'font-semibold text-[#ff8a5b]' : 'text-[#a08c7c]'}`}>
+            <span className={`text-[12px] leading-snug ${urlsInvalid ? 'font-semibold text-[#F26522]' : 'text-[#888888]'}`}>
               {urlsInvalid ? t('a_need_url') : t('urls_hint')}
             </span>
           </label>
@@ -201,22 +201,22 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
                   <button
                     key={s.id}
                     onClick={() => setOpenedSearch(s)}
-                    className="text-left rounded-lg px-2.5 py-2 text-[12.5px] hover:bg-[rgba(255,178,124,0.08)] cursor-pointer"
+                    className="text-left rounded-lg px-2.5 py-2 text-[12.5px] hover:bg-[rgba(255,255,255,0.08)] cursor-pointer"
                   >
-                    <span className="font-medium text-[#fbf3ea]">{s.query.niche ?? '—'}</span>
-                    <span className="text-[#a08c7c]"> · {s.query.cityLabel?.split(',')[0] ?? ''}</span>
-                    <span className="text-[#a08c7c]"> · {s.rowsTotal} зап.</span>
+                    <span className="font-medium text-[#ffffff]">{s.query.niche ?? '—'}</span>
+                    <span className="text-[#888888]"> · {s.query.cityLabel?.split(',')[0] ?? ''}</span>
+                    <span className="text-[#888888]"> · {s.rowsTotal} зап.</span>
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="text-[12.5px] text-[#a08c7c]">{t('hist_empty')}</p>
+              <p className="text-[12.5px] text-[#888888]">{t('hist_empty')}</p>
             )}
           </Section>
 
           <div className="flex gap-2.5 pt-1">
             {running ? (
-              <button type="button" onClick={stop} className="flex-1 inline-flex items-center justify-center gap-2 rounded-full border border-[rgba(255,138,91,0.3)] text-[#ff8a5b] px-6 py-2.5 text-[14px] font-medium hover:bg-[rgba(255,138,91,0.08)] cursor-pointer">
+              <button type="button" onClick={stop} className="flex-1 inline-flex items-center justify-center gap-2 rounded-full border border-[rgba(255,138,91,0.3)] text-[#F26522] px-6 py-2.5 text-[14px] font-medium hover:bg-[rgba(255,138,91,0.08)] cursor-pointer">
                 <Square className="w-4 h-4" /> {t('stop')}
               </button>
             ) : (
@@ -232,8 +232,8 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
           {openedSearch ? (
             <>
               <div className="flex items-center justify-between gap-2">
-                <button onClick={() => setOpenedSearch(null)} className="text-[13px] text-[#a08c7c] hover:text-[#fbf3ea] cursor-pointer">← К парсингу</button>
-                <span className="text-[12px] text-[#a08c7c]">{openedSearch.query.niche ?? ''} · {openedSearch.rowsTotal} зап.</span>
+                <button onClick={() => setOpenedSearch(null)} className="text-[13px] text-[#888888] hover:text-[#ffffff] cursor-pointer">← К парсингу</button>
+                <span className="text-[12px] text-[#888888]">{openedSearch.query.niche ?? ''} · {openedSearch.rowsTotal} зап.</span>
               </div>
               <ResultPanel result={openedSearch} subscribed={subscribed} onSubscribe={onSubscribe} />
             </>
@@ -245,12 +245,12 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
                   <span className="w-1.5 h-1.5 rounded-full bg-current" /> {t(pillKey)}
                 </span>
                 {status !== 'idle' && (
-                  <span className="text-[13px] tabular-nums text-[#a08c7c]">
+                  <span className="text-[13px] tabular-nums text-[#888888]">
                     {records.length} {running ? t('collected') : t('found')} · просмотрено {scanned}
                   </span>
                 )}
                 <div className="relative min-w-[160px] flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-[#a08c7c]" />
+                  <Search className="pointer-events-none absolute left-3 top-1/2 w-4 h-4 -translate-y-1/2 text-[#888888]" />
                   <input value={term} onChange={(e) => setTerm(e.target.value)} disabled={locked} placeholder={t('search_ph')} className={`${inputCls} !pl-9 disabled:opacity-50`} />
                 </div>
                 <select value={sort} onChange={(e) => setSort(e.target.value)} disabled={locked} title={t('sort_title')} className={`${inputCls} !w-auto disabled:opacity-50`}>
@@ -267,30 +267,30 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
               </div>
 
               {/* Источник + 4 чекбокса */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-[rgba(255,255,255,0.02)] border border-[rgba(255,178,124,0.1)] px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl bg-[rgba(255,255,255,0.02)] border border-[rgba(255,255,255,0.1)] px-3 py-2.5">
                 <div className="inline-flex rounded-full bg-[rgba(0,0,0,0.25)] p-0.5">
-                  <button type="button" onClick={() => setSource('yandex')} className={`px-3 py-1 rounded-full text-[12px] font-medium cursor-pointer ${source === 'yandex' ? 'bg-[#F26522] text-white' : 'text-[#a08c7c] hover:text-[#fbf3ea]'}`}>{t('ya_btn')}</button>
-                  <button type="button" onClick={() => setSource('owners')} className={`px-3 py-1 rounded-full text-[12px] font-medium cursor-pointer ${source === 'owners' ? 'bg-[#F26522] text-white' : 'text-[#a08c7c] hover:text-[#fbf3ea]'}`}>Владельцы</button>
+                  <button type="button" onClick={() => setSource('yandex')} className={`px-3 py-1 rounded-full text-[12px] font-medium cursor-pointer ${source === 'yandex' ? 'bg-[#F26522] text-white' : 'text-[#888888] hover:text-[#ffffff]'}`}>{t('ya_btn')}</button>
+                  <button type="button" onClick={() => setSource('owners')} className={`px-3 py-1 rounded-full text-[12px] font-medium cursor-pointer ${source === 'owners' ? 'bg-[#F26522] text-white' : 'text-[#888888] hover:text-[#ffffff]'}`}>Владельцы</button>
                 </div>
-                <label className="flex items-center gap-2 text-[12.5px] text-[#d9c4b5] cursor-pointer">
+                <label className="flex items-center gap-2 text-[12.5px] text-[#cccccc] cursor-pointer">
                   <input type="checkbox" checked={settings.filters.require_no_website} onChange={(e) => setF({ require_no_website: e.target.checked, require_website: e.target.checked ? false : settings.filters.require_website })} className="accent-[#F26522]" /> {t('f_nosite')}
                 </label>
-                <label className="flex items-center gap-2 text-[12.5px] text-[#d9c4b5] cursor-pointer">
+                <label className="flex items-center gap-2 text-[12.5px] text-[#cccccc] cursor-pointer">
                   <input type="checkbox" checked={removeWithSite} onChange={(e) => setRemoveWithSite(e.target.checked)} className="accent-[#F26522]" /> {t('ya_remove')}
                 </label>
-                <label className="flex items-center gap-2 text-[12.5px] text-[#d9c4b5] cursor-pointer">
+                <label className="flex items-center gap-2 text-[12.5px] text-[#cccccc] cursor-pointer">
                   <input type="checkbox" checked={removeYandexNotFound} onChange={(e) => setRemoveYandexNotFound(e.target.checked)} className="accent-[#F26522]" /> {t('ya_remove_nf')}
                 </label>
-                <label className="flex items-center gap-2 text-[12.5px] text-[#d9c4b5] cursor-pointer">
+                <label className="flex items-center gap-2 text-[12.5px] text-[#cccccc] cursor-pointer">
                   <input type="checkbox" checked={searchOwners} onChange={(e) => setSearchOwners(e.target.checked)} className="accent-[#F26522]" /> Искать владельцев после парсинга
                 </label>
               </div>
 
               {/* Журнал парсинга */}
               {logs.length > 0 && (
-                <details open={running} className="rounded-2xl border border-[rgba(255,178,124,0.12)] bg-[rgba(255,255,255,0.02)]">
-                  <summary className="cursor-pointer select-none list-none px-4 py-3 text-[13px] font-semibold text-[#d9c4b5] [&::-webkit-details-marker]:hidden">{t('log_title')}</summary>
-                  <pre ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }} className="m-0 max-h-52 overflow-auto whitespace-pre-wrap break-words border-t border-[rgba(255,178,124,0.1)] bg-[rgba(0,0,0,0.3)] px-4 py-3 font-mono text-[12px] leading-relaxed text-[#d9c4b5]">{logs.join('\n')}</pre>
+                <details open={running} className="rounded-2xl border border-[rgba(255,255,255,0.12)] bg-[rgba(255,255,255,0.02)]">
+                  <summary className="cursor-pointer select-none list-none px-4 py-3 text-[13px] font-semibold text-[#cccccc] [&::-webkit-details-marker]:hidden">{t('log_title')}</summary>
+                  <pre ref={(el) => { if (el) el.scrollTop = el.scrollHeight; }} className="m-0 max-h-52 overflow-auto whitespace-pre-wrap break-words border-t border-[rgba(255,255,255,0.1)] bg-[rgba(0,0,0,0.3)] px-4 py-3 font-mono text-[12px] leading-relaxed text-[#cccccc]">{logs.join('\n')}</pre>
                 </details>
               )}
 
@@ -304,19 +304,19 @@ export default function DemoTool({ subscribed, admin, onGetProgram, onSubscribe 
                       ))}
                     </div>
                     {locked && (
-                      <div className="absolute inset-0 flex items-start justify-center bg-gradient-to-b from-[#100c0a]/40 via-[#100c0a]/90 to-[#100c0a] pt-16">
+                      <div className="absolute inset-0 flex items-start justify-center bg-gradient-to-b from-[#000000]/40 via-[#000000]/90 to-[#000000] pt-16">
                         <div className="sticky top-24 max-w-sm px-4 text-center">
-                          <Lock className="mx-auto mb-2 w-5 h-5 text-[#ffb27c]" />
-                          <p className="font-heading text-lg font-medium text-[#fbf3ea]">Данные скрыты</p>
-                          <p className="mb-4 mt-1 text-[13px] text-[#a08c7c]">Чтобы увидеть результаты, оформите подписку и получите программу Fracs Parser.</p>
+                          <Lock className="mx-auto mb-2 w-5 h-5 text-[#ffffff]" />
+                          <p className="font-heading text-lg font-medium text-[#ffffff]">Данные скрыты</p>
+                          <p className="mb-4 mt-1 text-[13px] text-[#888888]">Чтобы увидеть результаты, оформите подписку и получите программу Fracs Parser.</p>
                           <button onClick={onSubscribe} className={btnOrange}>Оформить подписку</button>
                         </div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="py-16 text-center text-[15px] leading-relaxed text-[#a08c7c]">
-                    <Search className="w-8 h-8 text-[#a08c7c] mx-auto mb-3" />
+                  <div className="py-16 text-center text-[15px] leading-relaxed text-[#888888]">
+                    <Search className="w-8 h-8 text-[#888888] mx-auto mb-3" />
                     {running ? t('collecting') : status === 'idle' ? t('empty_start') : t('empty_notfound')}
                   </div>
                 )}

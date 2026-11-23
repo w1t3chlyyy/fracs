@@ -2,9 +2,9 @@ import { ArrowLeft } from 'lucide-react';
 
 export default function Terms() {
   return (
-    <div className="min-h-screen bg-[#EFEFEF] text-gray-900 font-sans antialiased selection:bg-[#F26522] selection:text-white">
+    <div className="min-h-screen bg-black text-white font-sans antialiased selection:bg-[#F26522] selection:text-black">
       <header className="max-w-[1100px] mx-auto p-2 sm:p-3">
-        <nav className="bg-white rounded-full p-[5px] flex items-center justify-between gap-3">
+        <nav className="bg-[#161616] rounded-full p-[5px] flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <a href="/" aria-label="На главную" className="flex items-center gap-2 group">
               <img
@@ -12,20 +12,20 @@ export default function Terms() {
                 alt="Fracs"
                 className="w-10 h-10 rounded-full object-cover shadow-xs group-hover:scale-105 transition-transform shrink-0"
               />
-              <span className="font-heading text-lg font-semibold tracking-tight text-gray-900">Fracs</span>
+              <span className="font-heading text-lg font-semibold tracking-tight text-white">Fracs</span>
             </a>
-            <a href="/" className="inline-flex items-center gap-1.5 text-[13px] text-gray-600 hover:text-gray-900 pl-2">
+            <a href="/" className="inline-flex items-center gap-1.5 text-[13px] text-[#888888] hover:text-white pl-2">
               <ArrowLeft className="w-3.5 h-3.5" /> На сайт
             </a>
           </div>
           <div className="flex items-center gap-2 pr-1">
-            <a href="/privacy" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            <a href="/privacy" className="hidden md:inline-block text-[13px] text-[#888888] hover:text-white px-3 py-1.5">
               Конфиденциальность
             </a>
-            <a href="/offer" className="hidden md:inline-block text-[13px] text-gray-600 hover:text-gray-900 px-3 py-1.5">
+            <a href="/offer" className="hidden md:inline-block text-[13px] text-[#888888] hover:text-white px-3 py-1.5">
               Оферта
             </a>
-            <a href="/app" className="rounded-full bg-gray-900 hover:bg-black text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
+            <a href="/app" className="rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[13px] font-medium px-5 py-2.5 transition-colors">
               Личный кабинет
             </a>
           </div>
@@ -33,22 +33,22 @@ export default function Terms() {
       </header>
 
       <main className="max-w-[920px] mx-auto px-3 sm:px-4 pb-16 pt-6">
-        <article className="bg-white rounded-3xl p-6 sm:p-10 lg:p-12 border border-gray-200/80 shadow-sm space-y-8 text-[14.5px] sm:text-[15px] leading-relaxed text-gray-800">
-          <div className="text-center border-b border-gray-100 pb-6">
-            <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-gray-900">
+        <article className="bg-[#161616] rounded-3xl p-6 sm:p-10 lg:p-12 border border-white/10 shadow-sm space-y-8 text-[14.5px] sm:text-[15px] leading-relaxed text-[#cccccc]">
+          <div className="text-center border-b border-white/10 pb-6">
+            <h1 className="font-heading text-2xl sm:text-3xl font-semibold tracking-[-0.02em] text-white">
               ПОЛЬЗОВАТЕЛЬСКОЕ СОГЛАШЕНИЕ
             </h1>
-            <p className="font-heading text-base sm:text-lg font-medium text-gray-700 mt-1">
+            <p className="font-heading text-base sm:text-lg font-medium text-[#aaaaaa] mt-1">
               об использовании сервиса и программного обеспечения Fracs
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-3 text-[13px] md:hidden">
               <a href="/privacy" className="text-[#F26522] underline underline-offset-4">Политика конфиденциальности</a>
-              <a href="/offer" className="text-gray-600 underline underline-offset-4">Публичная оферта</a>
+              <a href="/offer" className="text-[#888888] underline underline-offset-4">Публичная оферта</a>
             </div>
           </div>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">1. Общие положения</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">1. Общие положения</h2>
             <p>
               1.1. Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между самозанятым Бенаи Тимуром Рустамовичем, ИНН 920159216794 (далее — «Исполнитель» / «Администрация»), и физическим или юридическим лицом, использующим веб-сайт{' '}
               <a href="https://fracs.cc.cd" target="_blank" rel="noreferrer" className="text-[#F26522] hover:underline">https://fracs.cc.cd</a>, личный кабинет, Telegram-бот и программу Fracs Parser (далее — «Пользователь» / «Заказчик» и «Сервис» соответственно).
@@ -64,7 +64,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">2. Предмет Соглашения</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">2. Предмет Соглашения</h2>
             <p>
               2.1. В соответствии с условиями настоящего Соглашения Исполнитель предоставляет Пользователю доступ к функционалу Сервиса Fracs, включающему:
             </p>
@@ -82,7 +82,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">3. Порядок предоставления услуг и доступа</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">3. Порядок предоставления услуг и доступа</h2>
             <p>
               3.1. Авторизация в личном кабинете осуществляется через официального Telegram-бота Сервиса по одноразовой ссылке входа без создания отдельного пароля.
             </p>
@@ -101,7 +101,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">4. Оплата и возвраты</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">4. Оплата и возвраты</h2>
             <p>
               4.1. Стоимость подписки определяется тарифами, опубликованными на сайте и в личном кабинете Сервиса на момент оформления заказа.
             </p>
@@ -118,7 +118,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">5. Права и обязанности Пользователя</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">5. Права и обязанности Пользователя</h2>
             <p>
               5.1. Пользователь обязуется использовать Сервис, программу Fracs Parser и полученные с их помощью данные исключительно законным способом, соблюдая законодательство Российской Федерации о рекламе, связи, персональных данных и защите конкуренции при дальнейшем взаимодействии с найденными контактами.
             </p>
@@ -135,7 +135,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">6. Интеллектуальная собственность</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">6. Интеллектуальная собственность</h2>
             <p>
               6.1. Веб-сайт, интерфейс личного кабинета, дизайн, тексты, товарные знаки, базы справочников, серверный код и программное обеспечение Fracs охраняются законодательством об интеллектуальной собственности. Отдельные компоненты парсера с открытым исходным кодом используются с сохранением их применимых лицензий (LGPLv3).
             </p>
@@ -148,7 +148,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">7. Права Исполнителя</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">7. Права Исполнителя</h2>
             <p>
               7.1. Исполнитель вправе временно приостанавливать работу Сервиса или отдельных функций для проведения плановых технических работ, обновлений или устранения неисправностей.
             </p>
@@ -161,7 +161,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">8. Ответственность и ограничения</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">8. Ответственность и ограничения</h2>
             <p>
               8.1. Сервис предоставляется по принципу «как есть» (as is). Исполнитель не гарантирует абсолютно бесперебойную работу сторонних платформ и достижение Пользователем конкретного уровня продаж, конверсии или финансового результата.
             </p>
@@ -177,7 +177,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">9. Конфиденциальность</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">9. Конфиденциальность</h2>
             <p>
               9.1. Обработка персональных данных Пользователя осуществляется в соответствии с отдельной{' '}
               <a href="/privacy" className="text-[#F26522] hover:underline">Политикой конфиденциальности</a>.
@@ -188,7 +188,7 @@ export default function Terms() {
           </section>
 
           <section className="space-y-3">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900">10. Заключительные положения</h2>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">10. Заключительные положения</h2>
             <p>
               10.1. Актуальная редакция настоящего Соглашения постоянно размещена на странице{' '}
               <a href="/terms" className="text-[#F26522] hover:underline">/terms</a>.
@@ -202,13 +202,13 @@ export default function Terms() {
             </p>
           </section>
 
-          <section className="space-y-2 border-t border-gray-100 pt-6">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-gray-900 mb-3">11. Контакты и реквизиты Исполнителя</h2>
+          <section className="space-y-2 border-t border-white/10 pt-6">
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">11. Контакты и реквизиты Исполнителя</h2>
             <p><strong>Полное наименование:</strong> Самозанятый Бенаи Тимур Рустамович</p>
             <p><strong>ИНН:</strong> 920159216794</p>
             <p>
               <strong>Контактный телефон:</strong>{' '}
-              <a href="tel:+79944821648" className="text-gray-900 hover:text-[#F26522]">+7 994 482-16-48</a>
+              <a href="tel:+79944821648" className="text-white hover:text-[#F26522]">+7 994 482-16-48</a>
             </p>
             <p>
               <strong>Контактный e-mail:</strong>{' '}
