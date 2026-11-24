@@ -20,7 +20,7 @@ Endpoints (регистрируются в server.py):
   GET  /api/ai/status/<job_id>
   GET  /api/ai/preview/<job_id>
   POST /api/ai/approve/<job_id>
-  GET  /api/ai/download/<job_id>?type=zip|png
+  GET  /api/ai/download/<job_id>?type=zip|png|video
   POST /api/ai/upload   multipart(session_id, files[])  → скрепка в чате
   GET  /api/ai/uploads/<session_id>                    → список вложений
   DELETE /api/ai/uploads/<session_id>                   → очистить вложения
@@ -36,6 +36,8 @@ import os
 import re
 import secrets
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -232,6 +234,7 @@ _TEXT_EXTS = {'.txt', '.md', '.markdown', '.html', '.htm', '.css', '.js', '.mjs'
 _IMAGE_MIMES = {'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp',
                 'image/gif': 'gif'}
 _MAX_TEXT_CHARS = 12000          # на файл в промт
+_MAX_UPLOAD_BYTES = 15 * 1024 * 1024   # лимит одного вложения (15 МБ)
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 # ── Общий системный промт (Fracs Anti-Slop) ───────────────────────────────────
@@ -463,7 +466,26 @@ BLOCKS_LIB = (
 
 # ── Сохранение сайтов в проект: sites/<slug>/index.html + versions/ ───────────
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_SITES_DIR = os.environ.get('FRACS_SITES_DIR') or os.path.join(_PROJECT_ROOT, 'sites')
+
+
+def _default_sites_dir() -> str:
+    """Папка сайтов: env → прежняя <проект>/sites (если уже есть) → профиль пользователя,
+    чтобы собранные сайты переживали обновление программы."""
+    env = os.environ.get('FRACS_SITES_DIR')
+    if env:
+        return env
+    legacy = os.path.join(_PROJECT_ROOT, 'sites')
+    if os.path.isdir(legacy):
+        return legacy
+    if sys.platform == 'win32':
+        base = os.environ.get('APPDATA') or os.path.expanduser('~')
+        return os.path.join(base, 'fracs-parser', 'sites')
+    if sys.platform == 'darwin':
+        return os.path.expanduser('~/Library/Application Support/fracs-parser/sites')
+    return os.path.expanduser('~/.local/share/fracs-parser/sites')
+
+
+_SITES_DIR = _default_sites_dir()
 
 _TRANSLIT = {'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
              'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
@@ -478,6 +500,24 @@ def _slugify(text: str, fallback: str = 'site') -> str:
     s = re.sub(r'[^a-z0-9]+', '-', s).strip('-')
     s = re.sub(r'-{2,}', '-', s)[:48]
     return s or fallback
+
+
+def _business_name(prompt: str) -> str:
+    """Название бизнеса для открытки: строка «Название: …» из промта-карточки;
+    иначе — первая строка промта (без глаголов-команд), до 48 символов."""
+    m = re.search(r'^Название:\s*(.+)$', (prompt or ''), re.M)
+    if m:
+        name = m.group(1).strip()
+    else:
+        name = (prompt or '').strip().splitlines()[0] if (prompt or '').strip() else ''
+        name = re.sub(r'^(сделай|сделайте|создай|создайте|нужен|нужно|сгенерируй|пожалуйста)'
+                      r'[\s,]+(мне\s+)?(сайт|лендинг|страницу|визитку)?[\s,]*',
+                      '', name, flags=re.I)
+        name = re.sub(r'^(сайт|лендинг|страница)\s+(для|про)\s+', '', name, flags=re.I)
+        name = name.strip(' .«»"\'') or 'Сайт'
+    if name and name[0].islower():
+        name = name[0].upper() + name[1:]
+    return name[:48]
 
 
 def _slug_from_prompt(prompt: str, fallback: str = 'site') -> str:
@@ -560,6 +600,36 @@ def _provider_cfg(provider: str) -> dict:
     return _PROVIDERS.get(provider) or _PROVIDERS['Z.ai']
 
 
+def _fracs_license_key() -> str:
+    """Ключ лицензии из локального файла (пусто, если его нет)."""
+    try:
+        if _LIC_MOD is None:
+            _plan_features()          # инициализирует _LIC_MOD
+        return str((_LIC_MOD._load() or {}).get('key') or '').strip()
+    except Exception:
+        return ''
+
+
+def _fracs_proxy() -> tuple[str, str] | None:
+    """Прокси Fracs AI через сайт: (site_url, лицензионный ключ) или None.
+
+    None → пользователь без активной лицензии-ключа: Fracs AI пойдёт напрямую
+    в OpenRouter на ключе из env (режим владельца / dev-сборка). У обычных
+    пользователей OpenRouter-ключа в сборке нет, поэтому запрос уходит на сайт,
+    где ключ хранится на сервере: POST /api/app/ai (Authorization: ключ лицензии).
+    """
+    try:
+        if _LIC_MOD is not None and _LIC_MOD._owner_mode():
+            return None
+        site = (_LIC_MOD._site() if _LIC_MOD else '') or ''
+        key = _fracs_license_key()
+        if site and key:
+            return site.rstrip('/'), key
+    except Exception:
+        pass
+    return None
+
+
 def _resolve_chat_url(provider: str, base_url: str) -> str:
     prov = _provider_cfg(provider)
     if provider == 'Custom':
@@ -622,18 +692,28 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     """Вызов LLM. Возвращает {ok, text, error, ms}. system=None → общий промт сборщика сайтов."""
     started = time.time()
     cfg = _provider_cfg(provider)
-    # Fracs AI работает на встроенном ключе, свой не нужен.
     if provider == 'Fracs AI':
-        api_key = _FRACS_AI_KEY
-        if not api_key:
-            return {'ok': False, 'error': 'Fracs AI не настроен на этой сборке (нет ключа FRACS_AI_API_KEY). '
-                                          'Выберите другого провайдера и вставьте свой ключ.'}
+        # Обычный пользователь → прокси через сайт (ключ OpenRouter на сервере).
+        # Владелец/dev-сборка → напрямую в OpenRouter на ключе из env.
+        proxy = _fracs_proxy()
+        if proxy:
+            api_key = proxy[1]
+        else:
+            api_key = _FRACS_AI_KEY
+            if not api_key:
+                return {'ok': False, 'error': 'Fracs AI недоступен: нет связи с сервером Fracs и нет '
+                                              'ключа в этой сборке. Войдите в кабинет и проверьте подписку, '
+                                              'или выберите другого провайдера со своим ключом.'}
     else:
         api_key = (api_key or '').strip()
         if cfg['needs_key'] and not api_key:
             return {'ok': False, 'error': 'no_api_key'}
 
-    url = _resolve_chat_url(provider, base_url)
+    if provider == 'Fracs AI':
+        proxy = _fracs_proxy()
+        url = (proxy[0] + '/api/app/ai') if proxy else (_OPENROUTER_URL + '/chat/completions')
+    else:
+        url = _resolve_chat_url(provider, base_url)
     if not url:
         return {'ok': False, 'error': 'no_base_url'}
 
@@ -732,8 +812,13 @@ def fetch_models(provider: str, api_key: str, base_url: str = '') -> dict:
         models_url = base + '/models'
         key = (api_key or '').strip()
     elif provider == 'Fracs AI':
-        models_url = cfg['models_url']
-        key = _FRACS_AI_KEY
+        proxy = _fracs_proxy()
+        if proxy:
+            models_url = proxy[0] + '/api/app/ai/models'
+            key = proxy[1]
+        else:
+            models_url = cfg['models_url']
+            key = _FRACS_AI_KEY
     else:
         models_url = cfg.get('models_url') or ''
         key = (api_key or '').strip()
@@ -800,6 +885,7 @@ class AiJob:
     approved: threading.Event = field(default_factory=threading.Event)
     zip_path: str = ''
     png_path: str = ''
+    video_path: str = ''
     preview_url: str = ''
     site_slug: str = ''   # папка в <проект>/sites/<slug>/
     site_url: str = ''    # локальный URL для ручной проверки, /sites/<slug>/
@@ -813,6 +899,9 @@ class AiJob:
         if self.png_path and os.path.exists(self.png_path):
             files.append({'name': 'postcard.png', 'type': 'png',
                           'url': f'/api/ai/download/{self.job_id}?type=png'})
+        if self.video_path and os.path.exists(self.video_path):
+            files.append({'name': 'site-review.mp4', 'type': 'video',
+                          'url': f'/api/ai/download/{self.job_id}?type=video'})
         local_url = self.site_url or ''
         return {
             'ok': True,
@@ -897,10 +986,24 @@ class AiAgentManager:
             self._sessions.pop(session_id, None)
 
     # ── запуск ──
+    _JOB_TTL_S = 4 * 3600   # задачи старше 4 часов вычищаются из памяти
+
+    def _sweep_jobs(self) -> None:
+        """Удаляет завершённые задачи старше TTL (память не растёт бесконечно)."""
+        cutoff = time.time() - self._JOB_TTL_S
+        with self._lock:
+            for jid in [j for j, job in self._jobs.items()
+                        if job.created_at < cutoff
+                        and job.status in ('done', 'failed', 'cancelled')]:
+                self._jobs.pop(jid, None)
+            for sid in [s for s, b in self._sessions.items() if not b]:
+                self._sessions.pop(sid, None)
+
     def start(self, prompt: str, api_key: str, model: str, provider: str, extra: str = '',
               session_id: str = '', prev_job: str = '', base_url: str = '',
               temperature: float = 0.7, max_tokens: int = 4096,
               style: str = '', key21st: str = '') -> dict:
+        self._sweep_jobs()
         need = _provider_feature(provider)
         if not _has_feature(need):
             if need == 'fracs_ai':
@@ -1011,10 +1114,12 @@ class AiAgentManager:
             job.status = 'building'
             self._log(job, 'Собираю ZIP со всем сайтом…')
             self._build_zip(job)
+            self._log(job, 'Записываю видеообзор сайта (для передачи заказчику)…')
+            self._build_video(job)
             self._log(job, 'Рисую открытку с QR-кодом…')
             self._build_postcard(job)
             job.status = 'done'
-            self._log(job, 'Готово. ZIP и открытка — справа в «Передача файлов».')
+            self._log(job, 'Готово. ZIP, открытка и видеообзор — справа в «Передача файлов».')
         except Exception as e:  # pragma: no cover
             job.status = 'failed'
             job.error = str(e)
@@ -1042,13 +1147,22 @@ class AiAgentManager:
     def _build_postcard(self, job: AiJob):
         d = tempfile.mkdtemp(prefix='fracs_ai_png_')
         png_path = os.path.join(d, 'postcard.png')
-        target = (f'{self.base_url}{job.site_url}' if job.site_url
-                  else f'{self.base_url}/api/ai/preview/{job.job_id}')
+        # Адрес в QR: локальный URL заказчик открыть не может, поэтому QR ведёт
+        # на ВИДЕООБЗОР (site_url + review.mp4), который собирается перед
+        # открыткой и лежит рядом с сайтом в sites/<slug>/. Если задан
+        # FRACS_DEMO_BASE_URL (публичный хостинг демо) — QR будет рабочим у
+        # заказчика; иначе адрес локальный (проверка владельцем).
+        demo_base = os.environ.get('FRACS_DEMO_BASE_URL', '').strip().rstrip('/')
+        base = demo_base or self.base_url
+        if job.site_url:
+            target = f'{base}{job.site_url}review.mp4'
+        else:
+            target = f'{base}/api/ai/preview/{job.job_id}'
         if not _HAVE_QR:
             try:
                 img = Image.new('RGB', (720, 400), color=(0, 0, 0))
                 draw = ImageDraw.Draw(img)
-                draw.text((20, 20), 'Fracs · QR-открытка', fill=(255, 255, 255))
+                draw.text((20, 20), 'QR-код недоступен', fill=(255, 255, 255))
                 draw.text((20, 60), f'URL: {target}', fill=(200, 200, 200))
                 img.save(png_path)
             except Exception:
@@ -1058,8 +1172,42 @@ class AiAgentManager:
                         '890000000d49444154789c63f8cf0000000100010005ff0a9d0000000049454e44ae426082'))
             job.png_path = png_path
             return
-        _draw_postcard(png_path, target, job.prompt or '')
+        _draw_postcard(png_path, target, _business_name(job.prompt))
         job.png_path = png_path
+
+    def _build_video(self, job: AiJob):
+        """Видеообзор сайта (site-review.mp4) — именно его открывает QR заказчика.
+        Full HD: титул в стиле открытки → первый экран → живая прокрутка страницы
+        в браузере (срабатывают все scroll-анимации сайта) → последний экран →
+        финальный кадр «Ваш сайт готов». Если playwright/ffmpeg недоступны —
+        видео пропускается с записью в лог, сборка не ломается."""
+        url = (f'{self.base_url}{job.site_url}' if job.site_url
+               else f'{self.base_url}/api/ai/preview/{job.job_id}')
+        if not shutil.which('ffmpeg'):
+            self._log(job, 'Видеообзор пропущен: ffmpeg не найден в сборке.')
+            return
+        d = tempfile.mkdtemp(prefix='fracs_ai_vid_')
+        try:
+            frames = _shoot_site_frames(url, d)
+            if not frames:
+                self._log(job, 'Видеообзор пропущен: не удалось записать страницу.')
+                return
+            video_path = os.path.join(d, 'site-review.mp4')
+            _make_review_video(d, video_path, _business_name(job.prompt), len(frames) - 1)
+            if os.path.exists(video_path) and os.path.getsize(video_path) > 102400:
+                job.video_path = video_path
+                # копия рядом с сайтом: /sites/<slug>/review.mp4 — её и открывает QR
+                if job.site_url:
+                    try:
+                        shutil.copyfile(video_path,
+                                        os.path.join(_SITES_DIR, job.site_slug, 'review.mp4'))
+                    except Exception:
+                        pass
+                self._log(job, 'Видеообзор готов — site-review.mp4 в «Передаче файлов».')
+            else:
+                self._log(job, 'Видеообзор пропущен: ffmpeg не собрал файл.')
+        except Exception as e:
+            self._log(job, f'Видеообзор пропущен: {e}')
 
 
 # ── Дизайн открытки ───────────────────────────────────────────────────────────
@@ -1086,135 +1234,240 @@ def _load_font(size: int, bold: bool = False, mono: bool = False):
     return ImageFont.load_default()
 
 
-def _draw_postcard(png_path: str, target: str, prompt: str):
-    """Открытка 1080×1528: тёмный фон с градиентом и халфтоном, оранжевый акцент,
-    QR на белой карточке с уголками-скобками, цитата-промт, подвал с адресом."""
-    W, H = 1080, 1528
+def _draw_postcard(png_path: str, target: str, business: str):
+    """Открытка для заказчика по референсу: горизонтальный формат 1200×675,
+    QR слева на белой карточке с оранжевой обводкой, справа название бизнеса
+    (первое слово белым крупно, остальное оранжевым) и инструкция. Тёмный фон
+    с тёплым оранжевым свечением из нижнего правого угла."""
+    W, H = 1200, 675
     img = Image.new('RGB', (W, H))
     draw = ImageDraw.Draw(img)
 
-    # вертикальный градиент фона
-    top, bottom = (24, 24, 24), (5, 5, 5)
+    # фон: тёмный градиент из левого верхнего угла в правый нижний
+    tl, br = (16, 14, 13), (58, 40, 28)
     for y in range(H):
         t = y / H
         draw.line([(0, y), (W, y)],
-                  fill=tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3)))
+                  fill=tuple(int(tl[i] + (br[i] - tl[i]) * t) for i in range(3)))
 
-    # тёплое оранжевое свечение из правого верхнего угла
+    # тёплое оранжевое свечение из правого нижнего угла (как на референсе)
     glow = Image.new('L', (W, H), 0)
     gdraw = ImageDraw.Draw(glow)
-    for i in range(420, 0, -4):
-        a = int(46 * (1 - i / 420))
-        gdraw.ellipse([W - i * 1.35, -i * 0.55, W + i * 0.7, i * 1.1], fill=a)
+    for i in range(900, 0, -6):
+        a = int(200 * (1 - i / 900) ** 1.6)
+        gdraw.ellipse([W - i * 1.25, H - i * 0.9, W + i * 0.4, H + i * 0.55], fill=a)
     orange_layer = Image.new('RGB', (W, H), _ORANGE)
     img = Image.composite(orange_layer, img, glow)
     draw = ImageDraw.Draw(img)
 
-    # халфтон: сетка точек с убывающим радиусом в левом нижнем углу
-    dot_rows = 22
-    dot_y0 = H - 620
-    for gy in range(dot_rows):
-        for gx in range(20):
-            t = (gx / 20) * 0.55 + (1 - gy / dot_rows) * 0.45
-            r = max(0.6, 7.5 * (1 - t) * (1 - t))
-            if r < 1.0:
-                continue
-            x = 40 + gx * 30
-            y = dot_y0 + gy * 26
-            if y > H - 185:  # не заезжаем на подвал
-                continue
-            draw.ellipse([x - r, y - r, x + r, y + r], fill=(32, 32, 32))
-
-    # верхняя и нижняя оранжевые полосы
-    draw.rectangle([0, 0, W, 14], fill=_ORANGE)
-    draw.rectangle([0, H - 14, W, H], fill=_ORANGE)
-
-    # шапка: FRACS + AI-AGENT
-    brand_f = _load_font(96, bold=True)
-    tag_f = _load_font(30, bold=True)
-    draw.text((72, 78), 'FRACS', font=brand_f, fill=_WHITE)
-    tag = 'AI-AGENT'
-    tw = draw.textlength(tag, font=tag_f)
-    tag_x = 76 + draw.textlength('FRACS', font=brand_f) + 28
-    draw.text((tag_x, 118), tag, font=tag_f, fill=_ORANGE)
-
-    # линейка под шапкой
-    draw.rectangle([72, 214, W - 72, 216], fill=(52, 52, 52))
-
-    # заголовок и подзаголовок
-    h1_f = _load_font(52, bold=True)
-    sub_f = _load_font(28)
-    draw.text((72, 258), 'Сайт, собранный нейросетью', font=h1_f, fill=_WHITE)
-    draw.text((72, 332), 'Наведите камеру телефона на код — сайт откроется в браузере.',
-              font=sub_f, fill=_GREY)
-
-    # QR на белой карточке с оранжевыми уголками
+    # ── QR-карточка слева ──
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
-                       box_size=12, border=1)
+                       box_size=10, border=1)
     qr.add_data(target)
     qr.make(fit=True)
     qr_img = qr.make_image(image_factory=PilImage).convert('RGB')
-    qr_size = 520
+    qr_size = 286
     qr_img = qr_img.resize((qr_size, qr_size), Image.NEAREST)
-    card = Image.new('RGB', (qr_size + 56, qr_size + 56), (10, 10, 10))
-    cdraw = ImageDraw.Draw(card)
-    cdraw.rounded_rectangle([0, 0, card.width - 1, card.height - 1], radius=36,
-                            fill=(255, 255, 255))
-    card.paste(qr_img, (28, 28))
-    # мягкая тень под карточкой
+    pad = 24
+    card_w = qr_size + pad * 2
+    cx, cy = 96, (H - card_w) // 2          # левый верхний угол карточки
+    # обводка-рамка вокруг карточки (на референсе цветная, у нас — оранжевая)
+    off, rw = 12, 3
+    draw.rounded_rectangle([cx - off, cy - off, cx + card_w + off, cy + card_w + off],
+                           radius=34, outline=_ORANGE, width=rw)
+    # мягкая тень
     shadow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     sdraw = ImageDraw.Draw(shadow)
-    cx, cy = (W - card.width) // 2, 430
-    sdraw.rounded_rectangle([cx + 10, cy + 16, cx + card.width + 10, cy + card.height + 16],
-                            radius=36, fill=(0, 0, 0, 150))
+    sdraw.rounded_rectangle([cx + 8, cy + 12, cx + card_w + 8, cy + card_w + 12],
+                            radius=28, fill=(0, 0, 0, 120))
     img = Image.alpha_composite(img.convert('RGBA'), shadow).convert('RGB')
+    img.paste(Image.new('RGB', (card_w, card_w), (255, 255, 255)), (cx, cy))
+    img.paste(qr_img, (cx + pad, cy + pad))
     draw = ImageDraw.Draw(img)
-    img.paste(card, (cx, cy))
-    # оранжевые уголки-скобки вокруг карточки
-    bx0, by0, bx1, by1 = cx - 22, cy - 22, cx + card.width + 22, cy + card.height + 22
-    arm = 56
-    for (px, py, dx, dy) in ((bx0, by0, 1, 1), (bx1, by0, -1, 1),
-                             (bx0, by1, 1, -1), (bx1, by1, -1, -1)):
-        draw.line([(px, py), (px + dx * arm, py)], fill=_ORANGE, width=8)
-        draw.line([(px, py), (px, py + dy * arm)], fill=_ORANGE, width=8)
 
-    y = by1 + 44
-    # цитата-промт
-    q_f = _load_font(26)
-    teaser = (prompt or '').strip().replace('\n', ' ')
-    if len(teaser) > 150:
-        teaser = teaser[:150].rstrip() + '…'
-    draw.text((72, y), 'ЗАДАНИЕ АГЕНТУ', font=_load_font(22, bold=True), fill=_ORANGE)
-    y += 44
-    line = ''
-    words = teaser.split()
-    lines = []
-    for w in words:
-        test = (line + ' ' + w).strip()
-        if draw.textlength(test, font=q_f) > W - 210:
+    # ── название справа ──
+    words = (business or 'Сайт').strip().split()
+    rx = cx + card_w + 84                    # левый край текстового блока
+    max_w = W - rx - 80
+    # первое слово — белым крупно (авто-размер), остальное — оранжевым
+    w1 = words[0]
+    f1 = _load_font(84, bold=True)
+    while draw.textlength(w1, font=f1) > max_w and f1.size > 36:
+        f1 = _load_font(f1.size - 6, bold=True)
+    ty = 240
+    draw.text((rx, ty), w1, font=f1, fill=_WHITE)
+    ty += f1.size + 18
+    if len(words) > 1:
+        rest = ' '.join(words[1:])
+        f2 = _load_font(46, bold=True)
+        while draw.textlength(rest, font=f2) > max_w and f2.size > 26:
+            f2 = _load_font(f2.size - 4, bold=True)
+        draw.text((rx + 2, ty), rest, font=f2, fill=_ORANGE)
+        ty += f2.size + 26
+
+    # инструкция под названием (перенос на 2 строки)
+    sub_f = _load_font(27)
+    sub = 'Чтобы посмотреть демо-макет сайта — отсканируйте QR-код'
+    line, lines = '', []
+    for w in sub.split():
+        t = (line + ' ' + w).strip()
+        if draw.textlength(t, font=sub_f) > max_w and line:
             lines.append(line)
             line = w
         else:
-            line = test
+            line = t
     if line:
         lines.append(line)
-    lines = lines[:3]
-    bar_h = max(30, len(lines) * 38 - 8)
-    draw.rectangle([72, y + 4, 78, y + 4 + bar_h], fill=_ORANGE)
-    for i, ln in enumerate(lines):
-        draw.text((104, y + 6 + i * 38), ln, font=q_f, fill=(210, 210, 210))
-
-    # подвал: адрес превью + подпись
-    foot_f = _load_font(22, mono=True)
-    url_show = target if len(target) <= 62 else target[:59] + '…'
-    draw.text((72, H - 150), url_show, font=foot_f, fill=(110, 110, 110))
-    sig_f = _load_font(24, bold=True)
-    draw.text((72, H - 104), 'Собрано в Fracs Parser', font=sig_f, fill=(90, 90, 90))
-    dot_x = 72 + draw.textlength('Собрано в Fracs Parser', font=sig_f) + 18
-    draw.ellipse([dot_x, H - 90, dot_x + 10, H - 80], fill=_ORANGE)
-    draw.text((dot_x + 24, H - 104), time.strftime('%d.%m.%Y'), font=sig_f, fill=(90, 90, 90))
+    for i, ln in enumerate(lines[:3]):
+        draw.text((rx + 2, ty + i * 40), ln, font=sub_f, fill=(225, 225, 225))
 
     img.save(png_path, 'PNG')
+
+
+# ── Видеообзор сайта ──────────────────────────────────────────────────────────
+
+def _shoot_site_frames(url: str, work_dir: str) -> list:
+    """Записывает сайт в кадры 1920×1080: первый экран, серия позиций прокрутки
+    (каждый раз ждём отработку scroll-анимаций сайта — reveal-блоки успевают
+    проявиться) и последний экран. Возвращает список путей кадров; бросает
+    исключение, если playwright/браузер недоступны."""
+    from playwright.sync_api import sync_playwright
+    frames = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox', '--disable-gpu'])
+        try:
+            page = browser.new_page(viewport={'width': 1920, 'height': 1080})
+            page.goto(url, wait_until='load', timeout=20000)
+            page.wait_for_timeout(1200)  # шрифты, картинки, входные анимации
+            hero = os.path.join(work_dir, 'hero.png')
+            page.screenshot(path=hero)
+            h = page.evaluate('Math.max(document.body.scrollHeight, '
+                              'document.documentElement.scrollHeight)')
+            n = 0
+            if h > 1150:
+                # плотная запись реального скролла: мелкие шаги, короткие паузы —
+                # в видео прокрутка непрерывная, reveal-анимации сайта играют
+                # естественно (как при обычном скролле), без интерполяции ffmpeg
+                max_frames = 80
+                step = max(60, min(90, (h - 1080) // max_frames))
+                ys = list(range(step, h - 1080, step))
+                if ys and ys[-1] < h - 1080 - 20:
+                    ys.append(h - 1080)
+                ys = ys[:max_frames]
+                for y in ys:
+                    page.evaluate(f'window.scrollTo({{top: {y}, behavior: "instant"}})')
+                    page.wait_for_timeout(90)
+                    n += 1
+                    fr = os.path.join(work_dir, f'frame_{n:03d}.png')
+                    page.screenshot(path=fr)
+                    frames.append(fr)
+            frames.insert(0, hero)
+        finally:
+            browser.close()
+    return frames
+
+
+def _make_review_video(work_dir: str, out_mp4: str, business: str, n_scroll: int):
+    """Собирает mp4 1920×1080 @30fps: титул (медленный наезд) → первый экран
+    (отъезд) → живая прокрутка (кадры браузера, интерполяция до 30fps) →
+    последний экран → финал. Переходы — плавные наплывы (xfade).
+    Тексты — только для заказчика: название бизнеса и «Демо-макет сайта»."""
+    intro = os.path.join(work_dir, 'intro.png')
+    outro = os.path.join(work_dir, 'outro.png')
+    _review_card(intro, business, 'Демо-макет сайта')
+    _review_card(outro, 'Ваш сайт готов', 'Демонстрация макета')
+    hero = os.path.join(work_dir, 'hero.png')
+    last = os.path.join(work_dir, f'frame_{n_scroll:03d}.png') if n_scroll else hero
+    FADE = 0.5  # длительность перехода между сценами
+
+    # (тип сцены, путь, длительность)
+    segs = [('zin', intro, 3.0), ('zout', hero, 3.2 if n_scroll else 5.5)]
+    if n_scroll:
+        segs += [('seq', os.path.join(work_dir, 'frame_%03d.png'), round(n_scroll / 12.0, 2)),
+                 ('zin2', last, 2.6)]
+    segs.append(('still', outro, 3.0))
+
+    inputs, parts = [], []
+    for i, (kind, path, dur) in enumerate(segs):
+        if kind == 'seq':
+            inputs += ['-framerate', '12', '-i', path]
+        else:
+            inputs += ['-loop', '1', '-t', f'{dur:.2f}', '-framerate', '30', '-i', path]
+    zp_in = "z='min(zoom+0.0006,1.05)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+    zp_out = "z='if(lte(on,1),1.05,max(zoom-0.0006,1.0))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+    zp_soft = "z='min(zoom+0.0004,1.04)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+    for i, (kind, path, dur) in enumerate(segs):
+        if kind in ('zin', 'zin2'):
+            parts.append(f"[{i}:v]scale=3840:2160,zoompan={zp_in}:fps=30:s=1920x1080,"
+                         f"setsar=1,format=yuv420p[v{i}]")
+        elif kind == 'zout':
+            parts.append(f"[{i}:v]scale=3840:2160,zoompan={zp_out}:fps=30:s=1920x1080,"
+                         f"setsar=1,format=yuv420p[v{i}]")
+        elif kind == 'still':
+            parts.append(f"[{i}:v]scale=3840:2160,zoompan={zp_soft}:fps=30:s=1920x1080,"
+                         f"setsar=1,format=yuv420p[v{i}]")
+        else:  # seq: кадры реальной прокрутки, без интерполяции (не «замыливает»)
+            parts.append(f'[{i}:v]fps=30,setsar=1,format=yuv420p[v{i}]')
+    # цепочка переходов: между сценами САЙТА (близкий контент, разные масштабы
+    # после zoompan) — через затемнение (fadeblack): crossfade таких кадров
+    # даёт «двоение»; между титулом и сайтом — обычный плавный наплыв
+    prev, acc = 'v0', segs[0][2]
+    for i in range(1, len(segs)):
+        lbl = f'x{i}' if i < len(segs) - 1 else 'vout'
+        trans = 'fadeblack' if segs[i][0] in ('seq', 'zin2') else 'fade'
+        parts.append(f'[{prev}][v{i}]xfade=transition={trans}:duration={FADE}:'
+                     f'offset={acc - FADE:.2f}[{lbl}]')
+        prev, acc = lbl, acc + segs[i][2] - FADE
+    cmd = (['ffmpeg', '-y'] + inputs +
+           ['-filter_complex', ';'.join(parts), '-map', '[vout]',
+            '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
+            '-movflags', '+faststart', out_mp4])
+    subprocess.run(cmd, check=True, timeout=600,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _review_card(out_png: str, title: str, subtitle: str):
+    """Титульный/финальный кадр видео 1920×1080 в стиле открытки:
+    тёмный фон, тёплое оранжевое свечение, крупное название, оранжевая линия."""
+    W, H = 1920, 1080
+    img = Image.new('RGB', (W, H))
+    draw = ImageDraw.Draw(img)
+    for y in range(H):
+        t = y / H
+        draw.line([(0, y), (W, y)],
+                  fill=tuple(int((15, 13, 12)[i] + ((56, 38, 27)[i] - (15, 13, 12)[i]) * t)
+                             for i in range(3)))
+    glow = Image.new('L', (W, H), 0)
+    gdraw = ImageDraw.Draw(glow)
+    for i in range(1100, 0, -8):
+        a = int(170 * (1 - i / 1100) ** 1.7)
+        gdraw.ellipse([W - i * 1.15, H - i * 0.8, W + i * 0.35, H + i * 0.5], fill=a)
+    img = Image.composite(Image.new('RGB', (W, H), _ORANGE), img, glow)
+    draw = ImageDraw.Draw(img)
+    # оранжевые планки сверху и снизу — как на открытке
+    draw.rectangle([0, 0, W, 16], fill=_ORANGE)
+    draw.rectangle([0, H - 16, W, H], fill=_ORANGE)
+    # маленькая линия-акцент над заголовком
+    f0 = _load_font(40)
+    t0w = draw.textlength(title, font=f0)
+    cx = W / 2
+    draw.rectangle([cx - min(t0w, 480) / 2, 360, cx + min(t0w, 480) / 2, 366], fill=_ORANGE)
+    # заголовок (авто-размер под ширину)
+    f1 = _load_font(104, bold=True)
+    while draw.textlength(title, font=f1) > W - 320 and f1.size > 48:
+        f1 = _load_font(f1.size - 6, bold=True)
+    tw = draw.textlength(title, font=f1)
+    draw.text(((W - tw) / 2, 420), title, font=f1, fill=_WHITE)
+    # подзаголовок
+    f2 = _load_font(42)
+    sw = draw.textlength(subtitle, font=f2)
+    draw.text(((W - sw) / 2, 600), subtitle, font=f2, fill=(224, 224, 224))
+    # дата мелко внизу
+    f3 = _load_font(28, bold=True)
+    ds = time.strftime('%d.%m.%Y')
+    dw = draw.textlength(ds, font=f3)
+    draw.text(((W - dw) / 2, H - 120), ds, font=f3, fill=(120, 120, 120))
+    img.save(out_png, 'PNG')
 
 
 # ── Fracs AI gate ─────────────────────────────────────────────────────────────
@@ -1329,7 +1582,10 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
     @app.route('/api/ai/models')
     def ai_models():
         provider = request.args.get('provider', 'Z.ai')
-        api_key = request.args.get('api_key', '')
+        # Ключ берём из заголовка X-Api-Key (не попадает в access-логи);
+        # query-параметр оставлен для совместимости со старой версией UI.
+        api_key = (request.headers.get('X-Api-Key')
+                   or request.args.get('api_key') or '').strip()
         base_url_q = request.args.get('base_url', '')
         need = _provider_feature(provider)
         if not _has_feature(need):
@@ -1385,7 +1641,11 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         job = mgr.get(job_id)
         if not job or not job.html:
             return Response('Превью ещё не готово.', status=404, mimetype='text/plain')
-        return Response(job.html, mimetype='text/html; charset=utf-8')
+        # HTML сгенерирован нейросетью/пользователем: изолируем origin (CSP sandbox
+        # без allow-same-origin) — скрипты страницы не достучатся до /api/* программы.
+        resp = Response(job.html, mimetype='text/html; charset=utf-8')
+        resp.headers['Content-Security-Policy'] = "sandbox allow-scripts allow-forms allow-popups"
+        return resp
 
     # Локальная проверка сохранённых файлов сайта (стабильный URL).
     @app.route('/sites/<path:subpath>')
@@ -1400,7 +1660,10 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             if not os.path.isfile(full):
                 return Response('Сайт ещё не собран в эту папку.', status=404,
                                 mimetype='text/plain')
-        return send_file(full)
+        resp = send_file(full)
+        if str(full).lower().endswith(('.html', '.htm', '.svg')):
+            resp.headers['Content-Security-Policy'] = "sandbox allow-scripts allow-forms allow-popups"
+        return resp
 
     @app.route('/api/ai/sites')
     def sites_list():
@@ -1436,6 +1699,9 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             return send_file(job.zip_path, as_attachment=True, download_name='site.zip')
         if kind == 'png' and job.png_path and os.path.exists(job.png_path):
             return send_file(job.png_path, as_attachment=True, download_name='postcard.png')
+        if kind == 'video' and job.video_path and os.path.exists(job.video_path):
+            return send_file(job.video_path, as_attachment=True,
+                             download_name='site-review.mp4', mimetype='video/mp4')
         return jsonify({'ok': False, 'error': 'file_not_ready'}), 404
 
     @app.route('/api/ai/upload', methods=['POST'])
@@ -1446,16 +1712,21 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         files = request.files.getlist('files') or []
         if not files:
             return jsonify({'ok': False, 'error': 'no_files'}), 400
-        saved = []
+        saved, too_big = [], []
         for f in files:
             if not f or not f.filename:
                 continue
+            data = f.stream.read(_MAX_UPLOAD_BYTES + 1)
+            if len(data) > _MAX_UPLOAD_BYTES:
+                too_big.append(os.path.basename(f.filename))
+                continue
             fd, tmp = tempfile.mkstemp(prefix='fracs_up_')
             with os.fdopen(fd, 'wb') as out:
-                f.save(out)
+                out.write(data)
             saved.append((os.path.basename(f.filename), tmp))
         if not saved:
-            return jsonify({'ok': False, 'error': 'no_files'}), 400
+            return jsonify({'ok': False, 'error': 'file_too_large',
+                            'message': 'Файл больше 15 МБ: ' + ', '.join(too_big[:3])}), 400
         added = mgr.add_uploads(session_id, saved)
         for _, tmp in saved:
             try:

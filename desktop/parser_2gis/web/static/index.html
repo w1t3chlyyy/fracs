@@ -1478,6 +1478,7 @@
     if(ls.length){ls[0].open=true;ls[0].scrollIntoView({behavior:'smooth',block:'center'});}
   });
   function esc(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  window.esc=esc;
   var learnLoaded=false;
   function loadLearn(){
     var body=$('learnBody'); if(!body||learnLoaded)return; learnLoaded=true;
@@ -1637,7 +1638,7 @@
     wrap.hidden=false;if(clip)clip.classList.add('has');
     wrap.innerHTML=uploads.map(function(u,ix){
       var ic=u.kind==='image'?ICON.img:ICON.file;
-      return '<span class="ai-chip"><span class="cic">'+ic+'</span><span class="cn">'+u.name+'</span>'+
+      return '<span class="ai-chip"><span class="cic">'+ic+'</span><span class="cn">'+esc(u.name)+'</span>'+
         '<span class="cs">'+fmtSize(u.size)+'</span><button type="button" data-chip="'+ix+'" title="Убрать">×</button></span>';
     }).join('');
     [].forEach.call(wrap.querySelectorAll('[data-chip]'),function(btn){
@@ -1687,7 +1688,7 @@
       var sel=$('aiProvider');if(!sel)return;
       sel.innerHTML=providers.filter(function(p){return p.allowed!==false;}).map(function(p){
         var badge=p.pro_only?' · Ultra':'';
-        return '<option value="'+p.id+'">'+p.id+badge+'</option>';
+        return '<option value="'+esc(p.id)+'">'+esc(p.id)+esc(badge)+'</option>';
       }).join('');
       if(!sel.options.length){sel.innerHTML='<option>—</option>';}
       var preferred=providers.some(function(p){return p.id==='Fracs AI'&&p.allowed;})?'Fracs AI':(sel.options[0]?sel.options[0].value:'Z.ai');
@@ -1726,12 +1727,13 @@
     var info=providerInfo(currentProvider)||{};
     var qs='?provider='+encodeURIComponent(currentProvider);
     var key=($('aiKey')&&$('aiKey').value.trim())||'';
-    if(key)qs+='&api_key='+encodeURIComponent(key);
     if(currentProvider==='Custom'&&$('aiBaseUrl'))qs+='&base_url='+encodeURIComponent($('aiBaseUrl').value.trim());
-    fetch('/api/ai/models'+qs).then(function(r){return r.json()}).then(function(d){
+    var mh={'Content-Type':'application/json'};
+    if(key)mh['X-Api-Key']=key;   /* ключ в заголовке — не светится в access-логах */
+    fetch('/api/ai/models'+qs,{headers:mh}).then(function(r){return r.json()}).then(function(d){
       var models=(d&&d.models)||[];
       if(!models.length){models=['glm-4.6'];}
-      sel.innerHTML=models.map(function(m){return '<option value="'+m+'">'+m+'</option>';}).join('');
+      sel.innerHTML=models.map(function(m){return '<option value="'+esc(m)+'">'+esc(m)+'</option>';}).join('');
       if($('aiModelManual')&&$('aiModelManual').checked){
         var mi=$('aiModelManualInput');
         if(mi&&mi.value){sel.innerHTML+='<option value="'+mi.value+'" selected>'+mi.value+' (вручную)</option>';sel.value=mi.value;}
@@ -1772,9 +1774,14 @@
     if(!currentJob)return;
     fetch('/api/ai/status/'+currentJob).then(function(r){return r.json()}).then(function(d){
       if(!d.ok){addMsg('sys',d.error||'Ошибка статуса');clearInterval(poller);poller=null;return;}
-      /* показываем только НОВЫЕ строки лога — иначе каждое опрос дублирует весь список */
+      /* Промежуточные логи агента НЕ пишем в чат (замусоривает): показываем
+         последнюю строку компактно в статусе; в чат попадают только
+         превью, результат и ошибки. Полный лог — /api/ai/status/<id>.logs */
       var logs=d.logs||[];
-      if(logs.length>seenLogs){logs.slice(seenLogs).forEach(function(l){addMsg('bot',l);});seenLogs=logs.length;}
+      if(logs.length){
+        if($('aiStatusPill'))$('aiStatusPill').textContent=logs[logs.length-1];
+        seenLogs=logs.length;
+      }
       if(d.preview_url&&!previewShown){
         previewShown=true;
         var link='/api/ai/preview/'+currentJob;
@@ -1785,7 +1792,8 @@
         if(d.local_url){
           var full=location.origin+d.local_url;
           var m=document.createElement('div');m.className='ai-msg bot';
-          m.innerHTML='Локальная проверка файлов — откройте в браузере: <a href="'+d.local_url+'" target="_blank" style="color:#7cc4ff;word-break:break-all">'+full+'</a> (версия v'+(d.version||1)+', папка '+(d.site_dir||'')+')';
+          var sl=esc(d.local_url), sf=esc(full);
+          m.innerHTML='Локальная проверка файлов — откройте в браузере: <a href="'+sl+'" target="_blank" rel="noopener" style="color:#7cc4ff;word-break:break-all">'+sf+'</a> (версия v'+esc(String(d.version||1))+', папка '+esc(d.site_dir||'')+')';
           var c=$('aiChat');c.appendChild(m);c.scrollTop=c.scrollHeight;
         }
       }
@@ -1793,6 +1801,7 @@
       if(d.status==='done'||d.status==='failed'||d.status==='cancelled'){
         clearInterval(poller);poller=null;
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
+        if($('aiStatusPill'))$('aiStatusPill').textContent=(d.status==='done'?'Готово':'Остановлено');
         if(d.status==='done'&&!doneShown){doneShown=true;
           addMsg('bot','Файлы собраны: ZIP со всем сайтом и открытка с QR-кодом — справа в «Передача файлов». Их можно переслать клиентам.');}
         if(d.status==='failed'){addMsg('sys','Генерация не удалась: '+(d.error||''));
@@ -1829,7 +1838,7 @@
       temperature:parseFloat($('aiTemp')&&$('aiTemp').value)||0.7,
       max_tokens:parseInt($('aiMaxTok')&&$('aiMaxTok').value)||4096};
     addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
-    addMsg('bot','Запускаю агента…');
+    if($('aiStatusPill'))$('aiStatusPill').textContent='Запускаю агента…';
     fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json()}).then(function(d){
         if(!d.ok){
@@ -1838,6 +1847,7 @@
           return;}
         currentJob=d.job_id;
         seenLogs=0;previewShown=false;doneShown=false;
+        if($('aiStatusPill'))$('aiStatusPill').textContent='Агент работает…';
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
         var ap=$('aiApprove');if(ap)ap.style.display='none';
         var op=$('aiOpenPreview');if(op)op.style.display='none';

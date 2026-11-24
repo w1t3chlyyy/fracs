@@ -1,13 +1,31 @@
 # Fracs AI-Агент — обновление
 
-Заменяются 2 файла в репозитории:
+Архив повторяет структуру репозитория: распакуйте его в **корень репозитория сайта**
+(там, где лежит папка `desktop/` и `server/`) — все файлы лягут на свои места сами:
 
-| Файл | Куда положить |
-|---|---|
-| `ai_agent.py` | `desktop/parser_2gis/web/ai_agent.py` (полная замена) |
-| `index.html` | `desktop/parser_2gis/web/static/index.html` (полная замена) |
+| Файл в архиве | Куда попадает | Что это |
+|---|---|---|
+| `desktop/parser_2gis/web/ai_agent.py` | `desktop/parser_2gis/web/ai_agent.py` | полная замена: AI-агент (прокси Fracs AI, CSP, лимиты, открытка по референсу, видеообзор по QR) |
+| `desktop/parser_2gis/web/static/index.html` | `desktop/parser_2gis/web/static/index.html` | полная замена: UI чата (esc, без логов в чате) |
+| `desktop/parser_2gis/license.py` | `desktop/parser_2gis/license.py` | полная замена: лицензии и тарифы |
+| `server/bot.ts` | `server/bot.ts` | полная замена: подтверждение входа в Telegram-боте |
+| `server/config.ts` | `server/config.ts` | полная замена: openrouterApiKey, тарифы |
+| `apply_fixes.py` | в корне (для запуска) | точечные патчи: requirements/spec/server.py, appRoutes.ts, .env.example, .gitignore, vercel.json, гигиена |
+| `README-AI.md` | документация | это описание |
 
-`postcard-sample.png` — пример новой открытки (1080×1528), которую теперь собирает агент.
+## Порядок установки
+
+```bash
+cd <корень-репозитория-сайта>
+unzip -o fracs-fixes-v2.zip        # файлы лягут: server/*.ts, desktop/parser_2gis/…
+python3 apply_fixes.py             # точечные патчи + проверка полных файлов
+```
+
+`apply_fixes.py` в конце проверяет все 5 полных файлов и печатает OK/FAIL по каждому.
+
+`postcard-sample.png` — пример новой открытки (1200×675, по макету заказчика),
+`site-review-sample.mp4` — пример видеообзора, который открывает QR.
+
 
 ## Что сделано
 
@@ -329,3 +347,114 @@ FRACS_OWNER_MODE=1                   # все платные функции бе
 - Владелец: /api/license → ok, «Ultra (владелец)», until 2099-12-31, полный набор фич.
 - Для стендовых тестов тарифов использован хук FRACS_FAKE_FEATURES
   (scripts/ai_e2e_test.py, в поставку не входит).
+
+════════════════════════════════════════════════════════════════════
+## ОБНОВЛЕНИЕ 8 — Автозагрузка .env (почему «нет ключа FRACS_AI_API_KEY»)
+════════════════════════════════════════════════════════════════════
+
+Причина ошибки на скрине: программа не видела OPENROUTER_API_KEY — файл .env
+раньше никто не загружал (env-ключи в коде читаются из окружения процесса).
+В ai_agent.py добавлен _load_dotenv(): при старте ключи читаются из .env.
+
+### Где лежит .env (любое из мест, приоритет: программа → exe → CWD)
+- dev-сборка: desktop/.env (папка, в которой лежит parser_2gis);
+- PyInstaller-сборка: .env РЯДОМ С .exe;
+- либо текущая рабочая папка.
+Переменные, заданные в системе, приоритетнее .env (не перезаписываются).
+
+### Содержимое .env (владелец)
+OPENROUTER_API_KEY=sk-or-v1-...   # ключ Fracs AI — ЭТОГО ДОСТАТОЧНО
+TWENTYFIRST_API_KEY=21st_sk_...   # опционально, референсы 21st.dev
+FRACS_OWNER_MODE=1                # Ultra до 2099
+FRACS_AI_API_KEY НЕ нужен — опциональная заготовка под свой сервер.
+
+### Про «Bazaar API»
+Bazaar — НЕ отдельный сервис и НЕ отдельный ключ. Это название каталога
+моделей Fracs AI (ai_agent.py, «Каталог Fracs AI (Bazaar)»): модели
+автоматически тянутся через OpenRouter /models с ТЕМ ЖЕ ключом
+OPENROUTER_API_KEY — бесплатные первыми. Никакой BAZAAR_API_KEY добавлять
+не нужно. Провайдер Fracs AI после этого запускается как на скрине
+(модель baidu/ernie-…:free), но уже без ошибки.
+
+Проверено на стенде: .env с OPENROUTER_API_KEY → Fracs AI configured=True,
+ошибка «нет ключа» исчезла.
+
+════════════════════════════════════════════════════════════════════
+## ОБНОВЛЕНИЕ 9 — Блокеры ревью от 24.11 (прокси Fracs AI, анти-угон входа, CSP, QR)
+════════════════════════════════════════════════════════════════════
+
+### Полные файлы (замена целиком) — папка fracs-fixes-v2/
+- desktop ai_agent.py:
+  * Fracs AI у ПОЛЬЗОВАТЕЛЯ теперь работает БЕЗ ключа в сборке: запрос уходит
+    через сайт POST /api/app/ai (Authorization: ключ лицензии), ключ OpenRouter
+    лежит только на сервере. У владельца (FRACS_OWNER_MODE) — напрямую в
+    OpenRouter на ключе из .env (как раньше).
+  * fetch_models Fracs AI тоже через сайт (/api/app/ai/models).
+  * CSP sandbox на /api/ai/preview/<id> и /sites/* (allow-scripts без
+    allow-same-origin): скрипты сгенерированного HTML не достучатся до /api/*.
+  * Лимит вложений 15 МБ/файл (больше → 400 file_too_large).
+  * TTL задач: done/failed/cancelled задачи старше 4 ч вычищаются из памяти,
+    пустые сессии вложений тоже.
+  * /api/ai/models: ключ из заголовка X-Api-Key (не попадает в access-логи);
+    query-параметр оставлен для совместимости.
+  * sites/: теперь по умолчанию в профиле пользователя (APPDATA/…/fracs-parser/
+    sites) — переживает обновление программы; прежняя <проект>/sites
+    используется, если уже существует; FRACS_SITES_DIR по-прежнему главнее всех.
+- desktop index.html:
+  * ЛОГИ В ЧАТЕ УБРАНЫ: «Запускаю агента…», «Агент запущен. Модель…»,
+    «Отправляю промпт…» и прочие промежуточные строки больше не сыплются в чат —
+    последняя строка показывается компактно в статус-пилюле; в чате остаются
+    только сообщение пользователя, ссылка на превью и результат/ошибка.
+  * XSS: esc() для имён моделей, загруженных файлов, local_url, провайдеров
+    в innerHTML; у ссылок rel="noopener".
+  * Ключ моделей отправляется заголовком (не в URL).
+- desktop license.py: ИСПРАВЛЕН порядок проверки — FRACS_OWNER_MODE проверяется
+  ДО чтения кэша (раньше закэшированное «нет лицензии» перебивало владельца).
+- сайт config.ts: OPENROUTER_API_KEY + openrouterUrl в server-config.
+- сайт bot.ts: АНТИ-УГОН ВХОДА. Токен входа с сайта больше НЕ привязывается по
+  факту /start: бот спрашивает «Вы входите на сайт Fracs…подтвердите?» и
+  привязывает только после «✅ Это я». Все три пути (/start с токеном, после
+  гейта подписок, колбэк подтверждения) закрыты; «❌ Это не я» отменяет вход.
+
+### apply_fixes.py — патч-скрипт (правки точечные, файлы целиком не отдавались)
+Запуск из корня репозитория сайта (desktop рядом): python3 apply_fixes.py
+Каждый патч отчитывается OK/SKIP/FAIL, повторный запуск безопасен:
+ 1. desktop/requirements.txt: + qrcode, Pillow        ← блокер QR-открытки
+ 2. desktop/fracs_parser.spec: hiddenimports += 'qrcode','PIL'
+ 3. desktop web/server.py: запасные тарифы Start 1800/PRO 2700/Ultra 4500
+    (пользователь видел «Старт 990/PRO 1990/Бизнес 4990» при недоступном сайте)
+ 4. hmac.compare_digest → bytes: не-ASCII заголовок не даёт 500
+ 5. server/appRoutes.ts: + POST /api/app/ai и GET /api/app/ai/models — прокси
+    Fracs AI: гейт фичи fracs_ai (Ultra), rate-limit, ключ лицензии в
+    Authorization, ключ OpenRouter только на сервере; копия блока сохраняется
+    в server/patches/appRoutes-ai-proxy.ts
+ 6. .env.example: + OPENROUTER_API_KEY (заполнить на сервере!)
+ 7. .gitignore: полный (.env, __pycache__, sites/, dist/, data/, node_modules…)
+ 8. vercel.json: buildCommand=npm run build:api; после этого удаляется
+    закоммиченный устаревший api/index.js
+ 9. Гигиена: удаляются корневые устаревшие server.ts/server.js/ai_agent.py/
+    server.py/tg.js и ПУБЛИЧНЫЕ исходники public/assets/aistudio/*.py
+10. src-заглушки DemoTool/TgTool/MapsTool/AiAgent/Training удаляются, только
+    если нигде не импортируются (AiAgent.tsx-заглушка с выдуманными файлами)
+11. README_VERCEL.md: печатает строки с «Демо» для ручной правки
+
+### После деплоя сайта
+- В .env СЕРВЕРА добавить OPENROUTER_API_KEY=sk-or-v1-… (тот же ключ).
+- npm run build:api (или сразу деплой — buildCommand сделает сам).
+- Оплата не тронута: ЮKassa работает как раньше, ручная выдача тарифов —
+  через админ-меню бота (Ultra/PRO/Start).
+
+### Что проверено на стенде (scripts/ai_flow_test.py — 21/21 OK)
+- владелец → Fracs AI напрямую OpenRouter (ключ из .env);
+- пользователь Ultra → /api/app/ai сайта с Bearer лицензионным ключом;
+- полный поток агента: start → preview → approve → done (ZIP+открытка);
+- CSP sandbox на превью и /sites/*;
+- файл 15 МБ+ отклоняется; TTL-чистка задач; ключ моделей в заголовке.
+UI-скрин чистого чата: download/ai-chat-clean.png.
+
+### Известное, что сознательно не менялось
+- Лимит частоты (rateLimit) остаётся per-instance на Vercel (Upstash можно
+  подключить позже без смены кода).
+- Параллельные инстансы TG-сервиса и Telethon-сессия: держите один инстанс
+  (Vercel: не масштабировать функцию) — код уровня фикс не требуется.
+- Лицензионный ключ не привязан к устройству: отзыв = снятие подписки админом.

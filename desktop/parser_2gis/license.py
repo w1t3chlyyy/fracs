@@ -102,12 +102,8 @@ def check(force: bool = False) -> dict:
     """Текущее состояние лицензии: {'ok', 'reason', 'until', 'name', 'offline', 'site'}."""
     with _lock:
         now = time.time()
-        cached = _cache['state']
-        if not force and cached and now - _cache['at'] < RECHECK_S:
-            # Даже в пределах кэша сразу блокируем, если срок подписки истёк.
-            if not cached.get('ok') or _is_until_active(cached.get('until'), now):
-                return cached
-
+        # Режим владельца проверяется ПЕРВЫМ, до чтения кэша: закэшированное
+        # «нет лицензии» не должно перебивать FRACS_OWNER_MODE.
         if _owner_mode():
             state = {'ok': True, 'reason': '', 'until': _OWNER_UNTIL,
                      'name': 'Ultra (владелец)',
@@ -115,6 +111,11 @@ def check(force: bool = False) -> dict:
                      'features': list(_ALL_FEATURES)}
             _cache.update(at=now, state=state)
             return state
+        cached = _cache['state']
+        if not force and cached and now - _cache['at'] < RECHECK_S:
+            # Даже в пределах кэша сразу блокируем, если срок подписки истёк.
+            if not cached.get('ok') or _is_until_active(cached.get('until'), now):
+                return cached
 
         data = _load()
         key = data.get('key')

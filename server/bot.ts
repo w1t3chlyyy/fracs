@@ -566,6 +566,28 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
 }
 
 /** Обработка кнопок гейта подписок (sub:*). Не-админ жмёт «Я подписался — проверить». */
+/** Подтверждение входа с сайта: токен привязывается только по явной кнопке. */
+async function handleLoginConfirm(cb: any) {
+  const data: string = cb.data || '';
+  const chatId = cb.message?.chat?.id;
+  const cbId = String(cb.id || '');
+  if (!chatId) { await answerCb(cbId); return; }
+  if (data === 'lt:no') {
+    await editMsg(chatId, cb.message?.message_id, '🛡 Вход отменён. Если вы не инициировали вход — никто не получил доступ к вашему аккаунту.', { reply_markup: { inline_keyboard: [] } });
+    await answerCb(cbId, 'Вход отменён');
+    return;
+  }
+  const token = data.startsWith('lt:ok:') ? data.slice(6) : '';
+  const user = await upsertTgUser(cb.from);
+  if (!(await checkChannelSubs(user.tgId))) {
+    await notify(chatId, SUBS_GATE_TEXT, { reply_markup: await subsGateKb('login', token) });
+    await answerCb(cbId);
+    return;
+  }
+  await finalizeStart(chatId, user, 'login', token);
+  await answerCb(cbId, 'Вход подтверждён');
+}
+
 async function handleSubCallback(cb: any) {
   const data: string = cb.data || '';
   const chatId = cb.message?.chat?.id;
@@ -582,6 +604,22 @@ async function handleSubCallback(cb: any) {
   const intent: 'ref' | 'login' = m ? 'login' : 'ref';
   const param = m ? m[1] : '';
   if (messageId) await tg('deleteMessage', { chat_id: chatId, message_id: messageId }).catch(() => {});
+  if (intent === 'login') {
+    // Токен входа с сайта привязываем только после явного подтверждения (анти-угон).
+    await notify(
+      chatId,
+      `🔑 Вы входите на сайт Fracs по ссылке из браузера.\n\nЕсли это ВЫ — подтвердите вход.`,
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✅ Это я — подтвердить вход', callback_data: `lt:ok:${param}` }],
+            [{ text: '❌ Это не я — отменить', callback_data: 'lt:no' }],
+          ],
+        },
+      },
+    );
+    return;
+  }
   await finalizeStart(chatId, user, intent, param);
 }
 
@@ -602,6 +640,15 @@ export async function handleUpdate(update: any) {
         await handleSubCallback(cb);
       } catch (e: any) {
         console.error('[bot] sub cb', e);
+        await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${e?.message || e}`, show_alert: true }).catch(() => {});
+      }
+      return;
+    }
+    if ((cb.data || '').startsWith('lt:')) {
+      try {
+        await handleLoginConfirm(cb);
+      } catch (e: any) {
+        console.error('[bot] login cb', e);
         await tg('answerCallbackQuery', { callback_query_id: cb.id, text: `Ошибка: ${e?.message || e}`, show_alert: true }).catch(() => {});
       }
       return;
@@ -631,10 +678,34 @@ export async function handleUpdate(update: any) {
   if (cmd === '/start' && param) {
     const intent: 'ref' | 'login' = param.startsWith('ref_') ? 'ref' : 'login';
     const user = await upsertTgUser(msg.from);
-    if (await checkChannelSubs(user.tgId)) {
-      await finalizeStart(msg.chat.id, user, intent, intent === 'login' ? param : '');
+    const subscribed = await checkChannelSubs(user.tgId);
+    if (intent === 'login') {
+      // Анти-угон: токен привязывается ТОЛЬКО после явного подтверждения.
+      // Иначе атакующий может подсунуть жертве ссылку /start=<токен> и забрать сессию.
+      if (!subscribed) {
+        await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb('login', param) });
+        return;
+      }
+      await notify(
+        msg.chat.id,
+        `🔑 Вы входите на сайт Fracs по ссылке из браузера.\n\n` +
+        `Если это ВЫ и вы нажимали «Войти через Telegram» на сайте — подтвердите вход. ` +
+        `Если нет: возможно, кто-то пытается получить доступ к вашему аккаунту — нажмите «Отменить».`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '✅ Это я — подтвердить вход', callback_data: `lt:ok:${param}` }],
+              [{ text: '❌ Это не я — отменить', callback_data: 'lt:no' }],
+            ],
+          },
+        },
+      );
+      return;
+    }
+    if (subscribed) {
+      await finalizeStart(msg.chat.id, user, intent, '');
     } else {
-      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb(intent, intent === 'login' ? param : '') });
+      await notify(msg.chat.id, SUBS_GATE_TEXT, { reply_markup: await subsGateKb('ref', '') });
     }
     return;
   }

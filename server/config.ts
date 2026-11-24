@@ -17,6 +17,11 @@ export const config = {
   cronSecret: env.CRON_SECRET || '',
   searchRetentionDays: Number(env.SEARCH_RETENTION_DAYS || 30),
 
+  // Ключ OpenRouter для прокси Fracs AI (/api/app/ai): хранится ТОЛЬКО на сервере,
+  // в сборку программы не попадает. Пользовательский запрос идёт с ключом лицензии.
+  openrouterApiKey: env.OPENROUTER_API_KEY || '',
+  openrouterUrl: 'https://openrouter.ai/api/v1',
+
   botToken: env.TELEGRAM_BOT_TOKEN || '',
   botUsername: (env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, ''),
   // На Vercel работает только webhook. polling — для локальной разработки.
