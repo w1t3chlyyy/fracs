@@ -266,12 +266,14 @@ def create_app():
 
     # ── Подписки: 3 тарифа + продление. Прокси к /api/config сайта Fracs, fallback на встроенные.
     _FALLBACK_PLANS = [
-        {'id': 'start', 'title': 'Старт', 'days': 30, 'priceRub': 990,
-         'badge': '', 'description': 'Парсинг 2ГИС и Telegram-поиск. Выгрузка CSV/HTML.'},
-        {'id': 'pro', 'title': 'PRO', 'days': 30, 'priceRub': 1990,
-         'badge': 'Популярный', 'description': 'Всё из «Старт» + поиск владельцев и раздел «Обучение».'},
-        {'id': 'business', 'title': 'Бизнес', 'days': 90, 'priceRub': 4990,
-         'badge': 'Выгодно', 'description': 'PRO на 90 дней + AI-Агент без ограничений по числу генераций.'},
+        {'id': 'start', 'title': 'Start', 'days': 30, 'priceRub': 1800,
+         'badge': '', 'description': 'Парсинг Telegram и карт 2ГИС, база контактов, выгрузки CSV/HTML.'},
+        {'id': 'pro', 'title': 'PRO', 'days': 30, 'priceRub': 2700,
+         'badge': 'Владельцы + Обучение',
+         'description': 'Всё из «Start» + поиск владельцев, раздел «Обучение» и AI-агент со своим провайдером.'},
+        {'id': 'ultra', 'title': 'Ultra', 'days': 30, 'priceRub': 4500,
+         'badge': 'Максимум',
+         'description': 'Всё из «PRO» + встроенный Fracs AI (отдельная кнопка в AI-агенте).'},
     ]
 
     @app.route('/api/plans')
@@ -369,7 +371,7 @@ def create_app():
             return jsonify({'ok': False, 'error': 'license'}), 402
         if 'owners' not in (lic.get('features') or []):
             return jsonify({'ok': False, 'error': 'feature_required',
-                            'message': 'Поиск владельцев доступен на тарифе PRO.'}), 402
+                            'message': 'Поиск владельцев доступен на тарифах PRO и Ultra.'}), 402
         data = request.get_json(force=True, silent=True) or {}
         try:
             config = _build_config(data)

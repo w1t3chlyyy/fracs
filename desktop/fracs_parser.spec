@@ -10,7 +10,7 @@ a = Analysis(
     ['fracs_parser.py'],
     pathex=['.'],
     datas=datas,
-    hiddenimports=['flask', 'xlsxwriter', 'pychrome', 'websocket', 'psutil', 'requests', 'pydantic'],
+    hiddenimports=['qrcode', 'PIL', 'flask', 'xlsxwriter', 'pychrome', 'websocket', 'psutil', 'requests', 'pydantic'],
     excludes=['tkinter', 'pytest'],
 )
 pyz = PYZ(a.pure)
