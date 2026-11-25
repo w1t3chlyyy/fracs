@@ -24,7 +24,7 @@ class _Features:
     item_id: Optional[str]
     org_id: Optional[str]
     has_phone: bool
-    has_whatsapp: bool
+    has_telegram: bool
     has_social: bool
     has_email: bool
     has_website: bool
@@ -62,7 +62,7 @@ def extract_features(catalog_doc: Any) -> Optional[_Features]:
         item_id=item_id,
         org_id=catalog_item.org.id if catalog_item.org else None,
         has_phone='phone' in contact_types,
-        has_whatsapp='whatsapp' in contact_types,
+        has_telegram='telegram' in contact_types,
         has_social=bool(contact_types & SOCIAL_TYPES),
         has_email='email' in contact_types,
         has_website='website' in contact_types,
@@ -75,7 +75,7 @@ def any_filter_enabled(options: FilterOptions) -> bool:
     """Whether at least one filter is active (used to skip wrapping otherwise)."""
     return any([
         options.dedup_franchises, options.dedup_across_niches,
-        options.require_phone, options.require_whatsapp,
+        options.require_phone, options.require_telegram,
         options.require_social, options.require_email, options.require_website,
         options.require_no_website,
         options.min_rating > 0, options.min_reviews > 0,
@@ -102,7 +102,7 @@ class FilterWriter(FileWriter):
         o = self._filter_options
         if o.require_phone and not f.has_phone:
             return False
-        if o.require_whatsapp and not f.has_whatsapp:
+        if o.require_telegram and not f.has_telegram:
             return False
         if o.require_social and not f.has_social:
             return False

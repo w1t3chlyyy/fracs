@@ -17,7 +17,7 @@ interface Props {
   demo?: boolean;
   mark?: Mark;
   onMark?: (patch: Mark) => void;
-  waUrl?: (num: string) => string;
+  waUrl?: (raw: string) => string;
 }
 
 export default function RecordCard({ r, t, blurred, demo, mark, onMark, waUrl }: Props) {
@@ -42,11 +42,10 @@ export default function RecordCard({ r, t, blurred, demo, mark, onMark, waUrl }:
       {r.district && <div className="text-[11.5px] text-[#666666]">{r.district}</div>}
 
       <div className={`mt-1 flex flex-wrap gap-1.5 ${blur}`}>
-        {c.whatsapp && !blurred && waUrl && (
-          <a href="#" onClick={(e) => { e.preventDefault(); if (!demo) window.open(waUrl(c.whatsapp), '_blank', 'noopener'); }} className={`${chip} border-transparent bg-[#25d366] text-white`}>WhatsApp</a>
+        {c.telegram && !blurred && (
+          <a href="#" onClick={(e) => { e.preventDefault(); if (demo) return; const u = waUrl ? waUrl(c.telegram) : safeHref(c.telegram); if (u) window.open(u, '_blank', 'noopener'); }} className={`${chip} border-[rgba(56,189,248,0.25)] bg-[rgba(56,189,248,0.12)] text-[#7dd3fc]`}>Telegram</a>
         )}
         {c.phone && <a href={blurred || demo ? undefined : `tel:${digits(c.phone)}`} className={`${chip} border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] text-[#ffffff]`}><Phone className="h-3.5 w-3.5" /> {c.phone}</a>}
-        {!blurred && c.telegram && <a href={demo ? undefined : safeHref(c.telegram)} onClick={inert} {...ext} className={`${chip} border-[rgba(56,189,248,0.25)] bg-[rgba(56,189,248,0.12)] text-[#7dd3fc]`}>Telegram</a>}
         {!blurred && c.instagram && <a href={demo ? undefined : safeHref(c.instagram)} onClick={inert} {...ext} className={`${chip} border-[rgba(244,114,182,0.25)] bg-[rgba(244,114,182,0.12)] text-[#f9a8d4]`}>Instagram</a>}
         {!blurred && c.website && <a href={demo ? undefined : safeHref(c.website)} onClick={inert} {...ext} className={`${chip} border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] text-[#ffffff]`}><Globe className="h-3.5 w-3.5" /> Сайт</a>}
         {!blurred && c.email && <a href={demo ? undefined : `mailto:${c.email}`} className={`${chip} border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] text-[#ffffff]`}><Mail className="h-3.5 w-3.5" /> E-mail</a>}

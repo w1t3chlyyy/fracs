@@ -143,7 +143,8 @@ def _build_config(data: dict[str, Any]) -> Configuration:
     config.filters.dedup_franchises = bool(f.get('dedup_franchises'))
     config.filters.dedup_across_niches = bool(f.get('dedup_across_niches', True))
     config.filters.require_phone = bool(f.get('require_phone'))
-    config.filters.require_whatsapp = bool(f.get('require_whatsapp'))
+    # require_whatsapp — старый ключ из сохранённых настроек, читаем как Telegram
+    config.filters.require_telegram = bool(f.get('require_telegram') or f.get('require_whatsapp'))
     config.filters.require_social = bool(f.get('require_social'))
     config.filters.require_email = bool(f.get('require_email'))
     config.filters.require_website = bool(f.get('require_website'))
@@ -586,6 +587,7 @@ def create_app():
         return jsonify({'ok': history.delete(hid)})
 
     tg_routes.register(app)
+    tg_routes.register_send(app)
     ai_agent.register(app, base_url='http://127.0.0.1:8666')
     return app
 

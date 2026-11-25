@@ -32,7 +32,7 @@ function trialOptions(body: any) {
   return {
     filters: {
       dedup_franchises: flag(f.dedup_franchises), dedup_across_niches: f.dedup_across_niches !== false,
-      require_phone: flag(f.require_phone), require_whatsapp: flag(f.require_whatsapp),
+      require_phone: flag(f.require_phone), require_telegram: flag(f.require_telegram ?? f.require_whatsapp),
       require_social: flag(f.require_social), require_email: flag(f.require_email),
       require_website: false, require_no_website: true,
       min_rating: num(f.min_rating, 0, 5, 0), min_reviews: num(f.min_reviews, 0, 100000, 0),

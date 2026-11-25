@@ -80,7 +80,7 @@ export interface Plan {
   /** Коды возможностей, открываемых тарифом. Гейтятся на сервере и в программе.
    *  Start — ['base','telegram','cards'] (парсинг Telegram + карты). PRO добавляет
    *  'owners', 'training' и 'ai_provider' (свой провайдер в AI-агенте). Ultra добавляет
-   *  'fracs_ai' (встроенный Fracs AI). Админ (ADMIN_TG_ID) видит всё. */
+   *  'fracs_ai' (встроенный Fracs AI) и 'tg_broadcast' (рассылка открыток из привязанных Telegram-аккаунтов). Админ (ADMIN_TG_ID) видит всё. */
   features?: string[];
 }
 
@@ -108,8 +108,8 @@ export const PLANS: Plan[] = [
     days: 30,
     priceRub: 4500,
     badge: 'Максимум',
-    features: ['base', 'telegram', 'cards', 'owners', 'training', 'ai_provider', 'fracs_ai', 'ai', 'business'],
-    description: 'Всё из «PRO» + встроенный Fracs AI (генерация сайтов и фраз на встроенном ключе, отдельная кнопка в AI-агенте). Максимум возможностей.',
+    features: ['base', 'telegram', 'cards', 'owners', 'training', 'ai_provider', 'fracs_ai', 'ai', 'business', 'tg_broadcast'],
+    description: 'Всё из «PRO» + встроенный Fracs AI (генерация сайтов и фраз на встроенном ключе, отдельная кнопка в AI-агенте). Рассылка открыток из привязанных Telegram-аккаунтов. Максимум возможностей.',
   },
 ];
 

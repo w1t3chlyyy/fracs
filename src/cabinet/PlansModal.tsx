@@ -51,7 +51,7 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
         <ul className="mt-3 space-y-1.5 text-[14px] text-[#cccccc]">
           {[
             'Программа Fracs Parser для Windows, macOS и Linux: реальный парсинг 2ГИС на вашем ПК',
-            'Фильтры, шаблоны WhatsApp, выгрузка HTML / CSV / XLSX / JSON, Яндекс Карты',
+            'Фильтры, шаблоны Telegram, выгрузка HTML / CSV / XLSX / JSON, Яндекс Карты',
             'Контакты и выгрузки по Telegram-поискам в кабинете',
           ].map((t) => (
             <li key={t} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />{t}</li>

@@ -44,8 +44,7 @@ export function makePool(url: string, count: number, city: string, query: string
     const contacts: Record<string, string> = {};
     const num = `7900000${d2()}${d2()}`.slice(0, 11);
     if (r() < 0.85) contacts.phone = `+7 (900) 000-${num.slice(7, 9)}-${num.slice(9, 11)}`;
-    if (contacts.phone && r() < 0.45) contacts.whatsapp = `https://wa.me/${num}`;
-    if (r() < 0.12) contacts.telegram = 'https://t.me/demo';
+    if (r() < 0.4) contacts.telegram = `https://t.me/demo_${num.slice(7)}`;
     if (r() < 0.18) contacts.instagram = 'https://instagram.com/demo';
     if (r() < 0.2) contacts.email = 'demo@example.com';
     if (r() < 0.45) contacts.website = 'https://example.com';
@@ -66,9 +65,9 @@ export function makePool(url: string, count: number, city: string, query: string
 
 export function passes(rec: GisRecord, f: Filters): boolean {
   const c = rec.contacts;
-  const social = Object.keys(c).some((k) => !['phone', 'whatsapp', 'email', 'website'].includes(k));
+  const social = Object.keys(c).some((k) => !['phone', 'email', 'website'].includes(k));
   if (f.require_phone && !c.phone) return false;
-  if (f.require_whatsapp && !c.whatsapp) return false;
+  if (f.require_telegram && !c.telegram) return false;
   if (f.require_social && !social) return false;
   if (f.require_email && !c.email) return false;
   if (f.require_website && !c.website) return false;

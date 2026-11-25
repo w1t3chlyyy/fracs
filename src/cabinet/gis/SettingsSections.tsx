@@ -23,7 +23,7 @@ export default function SettingsSections({ t, s, setS, maxRecords }: Props) {
         <Check checked={f.dedup_across_niches} onChange={(v) => setF({ dedup_across_niches: v })} label={t('f_dedup_niches')} />
         <Check checked={f.dedup_franchises} onChange={(v) => setF({ dedup_franchises: v })} label={t('f_dedup')} />
         <Check checked={f.require_phone} onChange={(v) => setF({ require_phone: v })} label={t('f_phone')} />
-        <Check checked={f.require_whatsapp} onChange={(v) => setF({ require_whatsapp: v })} label={t('f_wa')} />
+        <Check checked={f.require_telegram} onChange={(v) => setF({ require_telegram: v })} label={t('f_wa')} />
         <Check checked={f.require_social} onChange={(v) => setF({ require_social: v })} label={t('f_social')} />
         <Check checked={f.require_email} onChange={(v) => setF({ require_email: v })} label={t('f_email')} />
         <Check checked={f.require_website} onChange={(v) => setF({ require_website: v, require_no_website: v ? false : f.require_no_website })} label={t('f_site')} />

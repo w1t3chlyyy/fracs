@@ -10,7 +10,7 @@ from .file_writer import FileWriter
 
 
 def _digits(value: str) -> str:
-    """Keep digits only (for tel:/wa.me links)."""
+    """Keep digits only (for tel: links)."""
     return re.sub(r'\D', '', value or '')
 
 
@@ -27,7 +27,7 @@ def _safe_url(u: str) -> str:
 class HTMLWriter(FileWriter):
     """Writer to a self-contained, searchable HTML page.
 
-    Each record is a card with one-click actions: WhatsApp, call, open in 2GIS,
+    Each record is a card with one-click actions: Telegram, call, open in 2GIS,
     and social/website/e-mail links. The page works offline (no external assets)
     and has a live client-side search box.
     """
@@ -85,13 +85,10 @@ class HTMLWriter(FileWriter):
             meta_html += '<div class="meta">👤 ' + esc(' · '.join(x for x in [ow.get('name'), ow.get('phone'), ow.get('email')] if x)) + '</div>'
 
         buttons = []
-        if 'whatsapp' in c:
-            wa = esc(_safe_url(c['whatsapp']))
-            buttons.append(f'<a class="btn wa" href="{wa}" target="_blank" rel="noopener">WhatsApp</a>')
         if 'phone' in c:
             buttons.append(f'<a class="btn" href="tel:{_digits(c["phone"])}">📞 {esc(c["phone"])}</a>')
         if 'telegram' in c:
-            buttons.append(f'<a class="btn tg" href="{esc(_safe_url(c["telegram"]))}" target="_blank" rel="noopener">Telegram</a>')
+            buttons.insert(0, f'<a class="btn tg" href="{esc(_safe_url(c["telegram"]))}" target="_blank" rel="noopener">Telegram</a>')
         if 'instagram' in c:
             buttons.append(f'<a class="btn ig" href="{esc(_safe_url(c["instagram"]))}" target="_blank" rel="noopener">Instagram</a>')
         if 'website' in c:

@@ -42,7 +42,7 @@ export interface Filters {
   dedup_across_niches: boolean;
   dedup_franchises: boolean;
   require_phone: boolean;
-  require_whatsapp: boolean;
+  require_telegram: boolean;
   require_social: boolean;
   require_email: boolean;
   require_website: boolean;
@@ -74,7 +74,7 @@ export const DEFAULT_SETTINGS: Settings = {
   max_records: 50,
   clean: true,
   filters: {
-    dedup_across_niches: true, dedup_franchises: false, require_phone: false, require_whatsapp: false, require_social: false,
+    dedup_across_niches: true, dedup_franchises: false, require_phone: false, require_telegram: false, require_social: false,
     require_email: false, require_website: false, require_no_website: false, min_rating: 0, min_reviews: 0,
   },
   advanced: {

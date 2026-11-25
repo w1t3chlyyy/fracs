@@ -116,7 +116,7 @@ def parse_arguments() -> tuple[argparse.Namespace, Configuration]:
     filter_parser.add_argument('--filters.dedup-franchises', metavar='{yes,no}', help='Без франшиз: оставить один филиал на организацию')
     filter_parser.add_argument('--filters.dedup-across-niches', metavar='{yes,no}', help='Без повторов между нишами: одно заведение показывается один раз')
     filter_parser.add_argument('--filters.require-phone', metavar='{yes,no}', help='Только записи с телефоном')
-    filter_parser.add_argument('--filters.require-whatsapp', metavar='{yes,no}', help='Только записи с WhatsApp')
+    filter_parser.add_argument('--filters.require-telegram', metavar='{yes,no}', help='Только записи с Telegram')
     filter_parser.add_argument('--filters.require-social', metavar='{yes,no}', help='Только записи с соцсетями/мессенджерами')
     filter_parser.add_argument('--filters.require-email', metavar='{yes,no}', help='Только записи с e-mail')
     filter_parser.add_argument('--filters.require-website', metavar='{yes,no}', help='Только записи с веб-сайтом')

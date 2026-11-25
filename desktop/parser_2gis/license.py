@@ -28,7 +28,7 @@ PARSE_COOLDOWN_S = 6 * 60 * 60
 OWNER_ENV = 'FRACS_OWNER_MODE'
 # Ultra до 2099: все коды возможностей тарифов Start/PRO/Ultra.
 _ALL_FEATURES = ['base', 'telegram', 'cards', 'owners', 'training', 'ai_provider',
-                 'fracs_ai', 'ai', 'business', 'pro']
+                 'fracs_ai', 'ai', 'business', 'pro', 'tg_broadcast']
 _OWNER_UNTIL = '2099-12-31T00:00:00.000Z'
 
 

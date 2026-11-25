@@ -73,7 +73,7 @@ class CSVWriter(FileWriter):
             clean_keys = [
                 'name', 'rubrics', 'address', 'city',
                 'general_rating', 'general_review_count',
-                'phone_1', 'whatsapp_1', 'instagram_1', 'telegram_1',
+                'phone_1', 'telegram_1', 'instagram_1',
                 'email_1', 'website_1', 'url',
                 'owner_name', 'owner_inn', 'owner_phone', 'owner_email', 'ymaps_url',
             ]

@@ -44,7 +44,7 @@ export default function AppPanel() {
   return (
     <div>
       <h2 className="font-heading text-2xl font-medium tracking-[-0.02em] text-gray-900 sm:text-3xl">Программа Fracs Parser</h2>
-      <p className="mt-2 max-w-2xl text-[14px] text-gray-600">Реальный парсинг 2ГИС работает на вашем компьютере: без лимитов сервера, с фильтрами, шаблонами WhatsApp, выгрузкой HTML/CSV/XLSX/JSON и проходом по Яндекс Картам.</p>
+      <p className="mt-2 max-w-2xl text-[14px] text-gray-600">Реальный парсинг 2ГИС работает на вашем компьютере: без лимитов сервера, с фильтрами, шаблонами Telegram, выгрузкой HTML/CSV/XLSX/JSON и проходом по Яндекс Картам.</p>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.1fr_1fr]">
         <div className="rounded-2xl bg-[#F9F9F9] p-5 sm:p-6">

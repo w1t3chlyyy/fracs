@@ -462,14 +462,14 @@
       </details>
 
       <details class="sect" id="wa">
-        <summary data-i18n="wa_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp-рассылка</summary>
+        <summary data-i18n="wa_title"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Telegram-рассылка</summary>
         <div class="sectbody">
           <label class="field"><span data-i18n="wa_mode_label">Открывать в</span>
-            <select id="waMode"><option value="web" data-i18n="wa_web">WhatsApp Web (в браузере)</option><option value="app" data-i18n="wa_app">Приложение / телефон (wa.me)</option></select></label>
+            <select id="waMode"><option value="web" data-i18n="wa_web">Telegram Web (в браузере)</option><option value="app" data-i18n="wa_app">Приложение (t.me)</option></select></label>
           <div class="field"><span data-i18n="wa_templates">Шаблоны сообщений</span>
             <div id="waList" class="waList"></div>
             <button type="button" class="btn-add" id="waAdd" data-i18n="wa_add">+ Добавить шаблон</button></div>
-          <div class="hint" data-i18n="wa_hint">При клике на «WhatsApp» в карточке откроется чат с подставленным случайным шаблоном. Несколько шаблонов <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> каждому заведению свой вариант.</div>
+          <div class="hint" data-i18n="wa_hint">При клике на «Telegram» в карточке откроется чат с подставленным случайным шаблоном. Несколько шаблонов <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> каждому заведению свой вариант. Текст также копируется в буфер обмена.</div>
         </div>
       </details>
 
@@ -479,7 +479,7 @@
           <label class="check"><input type="checkbox" id="f_dedup_niches" checked> <span data-i18n="f_dedup_niches">Без повторов между нишами (1 заведение — 1 раз)</span></label>
           <label class="check"><input type="checkbox" id="f_dedup"> <span data-i18n="f_dedup">Без франшиз (1 на организацию)</span></label>
           <label class="check"><input type="checkbox" id="f_phone"> <span data-i18n="f_phone">Только с телефоном</span></label>
-          <label class="check"><input type="checkbox" id="f_wa"> <span data-i18n="f_wa">Только с WhatsApp</span></label>
+          <label class="check"><input type="checkbox" id="f_wa"> <span data-i18n="f_wa">Только с Telegram</span></label>
           <label class="check"><input type="checkbox" id="f_social"> <span data-i18n="f_social">Только с соцсетями</span></label>
           <label class="check"><input type="checkbox" id="f_email"> <span data-i18n="f_email">Только с e-mail</span></label>
           <label class="check"><input type="checkbox" id="f_site"> <span data-i18n="f_site">Только с сайтом</span></label>
@@ -768,11 +768,11 @@
       district:'District (optional)', no_district:'No district', district_sel:'Selected districts: ',
       district_custom_ph:'Custom district + Enter', dist_pick_city:'Select a city first.',
       query:'Query', query_ph:'Start typing: Cafe, Pharmacy…', rubric:'Category (optional)',
-      rubric_search_ph:'Search category…', wa_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp broadcast', wa_mode_label:'Open in',
-      wa_web:'WhatsApp Web (in browser)', wa_app:'App / phone (wa.me)', wa_templates:'Message templates',
-      wa_add:'+ Add template', wa_hint:'Clicking «WhatsApp» on a card opens a chat with a random template. Multiple templates <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> give each business its own version.',
+      rubric_search_ph:'Search category…', wa_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Telegram broadcast', wa_mode_label:'Open in',
+      wa_web:'Telegram Web (in browser)', wa_app:'App (t.me)', wa_templates:'Message templates',
+      wa_add:'+ Add template', wa_hint:'Clicking «Telegram» on a card opens a chat with a random template. Multiple templates <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> give each business its own version.',
       filters_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.36 2.64a2 2 0 0 0-2.83 0L9 10l5 5 7.36-7.36a2 2 0 0 0 0-2.83z"/><path d="M9 10 4 15l3 5 5-3"/></svg></span> Filters', f_dedup_niches:'No cross-niche duplicates (1 business — 1 time)', f_dedup:'No franchises (1 per organization)', f_phone:'Only with phone',
-      f_wa:'Only with WhatsApp', f_social:'Only with social media', f_email:'Only with e-mail', f_site:'Only with website', f_nosite:'Only without website', ya_btn:'Yandex Maps', ya_missing:'only without website', ya_remove:'remove those with a website found', ya_remove_nf:'remove those not found on Yandex', ya_title:'Second pass: check website availability on Yandex Maps (no API)', ya_confirm:'Start Yandex Maps search? It runs through the browser and may take a while.', rating_from:'Rating from', reviews_from:'Reviews from',
+      f_wa:'Only with Telegram', f_social:'Only with social media', f_email:'Only with e-mail', f_site:'Only with website', f_nosite:'Only without website', ya_btn:'Yandex Maps', ya_missing:'only without website', ya_remove:'remove those with a website found', ya_remove_nf:'remove those not found on Yandex', ya_title:'Second pass: check website availability on Yandex Maps (no API)', ya_confirm:'Start Yandex Maps search? It runs through the browser and may take a while.', rating_from:'Rating from', reviews_from:'Reviews from',
       params_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span> Parameters', maxrec:'Max records per URL', clean:'Clean view (no junk)', headless:'Hidden browser (headless)',
       adv_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Advanced settings', a_images:'Disable images (faster)', a_max:'Launch browser maximized', a_skip404:'Exact matches (skip «not found»)', a_rubrics:'«Categories» column',
       a_comments:'Comments in cells (working hours etc.)', a_rmempty:'Remove empty columns', a_rmdup:'Remove duplicates', a_delay:'Click delay, ms', a_cols:'Columns per field', a_mem:'RAM limit, MB', a_enc:'Encoding', hist_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> Parse history', hist_empty:'Empty so far. Completed parses will be saved here.',
@@ -791,11 +791,11 @@
       district:'Район (необязательно)', no_district:'Без района', district_sel:'Выбрано районов: ',
       district_custom_ph:'Свой район + Enter', dist_pick_city:'Сначала выберите город.',
       query:'Запрос', query_ph:'Начните печатать: Кафе, Аптеки…', rubric:'Рубрика (необязательно)',
-      rubric_search_ph:'Поиск рубрики…', wa_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> WhatsApp-рассылка', wa_mode_label:'Открывать в',
-      wa_web:'WhatsApp Web (в браузере)', wa_app:'Приложение / телефон (wa.me)', wa_templates:'Шаблоны сообщений',
-      wa_add:'+ Добавить шаблон', wa_hint:'При клике на «WhatsApp» в карточке откроется чат с подставленным случайным шаблоном. Несколько шаблонов <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> каждому заведению свой вариант.',
+      rubric_search_ph:'Поиск рубрики…', wa_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> Telegram-рассылка', wa_mode_label:'Открывать в',
+      wa_web:'Telegram Web (в браузере)', wa_app:'Приложение (t.me)', wa_templates:'Шаблоны сообщений',
+      wa_add:'+ Добавить шаблон', wa_hint:'При клике на «Telegram» в карточке откроется чат с подставленным случайным шаблоном. Несколько шаблонов <span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg></span> каждому заведению свой вариант. Текст также копируется в буфер обмена.',
       filters_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.36 2.64a2 2 0 0 0-2.83 0L9 10l5 5 7.36-7.36a2 2 0 0 0 0-2.83z"/><path d="M9 10 4 15l3 5 5-3"/></svg></span> Фильтры', f_dedup_niches:'Без повторов между нишами (1 заведение — 1 раз)', f_dedup:'Без франшиз (1 на организацию)', f_phone:'Только с телефоном',
-      f_wa:'Только с WhatsApp', f_social:'Только с соцсетями', f_email:'Только с e-mail', f_site:'Только с сайтом', f_nosite:'Только без сайта', ya_btn:'Яндекс Карты', ya_missing:'только без сайта', ya_remove:'убрать тех, у кого найден сайт', ya_remove_nf:'убрать не найденных на Яндексе', ya_title:'Второй проход: проверка наличия сайта на Яндекс Картах (без API)', ya_confirm:'Запустить поиск на Яндекс Картах? Он идёт через браузер и может занять много времени.',
+      f_wa:'Только с Telegram', f_social:'Только с соцсетями', f_email:'Только с e-mail', f_site:'Только с сайтом', f_nosite:'Только без сайта', ya_btn:'Яндекс Карты', ya_missing:'только без сайта', ya_remove:'убрать тех, у кого найден сайт', ya_remove_nf:'убрать не найденных на Яндексе', ya_title:'Второй проход: проверка наличия сайта на Яндекс Картах (без API)', ya_confirm:'Запустить поиск на Яндекс Картах? Он идёт через браузер и может занять много времени.',
       rating_from:'Рейтинг от', reviews_from:'Отзывов от', params_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 17.99 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></span> Параметры',
       maxrec:'Макс. записей с одного URL', clean:'Чистый вид (без мусора)', headless:'Скрытый браузер (headless)',
       adv_title:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span> Расширенные настройки', a_images:'Отключить изображения (быстрее)', a_max:'Запускать браузер развёрнутым',
@@ -859,7 +859,7 @@
       clean: $('clean').checked,
       filters: {
         dedup_across_niches:$('f_dedup_niches').checked, dedup_franchises:$('f_dedup').checked, require_phone:$('f_phone').checked,
-        require_whatsapp:$('f_wa').checked, require_social:$('f_social').checked,
+        require_telegram:$('f_wa').checked, require_social:$('f_social').checked,
         require_email:$('f_email').checked, require_website:$('f_site').checked, require_no_website:$('f_nosite').checked,
         min_rating:parseFloat($('f_rating').value||'0'), min_reviews:parseInt($('f_reviews').value||'0',10)
       },
@@ -895,13 +895,19 @@
     $('waList').appendChild(row);
     row.querySelector('.waTpl').value=value||'';
   }
-  function waUrl(number){
+  // Telegram-контакт из 2ГИС → username/телефон. Возвращает ссылку на чат с шаблоном.
+  function tgHandle(raw){
+    raw=String(raw||'').trim();
+    var m=raw.match(/(?:t\.me|telegram\.me)\/(@?[A-Za-z0-9_+]+)/i)||raw.match(/[?&]domain=([A-Za-z0-9_]+)/i)||raw.match(/^@?([A-Za-z0-9_]{4,})$/);
+    return m?m[1].replace(/^@/,''):'';
+  }
+  function tgUrl(raw){
+    var h=tgHandle(raw); if(!h) return '';
     var tpls=waTemplates();
     var text=tpls.length?tpls[Math.floor(Math.random()*tpls.length)]:'';
-    if($('waMode').value==='web'){
-      return 'https://web.whatsapp.com/send?phone='+number+(text?('&text='+encodeURIComponent(text)):'');
-    }
-    return 'https://wa.me/'+number+(text?('?text='+encodeURIComponent(text)):'');
+    if(text){try{navigator.clipboard.writeText(text);}catch(_){}}   // запасной путь: если клиент не подставит ?text=
+    if($('waMode').value==='web'){ return 'https://web.telegram.org/k/#'+(h.charAt(0)==='+'?h:'@'+h); }
+    return 'https://t.me/'+h+(text?('?text='+encodeURIComponent(text)):'');
   }
 
   // Per-business contacted status + notes (persisted, keyed by 2GIS firm id).
@@ -915,9 +921,8 @@
   function safeUrl(u){u=(u==null?"":String(u)).trim();return /^(https?:\/\/|tg:\/\/)/i.test(u)?u:"#";}
   function renderCard(r){
     var c=r.contacts||{}, b=[];
-    if(c.whatsapp) b.push('<a class="b wa" href="#" data-wa="'+esc(digits(c.whatsapp))+'">WhatsApp</a>');
+    if(c.telegram) b.push('<a class="b tg" href="#" data-tg="'+esc(c.telegram)+'">Telegram</a>');
     if(c.phone) b.push('<a class="b" href="tel:'+digits(c.phone)+'"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13 1 .37 1.94.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.87.33 1.81.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span> '+esc(c.phone)+'</a>');
-    if(c.telegram) b.push('<a class="b tg" target="_blank" rel="noopener" href="'+esc(safeUrl(c.telegram))+'">Telegram</a>');
     if(c.instagram) b.push('<a class="b ig" target="_blank" rel="noopener" href="'+esc(safeUrl(c.instagram))+'">Instagram</a>');
     if(c.website) b.push('<a class="b" target="_blank" rel="noopener" href="'+esc(safeUrl(c.website))+'"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></span> Сайт</a>');
     if(c.email) b.push('<a class="b" href="mailto:'+esc(c.email)+'"><span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span> E-mail</a>');
@@ -1148,7 +1153,7 @@
   });
   (function(){var saved='auto'; try{saved=localStorage.getItem('grid_cols')||'auto';}catch(_){} applyCols(saved);})();
 
-  // WhatsApp button + "Связались" toggle.
+  // Telegram button + "Связались" toggle.
   $('grid').addEventListener('click',function(e){
     var ext=e.target.closest('a[target="_blank"]');
     if(ext){
@@ -1159,8 +1164,8 @@
         .catch(function(){ window.open(u,'_blank','noopener'); });
       return;
     }
-    var a=e.target.closest('.b.wa');
-    if(a){e.preventDefault(); var num=a.getAttribute('data-wa'); if(num)window.open(waUrl(num),'_blank','noopener'); return;}
+    var a=e.target.closest('.b.tg[data-tg]');
+    if(a){e.preventDefault(); var u=tgUrl(a.getAttribute('data-tg')); if(u)window.open(u,'_blank','noopener'); return;}
     var mark=e.target.closest('.markbtn');
     if(mark){
       var id=mark.getAttribute('data-id'), st=CONTACTS[id]||{};
@@ -1197,7 +1202,7 @@
     this.classList.toggle('on',favOnly);
     renderGrid();
   });
-  // Persist WhatsApp settings across reloads.
+  // Persist Telegram settings across reloads.
   try{var sm=localStorage.getItem('wa_mode'); if(sm)$('waMode').value=sm;}catch(_){}
   $('waMode').addEventListener('change',function(){try{localStorage.setItem('wa_mode',$('waMode').value);}catch(_){}});
   (function initWaTemplates(){
@@ -1518,7 +1523,7 @@
       .then(function(r){return r.json()})
       .then(function(d){
         if(!d.ok){$('tgMsg').textContent=d.error==='license'?'Подписка закончилась.':(d.error||'Ошибка поиска');return;}
-        rows=d.rows||[]; render();
+        rows=d.rows||[]; window.__tgRows=rows; render();
         $('tgMsg').textContent=rows.length?('Найдено: '+rows.length):'Ничего свежего не нашлось — попробуйте другую формулировку.';
       })
       .catch(function(){$('tgMsg').textContent='Нет связи с программой.';})
@@ -1935,8 +1940,7 @@
       if(rec.rubrics&&rec.rubrics.length)lines.push('Рубрики: '+rec.rubrics.join(', '));
       var addr=[rec.address,rec.city].filter(Boolean).join(', '); if(addr)lines.push('Адрес: '+addr);
       var conn=[];
-      if(c.phone)conn.push('телефон '+c.phone); if(c.whatsapp)conn.push('WhatsApp '+c.whatsapp);
-      if(c.telegram)conn.push('Telegram '+c.telegram); if(c.instagram)conn.push('Instagram '+c.instagram);
+      if(c.phone)conn.push('телефон '+c.phone); if(c.telegram)conn.push('Telegram '+c.telegram); if(c.instagram)conn.push('Instagram '+c.instagram);
       if(c.website)conn.push('сайт '+c.website); if(c.email)conn.push('e-mail '+c.email);
       if(conn.length)lines.push('Контакты: '+conn.join(', '));
       if(rec.rating)lines.push('Рейтинг на картах: '+(rec.rating+(rec.review_count?(' ('+rec.review_count+' отзывов)'):'')));
@@ -2025,3 +2029,4 @@
   check();setInterval(check,60000);
 })();
 </script>
+<script src="/static/tgsend.js"></script>

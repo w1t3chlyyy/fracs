@@ -1,25 +1,29 @@
 import { MessageCircle } from 'lucide-react';
-import { digits, usePersisted, type TFn } from './lib';
+import { usePersisted, type TFn } from './lib';
 import { Field, Section, btnGhost, inputCls } from './ui';
 
-/** Шаблоны сообщений и режим открытия WhatsApp (хранятся в браузере). */
-export function useWhatsApp() {
+/** Шаблоны сообщений и режим открытия Telegram (хранятся в браузере). */
+export function useTelegram() {
   const [mode, setMode] = usePersisted<'web' | 'app'>('gis_wa_mode', 'web');
   const [templates, setTemplates] = usePersisted<string[]>('gis_wa_texts', ['']);
 
+  // raw — контакт Telegram из 2ГИС (t.me/username, tg://resolve?domain=…). Пустая строка — не удалось разобрать.
   const waUrl = (raw: string) => {
-    const number = digits(raw);
+    const m = raw.match(/(?:t\.me|telegram\.me)\/(@?[A-Za-z0-9_+]+)/i) || raw.match(/[?&]domain=([A-Za-z0-9_]+)/i) || raw.match(/^@?([A-Za-z0-9_]{4,})$/);
+    const h = m ? m[1].replace(/^@/, '') : '';
+    if (!h) return '';
     const tpls = templates.map((x) => x.trim()).filter(Boolean);
     const text = tpls.length ? tpls[Math.floor(Math.random() * tpls.length)] : '';
-    const q = text ? encodeURIComponent(text) : '';
+    // запасной путь: если клиент Telegram не подставит ?text=, шаблон уже в буфере обмена
+    if (text) { try { void navigator.clipboard.writeText(text); } catch { /* нет доступа к буферу */ } }
     return mode === 'web'
-      ? `https://web.whatsapp.com/send?phone=${number}${q ? `&text=${q}` : ''}`
-      : `https://wa.me/${number}${q ? `?text=${q}` : ''}`;
+      ? `https://web.telegram.org/k/#${h.startsWith('+') ? h : '@' + h}`
+      : `https://t.me/${h}${text ? `?text=${encodeURIComponent(text)}` : ''}`;
   };
   return { mode, setMode, templates, setTemplates, waUrl };
 }
 
-export function WhatsAppSection({ t, wa }: { t: TFn; wa: ReturnType<typeof useWhatsApp> }) {
+export function TelegramSection({ t, wa }: { t: TFn; wa: ReturnType<typeof useTelegram> }) {
   const { templates, setTemplates } = wa;
   return (
     <Section title={t('wa_title')} icon={<MessageCircle className="h-4 w-4" />}>

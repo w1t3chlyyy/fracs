@@ -39,7 +39,7 @@ class FilterOptions(BaseModel):
             so the same place found under several niches (cafe, restaurant, sushi bar)
             is not listed multiple times.
         require_phone: Keep only records that have a phone number.
-        require_whatsapp: Keep only records reachable via WhatsApp.
+        require_telegram: Keep only records reachable via Telegram.
         require_social: Keep only records with at least one social network / messenger.
         require_email: Keep only records that have an e-mail.
         require_website: Keep only records that have a website.
@@ -53,7 +53,7 @@ class FilterOptions(BaseModel):
     dedup_franchises: bool = False
     dedup_across_niches: bool = True
     require_phone: bool = False
-    require_whatsapp: bool = False
+    require_telegram: bool = False
     require_social: bool = False
     require_email: bool = False
     require_website: bool = False

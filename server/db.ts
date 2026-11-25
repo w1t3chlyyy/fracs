@@ -533,6 +533,45 @@ export async function rateLimit(key: string, max: number, windowMs: number, fail
   return true;
 }
 
+/* ── учёт расходов Fracs AI (таблица ai_usage, supabase/ai_usage.sql) ── */
+
+export interface AiUsageDay { userRequests: number; userCostUsd: number; totalRequests: number; totalCostUsd: number }
+const memAiUsage = new Map<string, { requests: number; tokens: number; cost: number }>(); // ключ `${день}|${userId}`
+const utcDay = () => new Date().toISOString().slice(0, 10);
+
+/** Расходы за текущие сутки (UTC): по пользователю и по всем. Бросает ошибку при сбое — вызывающий закрывает доступ. */
+export async function aiUsageToday(userId: string): Promise<AiUsageDay> {
+  const day = utcDay();
+  const out: AiUsageDay = { userRequests: 0, userCostUsd: 0, totalRequests: 0, totalCostUsd: 0 };
+  if (useSupabase) {
+    const r = await sb().from('ai_usage').select('user_id,requests,cost_usd').eq('day', day).limit(20000);
+    if (r.error) throw new Error(`[db] aiUsageToday: ${r.error.message}`);
+    for (const row of r.data ?? []) {
+      out.totalRequests += Number(row.requests) || 0;
+      out.totalCostUsd += Number(row.cost_usd) || 0;
+      if (row.user_id === userId) { out.userRequests += Number(row.requests) || 0; out.userCostUsd += Number(row.cost_usd) || 0; }
+    }
+    return out;
+  }
+  for (const [k, v] of memAiUsage) {
+    if (!k.startsWith(day + '|')) continue;
+    out.totalRequests += v.requests; out.totalCostUsd += v.cost;
+    if (k === `${day}|${userId}`) { out.userRequests += v.requests; out.userCostUsd += v.cost; }
+  }
+  return out;
+}
+
+export async function aiUsageAdd(userId: string, tokens: number, costUsd: number): Promise<void> {
+  if (useSupabase) {
+    const r = await sb().rpc('ai_usage_add', { p_user: userId, p_tokens: Math.round(tokens), p_cost: costUsd });
+    if (r.error) throw new Error(`[db] aiUsageAdd: ${r.error.message}`);
+    return;
+  }
+  const k = `${utcDay()}|${userId}`;
+  const v = memAiUsage.get(k) ?? { requests: 0, tokens: 0, cost: 0 };
+  memAiUsage.set(k, { requests: v.requests + 1, tokens: v.tokens + tokens, cost: v.cost + costUsd });
+}
+
 /* ── обслуживание (cron) ── */
 
 export async function cleanup(retentionDays: number) {

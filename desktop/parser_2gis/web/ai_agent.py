@@ -47,20 +47,19 @@ from typing import Any
 
 import requests
 
-# Опциональные зависимости для открытки. qrcode + Pillow есть в бандле;
-# если их нет — ZIP всё равно собирается, PNG пропускается.
+# Открытка, видеообзор и шрифты — в review_media.py (Pillow + qrcode опциональны:
+# без них ZIP всё равно собирается, а открытка пропускается).
 try:
-    import qrcode
-    from qrcode.image.pil import PilImage
-    from PIL import Image, ImageDraw, ImageFont
-    _HAVE_QR = True
+    from .review_media import (_HAVE_QR, business_parts, draw_postcard,
+                               record_review_mp4, render_review_html)
+except Exception:  # запуск как скрипта, не как пакета
+    from parser_2gis.web.review_media import (_HAVE_QR, business_parts, draw_postcard,  # type: ignore
+                                              record_review_mp4, render_review_html)
+try:
+    from PIL import Image, ImageDraw
 except Exception:  # pragma: no cover
-    _HAVE_QR = False
-    try:
-        from PIL import Image, ImageDraw
-    except Exception:
-        Image = None
-        ImageDraw = None
+    Image = None
+    ImageDraw = None
 
 
 # ── Провайдеры ────────────────────────────────────────────────────────────────
@@ -285,7 +284,7 @@ _SYSTEM_PROMPT = (
     '— Всё inline: стили в <style>, скрипты в <script>. Единственная внешняя ссылка — Google Fonts.\n'
     '— Адаптив обязательно: grid/flex, clamp(), брейкпоинт 760px (навигация без ссылок, '
     'сетки в 1 колонку, H1 меньше).\n'
-    '— Телефон — кликабельный href="tel:", WhatsApp/Telegram — ссылками.\n'
+    '— Телефон — кликабельный href="tel:", Telegram — ссылкой t.me.\n'
     '\n'
     'АНТИ-НЕЙРОСЛОП (главное):\n'
     '— Никакого шаблонного бюллетень-языка: «инновационный», «динамично развивающаяся», '
@@ -746,7 +745,10 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     if r.status_code >= 400:
         try:
             err = r.json()
-            msg = err.get('error', {}).get('message') if isinstance(err.get('error'), dict) else str(err)
+            if isinstance(err.get('error'), dict):
+                msg = err['error'].get('message')
+            else:   # прокси Fracs: {ok:false, error:'quota_day', message:'…по-русски…'}
+                msg = err.get('message') or str(err)
         except Exception:
             msg = r.text[:200]
         return {'ok': False, 'error': f'http {r.status_code}: {msg}', 'ms': _ms(started),
@@ -757,13 +759,16 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
         return {'ok': False, 'error': 'bad_response', 'ms': _ms(started), 'skipped_images': skipped}
 
     text = ''
+    truncated = False
     if cfg['shape'] == 'anthropic':
+        truncated = data.get('stop_reason') == 'max_tokens'
         for block in data.get('content', []):
             if isinstance(block, dict) and block.get('type') == 'text':
                 text += block.get('text', '')
     else:
         choices = data.get('choices') or []
         if choices:
+            truncated = choices[0].get('finish_reason') == 'length'
             msg_obj = choices[0].get('message') or {}
             content = msg_obj.get('content')
             if isinstance(content, list):  # некоторые провайдеры отдают список блоков
@@ -776,7 +781,8 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
                 text = choices[0].get('text', '') or ''
     if not text:
         return {'ok': False, 'error': 'empty_response', 'ms': _ms(started), 'skipped_images': skipped}
-    return {'ok': True, 'text': text, 'ms': _ms(started), 'skipped_images': skipped}
+    return {'ok': True, 'text': text, 'ms': _ms(started), 'skipped_images': skipped,
+            'truncated': truncated}
 
 
 def _ms(started: float) -> int:
@@ -886,6 +892,7 @@ class AiJob:
     zip_path: str = ''
     png_path: str = ''
     video_path: str = ''
+    review_path: str = ''   # review.html — анимированный видеообзор (на него ведёт QR)
     preview_url: str = ''
     site_slug: str = ''   # папка в <проект>/sites/<slug>/
     site_url: str = ''    # локальный URL для ручной проверки, /sites/<slug>/
@@ -899,6 +906,9 @@ class AiJob:
         if self.png_path and os.path.exists(self.png_path):
             files.append({'name': 'postcard.png', 'type': 'png',
                           'url': f'/api/ai/download/{self.job_id}?type=png'})
+        if self.review_path and os.path.exists(self.review_path) and self.site_url:
+            files.append({'name': 'review.html', 'type': 'html',
+                          'url': f'{self.site_url}review.html'})
         if self.video_path and os.path.exists(self.video_path):
             files.append({'name': 'site-review.mp4', 'type': 'video',
                           'url': f'/api/ai/download/{self.job_id}?type=video'})
@@ -1004,6 +1014,19 @@ class AiAgentManager:
               temperature: float = 0.7, max_tokens: int = 4096,
               style: str = '', key21st: str = '') -> dict:
         self._sweep_jobs()
+        # не больше 2 одновременных задач на программу (защита от «залпа» запросов)
+        with self._lock:
+            active = sum(1 for j in self._jobs.values()
+                         if j.status in ('queued', 'running', 'building'))
+        if active >= 2:
+            return {'ok': False, 'error': 'Уже идут две генерации — дождитесь окончания '
+                                          'одной из них и повторите.'}
+        if (provider or '') == 'Fracs AI':
+            # встроенный ИИ идёт на ваш ключ: ограничиваем и на стороне программы
+            # (главные лимиты — на сервере, см. server/appRoutes.ts)
+            max_tokens = min(int(max_tokens or 12000), 12000)
+            prompt = (prompt or '')[:12000]
+            extra = (extra or '')[:4000]
         need = _provider_feature(provider)
         if not _has_feature(need):
             if need == 'fracs_ai':
@@ -1092,6 +1115,12 @@ class AiAgentManager:
                 return
             self._log(job, f'Ответ получен за {res["ms"]} мс. Извлекаю HTML…')
             html = _extract_html(res['text'])
+            if res.get('truncated'):
+                self._log(job, 'Внимание: модель оборвала ответ по лимиту токенов — страница '
+                               'могла получиться неполной. Нажмите «Изменить макет» и попросите '
+                               'сделать проще/короче, либо выберите модель с большим лимитом.')
+                if '</html>' not in html.lower():
+                    html += '\n</body></html>' if '</body>' not in html.lower() else '\n</html>'
             job.html = html
             job.preview_url = f'/api/ai/preview/{job.job_id}'
             saved = _save_site_files(job)
@@ -1112,362 +1141,108 @@ class AiAgentManager:
                 self._log(job, 'Превью устарело (прошёл час). Запустите заново.')
                 return
             job.status = 'building'
-            self._log(job, 'Собираю ZIP со всем сайтом…')
-            self._build_zip(job)
-            self._log(job, 'Записываю видеообзор сайта (для передачи заказчику)…')
-            self._build_video(job)
+            self._log(job, 'Собираю видеообзор (review.html)…')
+            self._build_review(job)
             self._log(job, 'Рисую открытку с QR-кодом…')
             self._build_postcard(job)
+            self._log(job, 'Собираю ZIP: сайт, видеообзор и открытка…')
+            self._build_zip(job)
+            self._build_mp4(job)
             job.status = 'done'
-            self._log(job, 'Готово. ZIP, открытка и видеообзор — справа в «Передача файлов».')
+            self._log(job, 'Готово. ZIP и открытка — справа в «Передаче файлов».')
         except Exception as e:  # pragma: no cover
             job.status = 'failed'
             job.error = str(e)
             self._log(job, f'Ошибка: {e}')
 
-    def _build_zip(self, job: AiJob):
-        d = tempfile.mkdtemp(prefix='fracs_ai_')
-        zip_path = os.path.join(d, 'site.zip')
-        site_html = os.path.join(d, 'index.html')
-        with open(site_html, 'w', encoding='utf-8') as f:
-            f.write(job.html)
-        readme = ('# Сайт, собранный AI-Агентом Fracs\n\n'
-                  'index.html — одностраничный сайт-визитка. Откройте его в браузере\n'
-                  'или выложите на любой статический хостинг (Vercel/Netlify/GitHub Pages).\n\n'
-                  'Промт: ' + (job.prompt[:200] or '—') + '\n')
-        readme_path = os.path.join(d, 'README.md')
-        with open(readme_path, 'w', encoding='utf-8') as f:
-            f.write(readme)
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
-            z.write(site_html, 'index.html')
-            z.write(readme_path, 'README.md')
-        job.zip_path = zip_path
+    def _public_base(self) -> tuple[str, bool]:
+        """(адрес для QR, публичный ли он). FRACS_DEMO_BASE_URL — публичный хостинг демо."""
+        demo = os.environ.get('FRACS_DEMO_BASE_URL', '').strip().rstrip('/')
+        return (demo or self.base_url), bool(demo)
 
-    # ── открытка ──
+    def _build_review(self, job: AiJob):
+        """review.html — анимированный видеообзор: интро → сайт в окне браузера → телефон →
+        финал. Самодостаточный файл (сайт внутри), лежит рядом с сайтом в sites/<slug>/.
+        Именно эта страница открывается по QR. Не требует ffmpeg/playwright."""
+        try:
+            title, sub = business_parts(job.prompt)
+            html = render_review_html(title, sub, job.html)
+            d = (os.path.join(_SITES_DIR, job.site_slug) if job.site_url
+                 else tempfile.mkdtemp(prefix='fracs_ai_rev_'))
+            os.makedirs(d, exist_ok=True)
+            path = os.path.join(d, 'review.html')
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(html)
+            job.review_path = path
+        except Exception as e:
+            self._log(job, f'Видеообзор не собран: {e}')
+
     def _build_postcard(self, job: AiJob):
         d = tempfile.mkdtemp(prefix='fracs_ai_png_')
         png_path = os.path.join(d, 'postcard.png')
-        # Адрес в QR: локальный URL заказчик открыть не может, поэтому QR ведёт
-        # на ВИДЕООБЗОР (site_url + review.mp4), который собирается перед
-        # открыткой и лежит рядом с сайтом в sites/<slug>/. Если задан
-        # FRACS_DEMO_BASE_URL (публичный хостинг демо) — QR будет рабочим у
-        # заказчика; иначе адрес локальный (проверка владельцем).
-        demo_base = os.environ.get('FRACS_DEMO_BASE_URL', '').strip().rstrip('/')
-        base = demo_base or self.base_url
-        if job.site_url:
-            target = f'{base}{job.site_url}review.mp4'
+        base, public = self._public_base()
+        if job.site_url and job.review_path:
+            target = f'{base}{job.site_url}review.html'
+        elif job.site_url:
+            target = f'{base}{job.site_url}'
         else:
             target = f'{base}/api/ai/preview/{job.job_id}'
-        if not _HAVE_QR:
-            try:
-                img = Image.new('RGB', (720, 400), color=(0, 0, 0))
-                draw = ImageDraw.Draw(img)
-                draw.text((20, 20), 'QR-код недоступен', fill=(255, 255, 255))
-                draw.text((20, 60), f'URL: {target}', fill=(200, 200, 200))
-                img.save(png_path)
-            except Exception:
-                with open(png_path, 'wb') as f:
-                    f.write(bytes.fromhex(
-                        '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4'
-                        '890000000d49444154789c63f8cf0000000100010005ff0a9d0000000049454e44ae426082'))
-            job.png_path = png_path
+        if not public:
+            self._log(job, 'ВНИМАНИЕ: QR ведёт на адрес вашего компьютера — у заказчика он не '
+                           'откроется. Выложите папку sites/ на хостинг и задайте '
+                           'FRACS_DEMO_BASE_URL (в .env), тогда QR станет рабочим.')
+        if Image is None or not _HAVE_QR:
+            self._log(job, 'Открытка пропущена: не установлены Pillow/qrcode.')
             return
-        _draw_postcard(png_path, target, _business_name(job.prompt))
-        job.png_path = png_path
+        try:
+            title, sub = business_parts(job.prompt)
+            draw_postcard(png_path, target, title, sub)
+            job.png_path = png_path
+        except Exception as e:
+            self._log(job, f'Открытка не нарисована: {e}')
 
-    def _build_video(self, job: AiJob):
-        """Видеообзор сайта (site-review.mp4) — именно его открывает QR заказчика.
-        Full HD: титул в стиле открытки → первый экран → живая прокрутка страницы
-        в браузере (срабатывают все scroll-анимации сайта) → последний экран →
-        финальный кадр «Ваш сайт готов». Если playwright/ffmpeg недоступны —
-        видео пропускается с записью в лог, сборка не ломается."""
-        url = (f'{self.base_url}{job.site_url}' if job.site_url
-               else f'{self.base_url}/api/ai/preview/{job.job_id}')
+    def _build_zip(self, job: AiJob):
+        d = tempfile.mkdtemp(prefix='fracs_ai_')
+        zip_path = os.path.join(d, 'site.zip')
+        readme = ('# Сайт, собранный AI-Агентом Fracs\n\n'
+                  'index.html      — одностраничный сайт-визитка. Откройте в браузере или выложите\n'
+                  '                  на статический хостинг (Vercel / Netlify / GitHub Pages).\n'
+                  'review.html     — анимированный видеообзор сайта (его открывает QR из открытки).\n'
+                  'postcard.png    — открытка с QR-кодом для заказчика.\n\n'
+                  'Промт: ' + (job.prompt[:200] or '—') + '\n')
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('index.html', job.html)
+            z.writestr('README.md', readme)
+            if job.review_path and os.path.exists(job.review_path):
+                z.write(job.review_path, 'review.html')
+            if job.png_path and os.path.exists(job.png_path):
+                z.write(job.png_path, 'postcard.png')
+        job.zip_path = zip_path
+
+    def _build_mp4(self, job: AiJob):
+        """Необязательный бонус: запись review.html в site-review.mp4 (нужны playwright
+        и ffmpeg). Без них шаг тихо пропускается — QR и так ведёт на review.html."""
+        if os.environ.get('FRACS_NO_MP4') == '1' or not job.site_url or not job.review_path:
+            return
         if not shutil.which('ffmpeg'):
-            self._log(job, 'Видеообзор пропущен: ffmpeg не найден в сборке.')
+            return
+        try:
+            import playwright  # noqa: F401
+        except Exception:
             return
         d = tempfile.mkdtemp(prefix='fracs_ai_vid_')
+        out = os.path.join(d, 'site-review.mp4')
         try:
-            frames = _shoot_site_frames(url, d)
-            if not frames:
-                self._log(job, 'Видеообзор пропущен: не удалось записать страницу.')
-                return
-            video_path = os.path.join(d, 'site-review.mp4')
-            _make_review_video(d, video_path, _business_name(job.prompt), len(frames) - 1)
-            if os.path.exists(video_path) and os.path.getsize(video_path) > 102400:
-                job.video_path = video_path
-                # копия рядом с сайтом: /sites/<slug>/review.mp4 — её и открывает QR
-                if job.site_url:
-                    try:
-                        shutil.copyfile(video_path,
-                                        os.path.join(_SITES_DIR, job.site_slug, 'review.mp4'))
-                    except Exception:
-                        pass
-                self._log(job, 'Видеообзор готов — site-review.mp4 в «Передаче файлов».')
-            else:
-                self._log(job, 'Видеообзор пропущен: ffmpeg не собрал файл.')
+            self._log(job, 'Записываю mp4-версию видеообзора (≈1 минута)…')
+            if record_review_mp4(f'{self.base_url}{job.site_url}review.html', out):
+                job.video_path = out
+                try:
+                    shutil.copyfile(out, os.path.join(_SITES_DIR, job.site_slug, 'review.mp4'))
+                except OSError:
+                    pass
+                self._log(job, 'mp4 готов — site-review.mp4 в «Передаче файлов».')
         except Exception as e:
-            self._log(job, f'Видеообзор пропущен: {e}')
-
-
-# ── Дизайн открытки ───────────────────────────────────────────────────────────
-
-_ORANGE = (242, 101, 34)
-_WHITE = (245, 245, 245)
-_GREY = (140, 140, 140)
-
-
-def _load_font(size: int, bold: bool = False, mono: bool = False):
-    base = '/usr/share/fonts/truetype/dejavu/'
-    if mono:
-        path = base + ('DejaVuSansMono-Bold.ttf' if bold else 'DejaVuSansMono.ttf')
-    else:
-        path = base + ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf')
-    for p in (path,
-              '/usr/share/fonts/truetype/chinese/NotoSansSC-Regular.ttf',
-              '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'):
-        if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except Exception:
-                pass
-    return ImageFont.load_default()
-
-
-def _draw_postcard(png_path: str, target: str, business: str):
-    """Открытка для заказчика по референсу: горизонтальный формат 1200×675,
-    QR слева на белой карточке с оранжевой обводкой, справа название бизнеса
-    (первое слово белым крупно, остальное оранжевым) и инструкция. Тёмный фон
-    с тёплым оранжевым свечением из нижнего правого угла."""
-    W, H = 1200, 675
-    img = Image.new('RGB', (W, H))
-    draw = ImageDraw.Draw(img)
-
-    # фон: тёмный градиент из левого верхнего угла в правый нижний
-    tl, br = (16, 14, 13), (58, 40, 28)
-    for y in range(H):
-        t = y / H
-        draw.line([(0, y), (W, y)],
-                  fill=tuple(int(tl[i] + (br[i] - tl[i]) * t) for i in range(3)))
-
-    # тёплое оранжевое свечение из правого нижнего угла (как на референсе)
-    glow = Image.new('L', (W, H), 0)
-    gdraw = ImageDraw.Draw(glow)
-    for i in range(900, 0, -6):
-        a = int(200 * (1 - i / 900) ** 1.6)
-        gdraw.ellipse([W - i * 1.25, H - i * 0.9, W + i * 0.4, H + i * 0.55], fill=a)
-    orange_layer = Image.new('RGB', (W, H), _ORANGE)
-    img = Image.composite(orange_layer, img, glow)
-    draw = ImageDraw.Draw(img)
-
-    # ── QR-карточка слева ──
-    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M,
-                       box_size=10, border=1)
-    qr.add_data(target)
-    qr.make(fit=True)
-    qr_img = qr.make_image(image_factory=PilImage).convert('RGB')
-    qr_size = 286
-    qr_img = qr_img.resize((qr_size, qr_size), Image.NEAREST)
-    pad = 24
-    card_w = qr_size + pad * 2
-    cx, cy = 96, (H - card_w) // 2          # левый верхний угол карточки
-    # обводка-рамка вокруг карточки (на референсе цветная, у нас — оранжевая)
-    off, rw = 12, 3
-    draw.rounded_rectangle([cx - off, cy - off, cx + card_w + off, cy + card_w + off],
-                           radius=34, outline=_ORANGE, width=rw)
-    # мягкая тень
-    shadow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    sdraw = ImageDraw.Draw(shadow)
-    sdraw.rounded_rectangle([cx + 8, cy + 12, cx + card_w + 8, cy + card_w + 12],
-                            radius=28, fill=(0, 0, 0, 120))
-    img = Image.alpha_composite(img.convert('RGBA'), shadow).convert('RGB')
-    img.paste(Image.new('RGB', (card_w, card_w), (255, 255, 255)), (cx, cy))
-    img.paste(qr_img, (cx + pad, cy + pad))
-    draw = ImageDraw.Draw(img)
-
-    # ── название справа ──
-    words = (business or 'Сайт').strip().split()
-    rx = cx + card_w + 84                    # левый край текстового блока
-    max_w = W - rx - 80
-    # первое слово — белым крупно (авто-размер), остальное — оранжевым
-    w1 = words[0]
-    f1 = _load_font(84, bold=True)
-    while draw.textlength(w1, font=f1) > max_w and f1.size > 36:
-        f1 = _load_font(f1.size - 6, bold=True)
-    ty = 240
-    draw.text((rx, ty), w1, font=f1, fill=_WHITE)
-    ty += f1.size + 18
-    if len(words) > 1:
-        rest = ' '.join(words[1:])
-        f2 = _load_font(46, bold=True)
-        while draw.textlength(rest, font=f2) > max_w and f2.size > 26:
-            f2 = _load_font(f2.size - 4, bold=True)
-        draw.text((rx + 2, ty), rest, font=f2, fill=_ORANGE)
-        ty += f2.size + 26
-
-    # инструкция под названием (перенос на 2 строки)
-    sub_f = _load_font(27)
-    sub = 'Чтобы посмотреть демо-макет сайта — отсканируйте QR-код'
-    line, lines = '', []
-    for w in sub.split():
-        t = (line + ' ' + w).strip()
-        if draw.textlength(t, font=sub_f) > max_w and line:
-            lines.append(line)
-            line = w
-        else:
-            line = t
-    if line:
-        lines.append(line)
-    for i, ln in enumerate(lines[:3]):
-        draw.text((rx + 2, ty + i * 40), ln, font=sub_f, fill=(225, 225, 225))
-
-    img.save(png_path, 'PNG')
-
-
-# ── Видеообзор сайта ──────────────────────────────────────────────────────────
-
-def _shoot_site_frames(url: str, work_dir: str) -> list:
-    """Записывает сайт в кадры 1920×1080: первый экран, серия позиций прокрутки
-    (каждый раз ждём отработку scroll-анимаций сайта — reveal-блоки успевают
-    проявиться) и последний экран. Возвращает список путей кадров; бросает
-    исключение, если playwright/браузер недоступны."""
-    from playwright.sync_api import sync_playwright
-    frames = []
-    with sync_playwright() as p:
-        browser = p.chromium.launch(args=['--no-sandbox', '--disable-gpu'])
-        try:
-            page = browser.new_page(viewport={'width': 1920, 'height': 1080})
-            page.goto(url, wait_until='load', timeout=20000)
-            page.wait_for_timeout(1200)  # шрифты, картинки, входные анимации
-            hero = os.path.join(work_dir, 'hero.png')
-            page.screenshot(path=hero)
-            h = page.evaluate('Math.max(document.body.scrollHeight, '
-                              'document.documentElement.scrollHeight)')
-            n = 0
-            if h > 1150:
-                # плотная запись реального скролла: мелкие шаги, короткие паузы —
-                # в видео прокрутка непрерывная, reveal-анимации сайта играют
-                # естественно (как при обычном скролле), без интерполяции ffmpeg
-                max_frames = 80
-                step = max(60, min(90, (h - 1080) // max_frames))
-                ys = list(range(step, h - 1080, step))
-                if ys and ys[-1] < h - 1080 - 20:
-                    ys.append(h - 1080)
-                ys = ys[:max_frames]
-                for y in ys:
-                    page.evaluate(f'window.scrollTo({{top: {y}, behavior: "instant"}})')
-                    page.wait_for_timeout(90)
-                    n += 1
-                    fr = os.path.join(work_dir, f'frame_{n:03d}.png')
-                    page.screenshot(path=fr)
-                    frames.append(fr)
-            frames.insert(0, hero)
-        finally:
-            browser.close()
-    return frames
-
-
-def _make_review_video(work_dir: str, out_mp4: str, business: str, n_scroll: int):
-    """Собирает mp4 1920×1080 @30fps: титул (медленный наезд) → первый экран
-    (отъезд) → живая прокрутка (кадры браузера, интерполяция до 30fps) →
-    последний экран → финал. Переходы — плавные наплывы (xfade).
-    Тексты — только для заказчика: название бизнеса и «Демо-макет сайта»."""
-    intro = os.path.join(work_dir, 'intro.png')
-    outro = os.path.join(work_dir, 'outro.png')
-    _review_card(intro, business, 'Демо-макет сайта')
-    _review_card(outro, 'Ваш сайт готов', 'Демонстрация макета')
-    hero = os.path.join(work_dir, 'hero.png')
-    last = os.path.join(work_dir, f'frame_{n_scroll:03d}.png') if n_scroll else hero
-    FADE = 0.5  # длительность перехода между сценами
-
-    # (тип сцены, путь, длительность)
-    segs = [('zin', intro, 3.0), ('zout', hero, 3.2 if n_scroll else 5.5)]
-    if n_scroll:
-        segs += [('seq', os.path.join(work_dir, 'frame_%03d.png'), round(n_scroll / 12.0, 2)),
-                 ('zin2', last, 2.6)]
-    segs.append(('still', outro, 3.0))
-
-    inputs, parts = [], []
-    for i, (kind, path, dur) in enumerate(segs):
-        if kind == 'seq':
-            inputs += ['-framerate', '12', '-i', path]
-        else:
-            inputs += ['-loop', '1', '-t', f'{dur:.2f}', '-framerate', '30', '-i', path]
-    zp_in = "z='min(zoom+0.0006,1.05)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-    zp_out = "z='if(lte(on,1),1.05,max(zoom-0.0006,1.0))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-    zp_soft = "z='min(zoom+0.0004,1.04)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-    for i, (kind, path, dur) in enumerate(segs):
-        if kind in ('zin', 'zin2'):
-            parts.append(f"[{i}:v]scale=3840:2160,zoompan={zp_in}:fps=30:s=1920x1080,"
-                         f"setsar=1,format=yuv420p[v{i}]")
-        elif kind == 'zout':
-            parts.append(f"[{i}:v]scale=3840:2160,zoompan={zp_out}:fps=30:s=1920x1080,"
-                         f"setsar=1,format=yuv420p[v{i}]")
-        elif kind == 'still':
-            parts.append(f"[{i}:v]scale=3840:2160,zoompan={zp_soft}:fps=30:s=1920x1080,"
-                         f"setsar=1,format=yuv420p[v{i}]")
-        else:  # seq: кадры реальной прокрутки, без интерполяции (не «замыливает»)
-            parts.append(f'[{i}:v]fps=30,setsar=1,format=yuv420p[v{i}]')
-    # цепочка переходов: между сценами САЙТА (близкий контент, разные масштабы
-    # после zoompan) — через затемнение (fadeblack): crossfade таких кадров
-    # даёт «двоение»; между титулом и сайтом — обычный плавный наплыв
-    prev, acc = 'v0', segs[0][2]
-    for i in range(1, len(segs)):
-        lbl = f'x{i}' if i < len(segs) - 1 else 'vout'
-        trans = 'fadeblack' if segs[i][0] in ('seq', 'zin2') else 'fade'
-        parts.append(f'[{prev}][v{i}]xfade=transition={trans}:duration={FADE}:'
-                     f'offset={acc - FADE:.2f}[{lbl}]')
-        prev, acc = lbl, acc + segs[i][2] - FADE
-    cmd = (['ffmpeg', '-y'] + inputs +
-           ['-filter_complex', ';'.join(parts), '-map', '[vout]',
-            '-r', '30', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20',
-            '-movflags', '+faststart', out_mp4])
-    subprocess.run(cmd, check=True, timeout=600,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def _review_card(out_png: str, title: str, subtitle: str):
-    """Титульный/финальный кадр видео 1920×1080 в стиле открытки:
-    тёмный фон, тёплое оранжевое свечение, крупное название, оранжевая линия."""
-    W, H = 1920, 1080
-    img = Image.new('RGB', (W, H))
-    draw = ImageDraw.Draw(img)
-    for y in range(H):
-        t = y / H
-        draw.line([(0, y), (W, y)],
-                  fill=tuple(int((15, 13, 12)[i] + ((56, 38, 27)[i] - (15, 13, 12)[i]) * t)
-                             for i in range(3)))
-    glow = Image.new('L', (W, H), 0)
-    gdraw = ImageDraw.Draw(glow)
-    for i in range(1100, 0, -8):
-        a = int(170 * (1 - i / 1100) ** 1.7)
-        gdraw.ellipse([W - i * 1.15, H - i * 0.8, W + i * 0.35, H + i * 0.5], fill=a)
-    img = Image.composite(Image.new('RGB', (W, H), _ORANGE), img, glow)
-    draw = ImageDraw.Draw(img)
-    # оранжевые планки сверху и снизу — как на открытке
-    draw.rectangle([0, 0, W, 16], fill=_ORANGE)
-    draw.rectangle([0, H - 16, W, H], fill=_ORANGE)
-    # маленькая линия-акцент над заголовком
-    f0 = _load_font(40)
-    t0w = draw.textlength(title, font=f0)
-    cx = W / 2
-    draw.rectangle([cx - min(t0w, 480) / 2, 360, cx + min(t0w, 480) / 2, 366], fill=_ORANGE)
-    # заголовок (авто-размер под ширину)
-    f1 = _load_font(104, bold=True)
-    while draw.textlength(title, font=f1) > W - 320 and f1.size > 48:
-        f1 = _load_font(f1.size - 6, bold=True)
-    tw = draw.textlength(title, font=f1)
-    draw.text(((W - tw) / 2, 420), title, font=f1, fill=_WHITE)
-    # подзаголовок
-    f2 = _load_font(42)
-    sw = draw.textlength(subtitle, font=f2)
-    draw.text(((W - sw) / 2, 600), subtitle, font=f2, fill=(224, 224, 224))
-    # дата мелко внизу
-    f3 = _load_font(28, bold=True)
-    ds = time.strftime('%d.%m.%Y')
-    dw = draw.textlength(ds, font=f3)
-    draw.text(((W - dw) / 2, H - 120), ds, font=f3, fill=(120, 120, 120))
-    img.save(out_png, 'PNG')
+            self._log(job, f'mp4 пропущен: {e}')
 
 
 # ── Fracs AI gate ─────────────────────────────────────────────────────────────
