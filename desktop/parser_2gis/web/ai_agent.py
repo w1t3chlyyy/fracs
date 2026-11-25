@@ -1439,6 +1439,49 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         status = 403 if (not res.get('ok') and res.get('pro_required')) else 200
         return jsonify(res), status
 
+    @app.route('/api/ai/chat', methods=['POST'])
+    def ai_chat():
+        """Живой чат: модель отвечает текстом в чате, а не запускает сборку.
+        Если пользователь просит собрать/править сайт — модель ставит маркер
+        [BUILD], и фронт запускает сборку."""
+        data = request.get_json(force=True, silent=True) or {}
+        msg = str(data.get('message', '')).strip()
+        if not msg:
+            return jsonify({'ok': False, 'error': 'no_message'}), 400
+        provider = str(data.get('provider', 'Z.ai')).strip()
+        api_key = str(data.get('api_key', '')).strip()
+        model = str(data.get('model', '')).strip()
+        base_url = str(data.get('base_url', '')).strip()
+        if provider != 'Fracs AI' and _provider_cfg(provider).get('needs_key') and not api_key:
+            return jsonify({'ok': False, 'error': 'no_api_key'}), 400
+        need = _provider_feature(provider)
+        if not _has_feature(need):
+            return jsonify({'ok': False, 'error': 'pro_required', 'pro_required': True}), 403
+        lines = []
+        for m in (data.get('history') or [])[-8:]:
+            if isinstance(m, dict) and str(m.get('role')) in ('user', 'assistant') and m.get('content'):
+                who = 'Пользователь' if m.get('role') == 'user' else 'Ты'
+                lines.append(who + ': ' + str(m.get('content'))[:2000])
+        lines.append('Пользователь: ' + msg)
+        system = ('Ты — «личный AI-Агент» внутри программы Fracs. Отвечай в обычном чате: '
+                  'кратко, по-человечески, на русском, 2–5 предложений. Ты умеешь собирать '
+                  'одностраничные сайты-визитки по карточкам бизнеса (2ГИС) или текстовому '
+                  'описанию, показывать превью, а после одобрения собирать ZIP, открытку с '
+                  'QR-кодом и видеообзор сайта. Если собеседник просит собрать или изменить '
+                  'сайт — коротко подтверди и спроси недостающее (ниша, город, контакты, '
+                  'стиль), НИЧЕГО не выдумывая про результат: сайт появится только после '
+                  'запуска сборки. Никогда не придумывай ссылки, URL и пути к файлам. '
+                  'Если собеседник просит сделать что-то с сайтом прямо сейчас (собрать, '
+                  'изменить, перегенерировать) — закончи ответ маркером [BUILD] отдельной строкой.')
+        res = _call_llm(provider, api_key, model, '\n'.join(lines), base_url=base_url,
+                        temperature=0.6, max_tokens=1024, system=system)
+        if not res.get('ok'):
+            return jsonify({'ok': False, 'error': str(res.get('error') or 'model_error')}), 502
+        text = str(res.get('text') or '').strip()
+        build = '[BUILD]' in text
+        text = text.replace('[BUILD]', '').strip()
+        return jsonify({'ok': True, 'reply': text, 'build': build})
+
     @app.route('/api/ai/status/<job_id>')
     def ai_status(job_id: str):
         job = mgr.get(job_id)

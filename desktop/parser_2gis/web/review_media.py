@@ -284,8 +284,11 @@ _REVIEW_TEMPLATE = r'''<!DOCTYPE html>
 html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","Segoe UI",system-ui,-apple-system,Arial,sans-serif;color:#fff;-webkit-tap-highlight-color:transparent}
 #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
 /* сцена в фиксированной системе координат: 1920×1080 (альбом) или 1080×1920 (портрет), масштабируется под экран */
-#stage{position:relative;flex:none;overflow:hidden;background:#000;transform-origin:center center}
+#stage{position:relative;flex:none;overflow:hidden;background:#000;transform-origin:center center;width:100%;height:100%}
 .land #stage{width:1920px;height:1080px}.port #stage{width:1080px;height:1920px}
+/* фолбэк без JS: интро видно крупным шрифтом по всему экрану */
+.hero .name{font-size:clamp(44px,9vw,96px)}.hero .rub{font-size:clamp(26px,5vw,44px)}
+.hero .cap{font-size:clamp(16px,3vw,24px)}.hero .line{width:200px}
 .glow{position:absolute;inset:-12%;background:
  radial-gradient(70% 62% at 8% 100%,rgba(214,112,70,.95),transparent 72%),
  radial-gradient(75% 66% at 92% 104%,rgba(226,128,92,.95),transparent 74%),
@@ -327,6 +330,7 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
 #pb{width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:18px;cursor:pointer}
 #track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.2);overflow:hidden}#fill{height:100%;width:0;background:var(--o)}
 .rec #ui{display:none}
+#s1{opacity:1}/* фолбэк: без JS интро видно статикой */
 </style></head>
 <body>
 <div id="wrap"><div id="stage">
@@ -358,16 +362,19 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
 (function(){
 var q=new URLSearchParams(location.search), REC=q.has('record');
 var $=function(i){return document.getElementById(i)};
-var SITE=JSON.parse($('site-data').textContent);
+var SITE="<div style='padding:60px;font:500 40px/1.3 Arial;color:#fff'>Демо-макет сайта</div>";
+try{SITE=JSON.parse($('site-data').textContent)}catch(e){}
 var wrap=$('wrap'),stage=$('stage');
 if(REC)document.documentElement.classList.add('rec');
 var port=false;
 function fit(){
-  port=(innerHeight>innerWidth*1.1)&&!REC;
-  wrap.className=port?'port':'land';
-  var w=port?1080:1920,h=port?1920:1080;
-  stage.style.transform='scale('+Math.min(innerWidth/w,innerHeight/h)+')';
-  layout();
+  try{
+    port=(innerHeight>innerWidth*1.1)&&!REC;
+    wrap.className=port?'port':'land';
+    var w=port?1080:1920,h=port?1920:1080;
+    stage.style.transform='scale('+Math.min(innerWidth/w,innerHeight/h)+')';
+    layout();
+  }catch(e){}
 }
 // длительности сцен, сек
 var D=[3.4,12,9.5,3.8],X=.6, TOTAL=D.reduce(function(a,b){return a+b},0);
@@ -380,9 +387,11 @@ var fd=$('f-desk'),fp=$('f-phone'),loaded=0;
 function setup(f,w){f.setAttribute('sandbox','allow-scripts');f.srcdoc=SITE;f.addEventListener('load',function(){loaded++;layout();});}
 function layout(){
   // виртуальные вьюпорты: десктоп 1366 px шириной, телефон 390 px
-  var vd=$('v-desk'),vp=$('v-phone');
-  var kd=vd.clientWidth/1366; fd.style.width='1366px'; fd.style.height=(vd.clientHeight/kd)+'px'; fd.style.transform='scale('+kd+')';
-  var kp=vp.clientWidth/390;  fp.style.width='390px';  fp.style.height=(vp.clientHeight/kp)+'px'; fp.style.transform='scale('+kp+')';
+  try{
+    var vd=$('v-desk'),vp=$('v-phone');
+    var kd=vd.clientWidth/1366; fd.style.width='1366px'; fd.style.height=(vd.clientHeight/kd)+'px'; fd.style.transform='scale('+kd+')';
+    var kp=vp.clientWidth/390;  fp.style.width='390px';  fp.style.height=(vp.clientHeight/kp)+'px'; fp.style.transform='scale('+kp+')';
+  }catch(e){}
 }
 function scrollTo(f,p){            // p 0..1 → плавная прокрутка с паузой в начале и конце
   try{ f.contentWindow.postMessage({fracs:'scroll',p:sine(cl((p-.07)/.86))},'*'); }catch(e){}
@@ -440,7 +449,7 @@ $('pb').addEventListener('click',function(ev){ev.stopPropagation();
 stage.addEventListener('click',function(){ $('ui').classList.toggle('hide'); });
 addEventListener('keydown',function(e){if(e.code==='Space'){e.preventDefault();$('pb').click();}});
 addEventListener('resize',fit);
-setup(fd);setup(fp);fit();
+try{setup(fd);setup(fp);fit();}catch(e){}requestAnimationFrame(loop);
 setTimeout(function(){$('ui').classList.add('hide')},6000);
 requestAnimationFrame(loop);
 window.__total=TOTAL;

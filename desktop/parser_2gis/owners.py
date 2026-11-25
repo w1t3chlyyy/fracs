@@ -1,10 +1,15 @@
 """Поиск владельца (руководитель / ИП), ИНН и контактов в открытых реестрах через Chrome.
 
-Источник — rusprofile (данные ЕГРЮЛ/ЕГРИП с контактами). Сайт защищён Cloudflare:
-селекторы и разбор карточек написаны «широко» (несколько вариантов структуры) и
-должны проверяться на 5–10 реальных записях. Если rusprofile показал капчу в
-скрытом режиме — поднимается OwnersCaptcha (снимите «Скрытый браузер» и пройдите
-капчу вручную).
+Источники — rusprofile.ru и checko.ru (данные ЕГРЮЛ/ЕГРИП с контактами). Оба сайта
+защищены анти-ботом и периодически меняют вёрстку, поэтому:
+  - сначала пробуем rusprofile (как раньше);
+  - если страница поиска не распознана (state 'wait' до таймаута) или ничего не
+    нашлось — пробуем checko;
+  - если и там ничего, в лог пишется фрагмент страницы (frag), чтобы было видно,
+    что именно увидел парсер (капча, заглушка, новая вёрстка), а не безличное
+    «не найдено».
+Если реестр показал капчу в скрытом режиме — поднимается OwnersCaptcha (снимите
+«Скрытый браузер» и пройдите капчу вручную).
 """
 from __future__ import annotations
 
@@ -23,17 +28,21 @@ from .yandex import address_match, names_match
 
 _SEARCH_URL = 'https://www.rusprofile.ru/search?search_inactive=2&query='
 _BASE = 'https://www.rusprofile.ru'
+_CHECKO_SEARCH_URL = 'https://checko.ru/search?query='
+_CHECKO_BASE = 'https://checko.ru'
 
-# Выполняется на странице поиска. Возвращает JSON-строку:
+# Выполняется на странице поиска rusprofile. Возвращает JSON-строку:
 #   {state: 'captcha' | 'card' | 'list' | 'empty' | 'wait', ...}
 # 'card' — поиск сразу открыл карточку единственного совпадения.
 # 'list' — список компаний; каждый item = {href:'/id/123', text:'...'}.
+# 'frag' — первые 200 символов текста страницы: попадает в лог, когда состояние
+# не распознано (диагностика новой вёрстки/заглушек).
 _JS_SEARCH = r'''
 (function(){
   var t=(document.body&&document.body.innerText)||'';
   var head=(document.title||'')+' '+t.slice(0,1500);
   if(/captcha|капч|не робот|Just a moment|Checking your browser|verify you are human/i.test(head))
-    return JSON.stringify({state:'captcha'});
+    return JSON.stringify({state:'captcha', frag:t.slice(0,200)});
   // Единственное совпадение: rusprofile открывает карточку прямо на странице поиска.
   var h1=document.querySelector('h1');
   if(h1 && /ИНН|ОГРН|ОГРНИП/i.test(t) && t.length>300){
@@ -54,7 +63,31 @@ _JS_SEARCH = r'''
   if(items.length) return JSON.stringify({state:'list', items:items.slice(0,8)});
   if(/ничего не найдено|не найдено|no results|ничего не удалось/i.test(t.slice(0,3000)))
     return JSON.stringify({state:'empty'});
-  return JSON.stringify({state:'wait'});
+  return JSON.stringify({state:'wait', frag:t.slice(0,200)});
+})()
+'''
+
+# То же для checko.ru: серверный рендер, ссылки вида /company/<slug>-<ИНН>.
+_JS_CHECKO_SEARCH = r'''
+(function(){
+  var t=(document.body&&document.body.innerText)||'';
+  var head=(document.title||'')+' '+t.slice(0,800);
+  if(/captcha|капч|доступ ограничен|не робот|подтвердите что вы не робот|Just a moment/i.test(head))
+    return JSON.stringify({state:'captcha', frag:t.slice(0,200)});
+  var items=[],seen={};
+  document.querySelectorAll('a[href*="/company/"]').forEach(function(a){
+    var href=a.getAttribute('href')||'';
+    var m=href.match(/^\/company\/[a-z0-9\-]+-(\d{10,13})$/);
+    if(!m) return;
+    var key=m[0]; if(seen[key])return; seen[key]=1;
+    var box=a.closest('tr,li,article,[class*="result"],[class*="item"]')||a.parentElement||a;
+    var text=((box&&box.innerText)||a.innerText||'').trim().slice(0,600);
+    if(text) items.push({href:m[0], text:text});
+  });
+  if(items.length) return JSON.stringify({state:'list', items:items.slice(0,10)});
+  if(/ничего не найдено|ничего не удалось|по запросу ничего не найдено/i.test(t.slice(0,4000)))
+    return JSON.stringify({state:'empty'});
+  return JSON.stringify({state:'wait', frag:t.slice(0,200)});
 })()
 '''
 
@@ -63,13 +96,13 @@ _JS_CARD = r'''
 (function(){
   var t=(document.body&&document.body.innerText)||'';
   var head=(document.title||'')+' '+t.slice(0,1500);
-  if(/captcha|капч|не робот|Just a moment|Checking your browser|verify you are human/i.test(head))
-    return JSON.stringify({state:'captcha'});
+  if(/captcha|капч|не робот|доступ ограничен|Just a moment|Checking your browser|verify you are human/i.test(head))
+    return JSON.stringify({state:'captcha', frag:t.slice(0,200)});
   if(/ИНН|ОГРН|ОГРНИП/.test(t)){
     var h1=document.querySelector('h1');
     return JSON.stringify({state:'card', h1:h1?h1.innerText:'', text:t.slice(0,20000), url:location.href});
   }
-  return JSON.stringify({state:'wait'});
+  return JSON.stringify({state:'wait', frag:t.slice(0,200)});
 })()
 '''
 
@@ -92,7 +125,7 @@ def _item(doc: Any) -> Optional[dict]:
 
 
 def parse_card(data: dict) -> dict:
-    """Разбирает текст карточки rusprofile: ФИО руководителя/ИП, ИНН, телефоны, e-mail."""
+    """Разбирает текст карточки реестра: ФИО руководителя/ИП, ИНН, телефоны, e-mail."""
     text, h1 = data.get('text', ''), data.get('h1', '')
     out = {'name': '', 'role': '', 'inn': '', 'phone': '', 'email': '', 'source': ''}
 
@@ -105,10 +138,18 @@ def parse_card(data: dict) -> dict:
         if f:
             out['name'], out['role'] = f.group(1), 'ИП'
     else:
-        # «Генеральный директор: ФИО» / «Директор — ФИО» / «Директор\nФИО».
-        f = re.search(r'(' + _ROLES + r')\s*[:\-]?\s*' + _FIO, text)
+        # «Генеральный директор: ФИО» / «Директор — ФИО» / «Директор ФИО» в одной строке.
+        f = re.search(r'(' + _ROLES + r')[^А-ЯЁ\n]{0,8}?' + _FIO, text)
         if f:
             out['name'], out['role'] = f.group(2), f.group(1).replace('\n', ' ')
+        else:
+            # Роль и ФИО на соседних строках — формат checko:
+            # «Руководитель\nПрезидент, председатель правления\nГреф Герман Оскарович».
+            for m in re.finditer(r'^\s*(' + _ROLES + r'[^\n]*)$', text, re.M):
+                nxt = re.search(_FIO, text[m.end():m.end() + 120])
+                if nxt:
+                    out['name'], out['role'] = nxt.group(1), m.group(1).strip()
+                    break
 
     phones = []
     for p in _PHONE.findall(text):
@@ -125,13 +166,13 @@ def parse_card(data: dict) -> dict:
 
 
 def _pick_item(items: list[dict], rec: dict, legal: str) -> Optional[dict]:
-    """Выбирает из списка rusprofile карточку той же организации.
+    """Выбирает из списка реестра карточку той же организации.
 
-    Раньше требовалось строгое names_match(бренд ↔ юр.лицо) — для записей без
-    legal_name оно почти никогда не выполнялось (0 находок). Теперь ранжируем
-    все пункты по совпадению названия/города/адреса и берём лучший; при полном
-    отсутствии сигнала доверяем релевантности rusprofile (первый результат),
-    т.к. запрос строится из legal_name, когда он есть.
+    Строгое names_match(бренд ↔ юр.лицо) для записей без legal_name почти никогда
+    не выполнялось (0 находок), поэтому ранжируем все пункты по совпадению
+    названия/города/адреса и берём лучший; при полном отсутствии сигнала доверяем
+    релевантности реестра (первый результат), т.к. запрос строится из legal_name,
+    когда он есть.
     """
     best, best_score = None, -1
     for x in items:
@@ -157,6 +198,8 @@ class Owners:
         self._opts = chrome_options
         self._remote: Optional[ChromeRemote] = None
         self._closed = False
+        self._last_probe: dict = {}   # последний ответ JS: для диагностики в логе
+        self._diag_done: set[str] = set()
 
     def close(self) -> None:  # вызывается из ParseJob.stop()
         self._closed = True
@@ -169,11 +212,16 @@ class Owners:
     def _probe(self, js: str) -> dict:
         raw = self._remote.execute_script(js)  # type: ignore[union-attr]
         try:
-            return json.loads(raw) if raw else {'state': 'wait'}
+            d = json.loads(raw) if raw else {}
         except (TypeError, ValueError):
-            return {'state': 'wait'}
+            d = {}
+        if not isinstance(d, dict):
+            d = {}
+        self._last_probe = d or {'state': 'wait'}
+        return self._last_probe
 
-    def _wait(self, url: str, js: str, want, headless: bool, stop: Callable[[], bool]) -> Optional[dict]:
+    def _wait(self, url: str, js: str, want, headless: bool,
+              stop: Callable[[], bool], timeout: int = 30) -> Optional[dict]:
         """Ждём на странице, пока state не войдёт в `want` (строка или контейнер).
 
         Cloudflare может держать «Just a moment» несколько секунд — даём 30 с.
@@ -181,8 +229,8 @@ class Owners:
         """
         if isinstance(want, str):
             want = (want,)
-        self._remote.navigate(url, timeout=30)  # type: ignore[union-attr]
-        deadline, captcha_end = time.time() + 30, None
+        self._remote.navigate(url, timeout=timeout)  # type: ignore[union-attr]
+        deadline, captcha_end = time.time() + timeout, None
         while time.time() < deadline:
             if self._closed or stop():
                 return None
@@ -198,14 +246,62 @@ class Owners:
                 captcha_end = captcha_end or time.time() + 180
                 if time.time() > captcha_end:
                     raise OwnersCaptcha('Капча не пройдена за 3 минуты.')
-                deadline = time.time() + 30
+                deadline = time.time() + timeout
         return None
 
-    def enrich(self, docs: list[Any], only_missing: bool, stop: Callable[[], bool], headless: bool) -> dict:
+    # ── источники ────────────────────────────────────────────────────────────
+    def _lookup_rusprofile(self, query: str, rec: dict, legal: str,
+                           headless: bool, stop: Callable[[], bool]) -> Optional[dict]:
+        lst = self._wait(_SEARCH_URL + quote(query), _JS_SEARCH, ('list', 'card'),
+                         headless, stop)
+        if lst and lst.get('state') == 'card':
+            owner = parse_card(lst)
+            owner['source'] = 'rusprofile'
+            return owner
+        if lst and lst.get('state') == 'list':
+            pick = _pick_item(lst.get('items', []), rec, legal)
+            if pick:
+                card = self._wait(_BASE + pick['href'], _JS_CARD, ('card',), headless, stop)
+                if card:
+                    owner = parse_card(card)
+                    owner['source'] = 'rusprofile'
+                    return owner
+        return None
+
+    def _lookup_checko(self, query: str, rec: dict, legal: str,
+                       headless: bool, stop: Callable[[], bool]) -> Optional[dict]:
+        lst = self._wait(_CHECKO_SEARCH_URL + quote(query), _JS_CHECKO_SEARCH,
+                         ('list', 'card'), headless, stop)
+        if lst and lst.get('state') == 'card':
+            owner = parse_card(lst)
+            owner['source'] = 'checko'
+            return owner
+        if lst and lst.get('state') == 'list':
+            pick = _pick_item(lst.get('items', []), rec, legal)
+            if pick:
+                card = self._wait(_CHECKO_BASE + pick['href'], _JS_CARD, ('card',), headless, stop)
+                if card:
+                    owner = parse_card(card)
+                    owner['source'] = 'checko'
+                    return owner
+        return None
+
+    def _diag(self, source: str, what: str) -> None:
+        """Один раз на источник за прогон поясняем, что именно не распозналось."""
+        if source in self._diag_done:
+            return
+        self._diag_done.add(source)
+        frag = str((self._last_probe or {}).get('frag', '')).replace('\n', ' ')[:160]
+        logger.warning('Реестр %s: %s%s', source, what,
+                       f' (фрагмент страницы: «{frag}»)' if frag else '')
+
+    def enrich(self, docs: list[Any], only_missing: bool, stop: Callable[[], bool],
+               headless: bool) -> dict:
         stats = {'total': 0, 'checked': 0, 'found': 0, 'not_found': 0}
         targets = [(i, d) for i, d in enumerate(docs)
                    if not (only_missing and (d.get('_fracs') or {}).get('owner', {}).get('name'))]
         stats['total'] = len(targets)
+        self._diag_done = set()
         with ChromeRemote(self._opts, []) as remote:
             self._remote = remote
             try:
@@ -220,31 +316,34 @@ class Owners:
                     stats['checked'] += 1
                     owner = None
                     try:
-                        lst = self._wait(_SEARCH_URL + quote(query), _JS_SEARCH, ('list', 'card'), headless, stop)
-                        if lst and lst.get('state') == 'card':
-                            # Единственное совпадение — карточка открыта сразу.
-                            owner = parse_card(lst)
-                            owner['source'] = lst.get('url') or (_SEARCH_URL + quote(query))
-                        else:
-                            pick = _pick_item((lst or {}).get('items', []), rec, legal)
-                            if pick:
-                                card = self._wait(_BASE + pick['href'], _JS_CARD, ('card',), headless, stop)
-                                if card:
-                                    owner = parse_card(card)
-                                    owner['source'] = _BASE + pick['href']
+                        owner = self._lookup_rusprofile(query, rec, legal, headless, stop)
+                        if not owner:
+                            self._diag('rusprofile',
+                                       'страница поиска не распознана или данных нет — пробуем checko.ru')
+                            owner = self._lookup_checko(query, rec, legal, headless, stop)
+                            if not owner:
+                                self._diag('checko', 'страница поиска не распознана или данных нет')
                     except OwnersCaptcha:
                         raise
                     except Exception as e:
                         if self._closed or stop():
                             break
-                        logger.warning('Владельцы [%d/%d] %s: %s: %s', n, len(targets), rec['name'], type(e).__name__, e)
+                        logger.warning('Владельцы [%d/%d] %s: %s: %s',
+                                       n, len(targets), rec['name'], type(e).__name__, e)
                     if owner and (owner['name'] or owner['phone'] or owner['email'] or owner['inn']):
                         doc.setdefault('_fracs', {})['owner'] = owner
                         stats['found'] += 1
-                        logger.info('Владельцы [%d/%d] %s — %s %s', n, len(targets), rec['name'], owner['name'], owner['phone'])
+                        if owner.get('name'):
+                            logger.info('Владельцы [%d/%d] %s — %s %s (%s)', n, len(targets),
+                                        rec['name'], owner['name'], owner['phone'], owner['source'])
+                        else:
+                            logger.info('Владельцы [%d/%d] %s — ФИО реестр не отдаёт '
+                                        '(«доступ ограничен ФНС»), найдены ИНН/контакты %s (%s)',
+                                        n, len(targets), rec['name'], owner['phone'], owner['source'])
                     else:
                         stats['not_found'] += 1
-                        logger.info('Владельцы [%d/%d] %s — не найдено', n, len(targets), rec['name'])
+                        logger.info('Владельцы [%d/%d] %s — не найдено в открытых реестрах',
+                                    n, len(targets), rec['name'])
                     time.sleep(random.uniform(2.0, 4.5))
             finally:
                 self._remote = None

@@ -692,7 +692,7 @@
               <div><h3>Ваш личный AI-Агент</h3><div class="sub">Создаёт сайты по карточкам бизнеса или промту</div></div>
             </div>
             <div class="ai-chat" id="aiChat">
-              <div class="ai-msg sys">Опишите задание: «сделай сайт для автосервиса по карточкам 2ГИС» или вставьте свой промт. Агент соберёт сайт, покажет превью на localhost и после одобрения упакует ZIP и открытку с QR-кодом.</div>
+              <div class="ai-msg sys">Напишите что угодно — отвечу в чате. Задание на сайт формулируйте так: «сделай сайт для автосервиса по карточкам 2ГИС». Превью появится здесь же, а после одобрения получите открытку с QR-кодом и видеообзор для заказчика.</div>
             </div>
             <div class="ai-input-bar">
               <button type="button" class="btn-clip" id="aiAttach" title="Прикрепить файл (текст уйдёт в промт, картинка — как изображение)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
@@ -1767,7 +1767,8 @@
   }
 
   /* ── статус и опрос задачи ── */
-  var currentJob=null, poller=null, seenLogs=0, previewShown=false, doneShown=false;
+  var currentJob=null, poller=null, seenLogs=0, previewShown=false, previewMsgShown=false, doneShown=false;
+  var chatHistory=[];
 
   function statusMsg(s){
     return {queued:'В очереди…',running:'Генерируем сайт…',preview:'Готово превью — посмотрите и одобрите.',
@@ -1793,13 +1794,9 @@
         var approveBtn=$('aiApprove'); if(approveBtn)approveBtn.style.display='';
         var openBtn=$('aiOpenPreview'); if(openBtn){openBtn.style.display='';openBtn.href=link;openBtn.target='_blank';}
         var editBtn=$('aiEditLayout'); if(editBtn)editBtn.style.display='';
-        /* локальная проверка файлов (стабильный адрес /sites/<slug>/) */
-        if(d.local_url){
-          var full=location.origin+d.local_url;
-          var m=document.createElement('div');m.className='ai-msg bot';
-          var sl=esc(d.local_url), sf=esc(full);
-          m.innerHTML='Локальная проверка файлов — откройте в браузере: <a href="'+sl+'" target="_blank" rel="noopener" style="color:#7cc4ff;word-break:break-all">'+sf+'</a> (версия v'+esc(String(d.version||1))+', папка '+esc(d.site_dir||'')+')';
-          var c=$('aiChat');c.appendChild(m);c.scrollTop=c.scrollHeight;
+        if(d.local_url&&!previewMsgShown){
+          previewMsgShown=true;
+          addMsg('bot','Превью готово — сайт открылся в панели справа. Нажмите «Одобрить и собрать», и я упакую открытку с QR и видеообзор.');
         }
       }
       if(d.files&&d.files.length){setAgentFiles(d.files);}
@@ -1808,7 +1805,7 @@
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
         if($('aiStatusPill'))$('aiStatusPill').textContent=(d.status==='done'?'Готово':'Остановлено');
         if(d.status==='done'&&!doneShown){doneShown=true;
-          addMsg('bot','Файлы собраны: ZIP со всем сайтом и открытка с QR-кодом — справа в «Передача файлов». Их можно переслать клиентам.');}
+          addMsg('bot','Готово: ZIP со всем сайтом, открытка с QR и видеообзор — справа в «Передача файлов». QR на открытке открывает видеообзор — можно пересылать заказчику.');}
         if(d.status==='failed'){addMsg('sys','Генерация не удалась: '+(d.error||''));
           var ap=$('aiApprove');if(ap)ap.style.display='none';
           var op=$('aiOpenPreview');if(op)op.style.display='none';}
@@ -1823,7 +1820,7 @@
     pill.textContent=statusMsg(s);
   }
 
-  function startAgent(prompt){
+  function startAgent(prompt,silent){
     var key=$('aiKey')&&$('aiKey').value.trim()||'';
     var info=providerInfo(currentProvider)||{};
     if(info.pro_only&&!info.allowed){
@@ -1842,7 +1839,7 @@
       base_url:($('aiBaseUrl')&&$('aiBaseUrl').value.trim())||'',
       temperature:parseFloat($('aiTemp')&&$('aiTemp').value)||0.7,
       max_tokens:parseInt($('aiMaxTok')&&$('aiMaxTok').value)||4096};
-    addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
+    if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
     if($('aiStatusPill'))$('aiStatusPill').textContent='Запускаю агента…';
     fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json()}).then(function(d){
@@ -1851,7 +1848,7 @@
           if(d.pro_required){loadProviders();}
           return;}
         currentJob=d.job_id;
-        seenLogs=0;previewShown=false;doneShown=false;
+        seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
         if($('aiStatusPill'))$('aiStatusPill').textContent='Агент работает…';
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
         var ap=$('aiApprove');if(ap)ap.style.display='none';
@@ -1865,9 +1862,47 @@
     var p=$('aiPrompt')&&$('aiPrompt').value.trim()||'';
     startAgent(p);
   });
-  $('aiSend').addEventListener('click',function(){
-    var inp=$('aiPrompt'); if(!inp)return; var v=inp.value.trim(); if(!v)return;
-    inp.value=''; startAgent(v);
+  /* Живой чат: сообщение идёт модели; сборка сайта стартует только если
+     модель поставила маркер [BUILD] (или по кнопке «Запустить»). */
+  function aiChatSend(v){
+    var info=providerInfo(currentProvider)||{};
+    if(info.pro_only&&!info.allowed){
+      addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
+      return;
+    }
+    var key=$('aiKey')&&$('aiKey').value.trim()||'';
+    var man=$('aiModelManual');
+    var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
+    var pill=$('aiStatusPill'); if(pill)pill.textContent='Агент печатает…';
+    fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:v,api_key:key,model:model,provider:currentProvider,
+        base_url:($('aiBaseUrl')&&$('aiBaseUrl').value.trim())||'',history:chatHistory.slice(-8)})})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(pill)pill.textContent='';
+        if(d&&d.ok){
+          var reply=d.reply||'…';
+          addMsg('bot',reply);
+          chatHistory.push({role:'user',content:v});
+          chatHistory.push({role:'assistant',content:reply});
+          if(d.build)startAgent(v,true);
+          return;
+        }
+        if(d&&d.error==='no_api_key'){addMsg('sys','Введите API-ключ в поле слева — без него агент не может отвечать.');return;}
+        /* модель недоступна → фолбэк: по ключевым словам решаем, строить или ответить */
+        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){startAgent(v,true);return;}
+        addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни по карточке 2ГИС» — и я соберу демо.');
+      })
+      .catch(function(e){
+        if(pill)pill.textContent='';
+        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){startAgent(v,true);return;}
+        addMsg('sys','Нет связи с бэкендом: '+e);
+      });
+  }
+  $('aiRun').addEventListener('click',function(){
+    var p=$('aiPrompt')&&$('aiPrompt').value.trim()||'';
+    if(p){addMsg('user',p);var inp=$('aiPrompt');if(inp)inp.value='';startAgent(p,true);return;}
+    startAgent('');
   });
   $('aiPrompt').addEventListener('keydown',function(e){
     if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('aiSend').click();}
@@ -1883,7 +1918,7 @@
     if(!currentJob){addMsg('sys','Сначала соберите макет.');return;}
     var inp=$('aiPrompt'); if(inp)inp.focus();
     var st=$('aiStyle'), stName=(st&&st.value)?'«'+st.options[st.selectedIndex].text+'»':'авто по рубрике';
-    addMsg('bot','Режим правки: опишите, что изменить в макете (и при желании смените стиль в списке «Стиль макета», сейчас: '+stName+') и нажмите «Отправить». Сайт перегенерируется поверх текущей версии — та же папка sites/, версия на единицу выше; предыдущие версии останутся в versions/.');
+    addMsg('bot','Режим правки: напишите, что изменить в макете (и при желании смените стиль — сейчас: '+stName+') и отправьте. Сайт обновится поверх текущей версии, а прежняя сохранится.');
   });
   $('aiTestBtn').addEventListener('click',function(){
     var r=$('aiTestRes');r.textContent='Пингуем API…';
