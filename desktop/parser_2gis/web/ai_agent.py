@@ -115,7 +115,7 @@ _PROVIDERS: dict[str, dict] = {
         'needs_key': False,
         'pro_only': True,
         'vision': True,
-        'desc': 'Встроенный ИИ Fracs (OpenRouter + каталог Bazaar). Не нужен свой ключ.',
+        'desc': 'Встроенная нейронка Fracs. Свой ключ не нужен.',
         'default_models': [
             'openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku',
             'google/gemini-2.0-flash-001', 'meta-llama/llama-3.3-70b-instruct',
@@ -692,17 +692,20 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     started = time.time()
     cfg = _provider_cfg(provider)
     if provider == 'Fracs AI':
-        # Обычный пользователь → прокси через сайт (ключ OpenRouter на сервере).
-        # Владелец/dev-сборка → напрямую в OpenRouter на ключе из env.
+        # Fracs AI — встроенная нейронка программы, под капотом OpenRouter.
+        # Приоритет: прокси сайта Fracs → серверный ключ env (подписка) →
+        # ключ OpenRouter самого пользователя (вводит один раз, хранится в программе).
         proxy = _fracs_proxy()
         if proxy:
             api_key = proxy[1]
-        else:
+        elif _FRACS_AI_KEY:
             api_key = _FRACS_AI_KEY
-            if not api_key:
-                return {'ok': False, 'error': 'Fracs AI недоступен: нет связи с сервером Fracs и нет '
-                                              'ключа в этой сборке. Войдите в кабинет и проверьте подписку, '
-                                              'или выберите другого провайдера со своим ключом.'}
+        elif not (api_key or '').strip():
+            return {'ok': False, 'error': 'Fracs AI пока не активен на этой сборке: '
+                                          'вставьте API ключ в поле ключа — он сохранится '
+                                          'в программе и будет использоваться автоматически.'}
+        else:
+            api_key = api_key.strip()
     else:
         api_key = (api_key or '').strip()
         if cfg['needs_key'] and not api_key:
@@ -1335,6 +1338,27 @@ def fracs_ai_allowed() -> dict:
                       'или выберите своего провайдера (доступен на PRO).'}
 
 
+def _fracs_ai_ready() -> bool:
+    """Fracs AI настроен на этой сборке: есть ключ (FRACS_AI_API_KEY или
+    OPENROUTER_API_KEY) или работает прокси сайта Fracs."""
+    if _FRACS_AI_KEY:
+        return True
+    try:
+        return bool(_fracs_proxy())
+    except Exception:
+        return False
+
+
+def _fracs_key_env() -> str:
+    """Имя переменной окружения, из которой взят ключ Fracs AI (для диагностики
+    в UI). Пусто — ключа в окружении нет."""
+    if os.environ.get('FRACS_AI_API_KEY', '').strip():
+        return 'FRACS_AI_API_KEY'
+    if os.environ.get('OPENROUTER_API_KEY', '').strip():
+        return 'OPENROUTER_API_KEY'
+    return ''
+
+
 # ── Singleton и маршруты ──────────────────────────────────────────────────────
 
 _MANAGER: AiAgentManager | None = None
@@ -1380,7 +1404,8 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                 'feature': need,
                 'allowed': ok,
                 'reason': reason,
-                'configured': (not cfg.get('pro_only')) or bool(_FRACS_AI_KEY),
+                'configured': (not cfg.get('pro_only')) or _fracs_ai_ready(),
+                'key_env': _fracs_key_env() if need == 'fracs_ai' else '',
                 'models': list(cfg.get('default_models') or []),
             })
         return {'ok': True, 'features': _plan_features(), 'providers': items}
@@ -1397,6 +1422,10 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         api_key = (request.headers.get('X-Api-Key')
                    or request.args.get('api_key') or '').strip()
         base_url_q = request.args.get('base_url', '')
+        # Fracs AI без ключа на сервере и без прокси: моделей не отдаём вовсе.
+        if provider == 'Fracs AI' and not _fracs_ai_ready():
+            return jsonify({'ok': True, 'models': [], 'auto': False,
+                            'error': 'fracs_ai_not_configured'})
         need = _provider_feature(provider)
         if not _has_feature(need):
             gate = fracs_ai_allowed() if need == 'fracs_ai' else {'allowed': False}
@@ -1619,8 +1648,9 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             if not gate.get('allowed'):
                 return jsonify({'ok': False, 'error': str(gate.get('reason') or 'pro_required'),
                                 'pro_required': True})
-            if not _FRACS_AI_KEY:
-                return jsonify({'ok': False, 'error': 'Fracs AI не настроен (нет ключа на сервере).'})
+            if not _FRACS_AI_KEY and not api_key:
+                return jsonify({'ok': False, 'error': 'Fracs AI пока не активен: '
+                                                      'вставьте API ключ в поле ключа.'})
         else:
             if _provider_cfg(provider).get('needs_key') and not api_key:
                 return jsonify({'ok': False, 'error': 'no_api_key'}), 400
@@ -1648,8 +1678,9 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             if not gate.get('allowed'):
                 return jsonify({'ok': False, 'error': str(gate.get('reason') or 'pro_required'),
                                 'pro_required': True})
-            if not _FRACS_AI_KEY:
-                return jsonify({'ok': False, 'error': 'Fracs AI не настроен (нет ключа на сервере).'})
+            if not _FRACS_AI_KEY and not api_key:
+                return jsonify({'ok': False, 'error': 'Fracs AI пока не активен: '
+                                                      'вставьте API ключ в поле ключа.'})
         else:
             if _provider_cfg(provider).get('needs_key') and not api_key:
                 return jsonify({'ok': False, 'error': 'no_api_key'}), 400
