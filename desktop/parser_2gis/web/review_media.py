@@ -275,7 +275,7 @@ def _html_esc(s: str) -> str:
 
 
 _REVIEW_TEMPLATE = r'''<!DOCTYPE html>
-<html lang="ru"><head><meta charset="utf-8">
+<html lang="ru" data-fracs-review="1"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Демо-макет сайта — видеообзор</title>
 <style>

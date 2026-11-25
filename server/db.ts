@@ -572,6 +572,44 @@ export async function aiUsageAdd(userId: string, tokens: number, costUsd: number
   memAiUsage.set(k, { requests: v.requests + 1, tokens: v.tokens + tokens, cost: v.cost + costUsd });
 }
 
+/* ── демо-страницы (видеообзор по QR), таблица demos — supabase/demos.sql ── */
+
+const memDemos = new Map<string, { userId: string; html: string; at: number }>();
+const DEMO_TTL_DAYS = 45;
+
+export async function demoCreate(userId: string, html: string): Promise<string> {
+  const id = crypto.randomBytes(9).toString('base64url');
+  if (useSupabase) {
+    const r = await sb().from('demos').insert({ id, user_id: userId, size: html.length, html });
+    if (r.error) throw new Error(`[db] demoCreate: ${r.error.message}`);
+    return id;
+  }
+  memDemos.set(id, { userId, html, at: Date.now() });
+  return id;
+}
+
+export async function demoGet(id: string): Promise<string | null> {
+  if (useSupabase) {
+    const r = await sb().from('demos').select('html').eq('id', id).gt('created_at', ago(DEMO_TTL_DAYS * 86400_000)).maybeSingle();
+    if (r.error) throw new Error(`[db] demoGet: ${r.error.message}`);
+    return r.data?.html ?? null;
+  }
+  const d = memDemos.get(id);
+  return d && Date.now() - d.at < DEMO_TTL_DAYS * 86400_000 ? d.html : null;
+}
+
+export async function demoCounts(userId: string): Promise<{ day: number; total: number }> {
+  if (useSupabase) {
+    const q = (since: number) => sb().from('demos').select('id', { count: 'exact', head: true }).eq('user_id', userId).gt('created_at', ago(since));
+    const [d, t] = await Promise.all([q(86400_000), q(DEMO_TTL_DAYS * 86400_000)]);
+    if (d.error || t.error) throw new Error(`[db] demoCounts: ${(d.error || t.error)!.message}`);
+    return { day: d.count ?? 0, total: t.count ?? 0 };
+  }
+  let day = 0, total = 0;
+  for (const v of memDemos.values()) if (v.userId === userId) { total++; if (Date.now() - v.at < 86400_000) day++; }
+  return { day, total };
+}
+
 /* ── обслуживание (cron) ── */
 
 export async function cleanup(retentionDays: number) {
@@ -580,6 +618,7 @@ export async function cleanup(retentionDays: number) {
     await c.from('login_tokens').delete().lt('created_at', ago(TOKEN_MS));
     await c.from('rate_limits').delete().lt('reset_at', new Date().toISOString());
     await c.from('searches').delete().lt('created_at', ago(retentionDays * 86400_000));
+    await c.from('demos').delete().lt('created_at', ago(DEMO_TTL_DAYS * 86400_000));
     return;
   }
   const now = Date.now();

@@ -892,6 +892,7 @@ class AiJob:
     zip_path: str = ''
     png_path: str = ''
     video_path: str = ''
+    demo_url: str = ''      # публичная ссылка на видеообзор (из QR), если опубликован
     review_path: str = ''   # review.html — анимированный видеообзор (на него ведёт QR)
     preview_url: str = ''
     site_slug: str = ''   # папка в <проект>/sites/<slug>/
@@ -1143,6 +1144,8 @@ class AiAgentManager:
             job.status = 'building'
             self._log(job, 'Собираю видеообзор (review.html)…')
             self._build_review(job)
+            self._log(job, 'Публикую видеообзор по ссылке для QR…')
+            self._publish_demo(job)
             self._log(job, 'Рисую открытку с QR-кодом…')
             self._build_postcard(job)
             self._log(job, 'Собираю ZIP: сайт, видеообзор и открытка…')
@@ -1156,9 +1159,39 @@ class AiAgentManager:
             self._log(job, f'Ошибка: {e}')
 
     def _public_base(self) -> tuple[str, bool]:
-        """(адрес для QR, публичный ли он). FRACS_DEMO_BASE_URL — публичный хостинг демо."""
+        """(адрес для QR, публичный ли он). FRACS_DEMO_BASE_URL — свой хостинг демо (необязательно)."""
         demo = os.environ.get('FRACS_DEMO_BASE_URL', '').strip().rstrip('/')
         return (demo or self.base_url), bool(demo)
+
+    def _publish_demo(self, job: AiJob):
+        """Публикует review.html на сайт Fracs (/v/<id>) — QR получает рабочую ссылку без
+        отдельного хостинга. Нужна активная лицензия; при ошибке остаёмся на локальном адресе."""
+        if os.environ.get('FRACS_DEMO_BASE_URL', '').strip():
+            return                       # задан свой хостинг — используем его
+        if not job.review_path or not os.path.exists(job.review_path):
+            return
+        try:
+            site = (_LIC_MOD._site() or '') if _LIC_MOD else ''
+            key = _fracs_license_key()
+            if not site or not key:
+                self._log(job, 'Публикация демо пропущена: нет лицензионного ключа Fracs.')
+                return
+            with open(job.review_path, encoding='utf-8') as f:
+                html = f.read()
+            r = requests.post(site + '/api/app/demo', json={'html': html},
+                              headers={'Authorization': 'Bearer ' + key}, timeout=60)
+            try:
+                d = r.json()
+            except ValueError:
+                d = {}
+            if r.ok and d.get('url'):
+                job.demo_url = d['url']
+                self._log(job, f'Видеообзор опубликован: {job.demo_url} (хранится 45 дней).')
+            else:
+                self._log(job, 'Видеообзор не опубликован: ' + str(d.get('message') or d.get('error')
+                                                                  or d.get('reason') or f'HTTP {r.status_code}'))
+        except Exception as e:
+            self._log(job, f'Видеообзор не опубликован: {e}')
 
     def _build_review(self, job: AiJob):
         """review.html — анимированный видеообзор: интро → сайт в окне браузера → телефон →
@@ -1181,16 +1214,18 @@ class AiAgentManager:
         d = tempfile.mkdtemp(prefix='fracs_ai_png_')
         png_path = os.path.join(d, 'postcard.png')
         base, public = self._public_base()
-        if job.site_url and job.review_path:
+        if job.demo_url:
+            target, public = job.demo_url, True
+        elif job.site_url and job.review_path:
             target = f'{base}{job.site_url}review.html'
         elif job.site_url:
             target = f'{base}{job.site_url}'
         else:
             target = f'{base}/api/ai/preview/{job.job_id}'
         if not public:
-            self._log(job, 'ВНИМАНИЕ: QR ведёт на адрес вашего компьютера — у заказчика он не '
-                           'откроется. Выложите папку sites/ на хостинг и задайте '
-                           'FRACS_DEMO_BASE_URL (в .env), тогда QR станет рабочим.')
+            self._log(job, 'ВНИМАНИЕ: видеообзор не опубликован, поэтому QR ведёт на адрес вашего '
+                           'компьютера — у заказчика он не откроется. Проверьте лицензионный ключ '
+                           'и интернет и соберите открытку заново.')
         if Image is None or not _HAVE_QR:
             self._log(job, 'Открытка пропущена: не установлены Pillow/qrcode.')
             return

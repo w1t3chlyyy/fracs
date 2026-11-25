@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config } from './config.ts';
-import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, aiUsageToday, aiUsageAdd } from './db.ts';
+import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, aiUsageToday, aiUsageAdd, demoCreate, demoGet, demoCounts } from './db.ts';
 import { requireAuth } from './auth.ts';
 import { searchTg } from './providers.ts';
 import { cleanText } from './util.ts';
@@ -192,8 +192,10 @@ function orAuthKey(req: any): string {
 }
 
 async function fracsAiGate(req: any): Promise<{ user: any } | { error: [number, any] }> {
-  const uid = orAuthKey(req);
-  if (!uid || uid.length > 128) return { error: [401, { ok: false, reason: 'invalid' }] };
+  // Программа шлёт ключ лицензии «fracs.<id>.<подпись>», а не голый UUID: проверяем подпись.
+  const raw = orAuthKey(req);
+  const uid = raw.length <= 256 ? parseKey(raw) : null;
+  if (!uid) return { error: [401, { ok: false, reason: 'invalid' }] };
   const user = await getUser(uid);
   if (!user) return { error: [401, { ok: false, reason: 'invalid' }] };
   if (!isSubscribed(user)) return { error: [402, { ok: false, reason: 'expired' }] };
@@ -362,3 +364,60 @@ appRouter.get('/ai/models', h(async (req, res) => {
     res.status(502).json({ ok: false, error: 'upstream' });
   }
 }));
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Демо-страницы для QR на открытке: программа публикует сюда review.html (видеообзор
+// сайта) и получает короткую ссылку https://<ваш сайт>/v/<id>. Своего хостинга не нужно:
+// хранится в вашем Supabase, отдаётся этим же сервером на Vercel.
+// ═════════════════════════════════════════════════════════════════════════════
+const DEMO_MAX_BYTES = 1_200_000;
+const DEMO_PER_DAY = envNum('DEMO_PER_DAY', 20);
+const DEMO_MAX_ACTIVE = envNum('DEMO_MAX_ACTIVE', 300);
+const DEMO_MARK = 'data-fracs-review="1"';
+
+appRouter.post('/demo', h(async (req, res) => {
+  if (!(await rateLimit(`app-demo:${req.ip}`, 60, 3_600_000, true))) {
+    return void res.status(429).json({ ok: false, error: 'rate_limited', message: 'Слишком часто. Повторите позже.' });
+  }
+  const uid = parseKey(orAuthKey(req));
+  const user = uid ? await getUser(uid) : null;
+  if (!user) return void res.status(401).json({ ok: false, reason: 'invalid' });
+  if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: 'expired' });
+  const feats = await getActiveFeatures(user);
+  if (!feats.some((f) => ['ai', 'ai_provider', 'fracs_ai'].includes(f))) {
+    return void res.status(402).json({ ok: false, error: 'plan', message: 'Публикация демо доступна с AI-агентом (PRO / Ultra).' });
+  }
+  const html = req.body?.html;
+  if (typeof html !== 'string' || !html.includes(DEMO_MARK)) return void res.status(400).json({ ok: false, error: 'bad_request', message: 'Ожидается страница видеообзора.' });
+  if (Buffer.byteLength(html) > DEMO_MAX_BYTES) {
+    return void res.status(413).json({ ok: false, error: 'too_big', message: 'Страница слишком большая (лимит 1,2 МБ) — уберите из сайта тяжёлые встроенные картинки.' });
+  }
+  const c = await demoCounts(user.id);
+  if (c.day >= DEMO_PER_DAY) return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит публикаций демо: ${DEMO_PER_DAY} в сутки.` });
+  if (c.total >= DEMO_MAX_ACTIVE) return void res.status(429).json({ ok: false, error: 'quota_total', message: 'Слишком много активных демо — старые удаляются через 45 дней.' });
+  const id = await demoCreate(user.id, html);
+  res.json({ ok: true, id, url: `${config.appUrl}/v/${id}` });
+}));
+
+/** GET /v/:id — публичная страница видеообзора (открывается по QR с телефона заказчика). */
+export const demoPage: RequestHandler = async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!/^[A-Za-z0-9_-]{8,24}$/.test(id)) return void res.status(404).type('text/plain').send('Не найдено');
+    if (!(await rateLimit(`demo-view:${req.ip}`, 120, 60_000, false))) return void res.status(429).type('text/plain').send('Слишком часто');
+    const html = await demoGet(id);
+    if (!html) return void res.status(404).type('text/plain; charset=utf-8').send('Демо не найдено или срок хранения истёк.');
+    res.set({
+      'Content-Type': 'text/html; charset=utf-8',
+      // sandbox: страница живёт в «чужом» origin — без доступа к cookie/API этого сайта.
+      'Content-Security-Policy': 'sandbox allow-scripts allow-popups',
+      'X-Robots-Tag': 'noindex, nofollow',
+      'Referrer-Policy': 'no-referrer',
+      'Cache-Control': 'public, max-age=300',
+    }).send(html);
+  } catch (e) {
+    console.error('[demo]', e);
+    res.status(500).type('text/plain').send('Ошибка сервера');
+  }
+};

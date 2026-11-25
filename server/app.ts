@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { attachUser } from './auth.ts';
 import { webhookHandler } from './bot.ts';
-import { appRouter } from './appRoutes.ts';
+import { appRouter, demoPage } from './appRoutes.ts';
 import { adminRouter } from './adminRoutes.ts';
 import { api } from './routes.ts';
 import { csrfGuard, limit, noStoreApi, securityHeaders } from './security.ts';
@@ -22,9 +22,12 @@ export function buildApp() {
       next(Object.assign(e as Error, { type: 'entity.parse.failed' }));
     }
   });
+  // /api/app/demo принимает страницу видеообзора (до 1,2 МБ) — свой лимит тела, до общего парсера.
+  app.use('/api/app/demo', express.json({ limit: '1500kb' }));
   app.use(express.json({ limit: '100kb' }));
 
   app.post('/api/bot/webhook', webhookHandler);
+  app.get('/v/:id', demoPage);   // публичная ссылка из QR на открытке
   app.use('/api', noStoreApi, csrfGuard);
   app.use('/api/cities', limit('cities', 60, 60_000));
   app.use('/api/config', limit('config', 60, 60_000));
