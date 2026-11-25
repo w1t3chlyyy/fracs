@@ -2332,7 +2332,7 @@ appRouter.post("/ai", h2(async (req, res) => {
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
   if (!config.openrouterApiKey) {
-    return void res.status(503).json({ ok: false, error: "not_configured", message: "Fracs AI \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 (\u043D\u0435\u0442 OPENROUTER_API_KEY)." });
+    return void res.status(503).json({ ok: false, error: "not_configured", message: "Fracs AI временно недоступен. Попробуйте позже." });
   }
   const uid = String(gate2.user.id);
   const clean = sanitizeAiBody(req.body?.body ?? req.body);
@@ -2382,7 +2382,7 @@ appRouter.post("/ai", h2(async (req, res) => {
     }
     res.status(upstream.status).type("application/json").send(text);
   } catch (e) {
-    res.status(502).json({ ok: false, error: "upstream", message: "OpenRouter \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D: " + String(e?.message || e) });
+    res.status(502).json({ ok: false, error: "upstream", message: "Fracs AI временно недоступен. Попробуйте позже." });
   }
 }));
 appRouter.get("/ai/models", h2(async (req, res) => {

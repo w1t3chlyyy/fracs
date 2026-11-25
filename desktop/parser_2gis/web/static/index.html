@@ -1691,9 +1691,6 @@
     fetch('/api/ai/providers').then(function(r){return r.json()}).then(function(d){
       providers=(d&&d.providers)||[];
       var sel=$('aiProvider');if(!sel)return;
-      /* Fracs AI — встроенная нейронка программы: показываем всегда. Без
-         серверного ключа подписки она работает через ключ OpenRouter
-         пользователя, поэтому ненастроенная сборка больше не блокирует. */
       var usable=providers.filter(function(p){return p.allowed!==false;});
       sel.innerHTML=usable.map(function(p){
         var badge=p.pro_only?' · Ultra':'';
@@ -1710,14 +1707,12 @@
   }
   window.onFracsProviderChange=onProviderChange;
   function providerInfo(id){for(var i=0;i<providers.length;i++){if(providers[i].id===id)return providers[i];}return null;}
-  /* Ключ для текущего провайдера: из поля или сохранённый. Для Fracs AI
-     (без серверного ключа) берём сохранённый ключ OpenRouter — он и есть
-     её «движок». */
+  /* Ключ для текущего провайдера: из поля или сохранённый. Fracs AI ключ не нужен. */
   function activeKey(){
+    if(currentProvider==='Fracs AI')return '';
     var k=($('aiKey')&&$('aiKey').value.trim())||'';
     if(!k){
-      var store=currentProvider==='Fracs AI'?'OpenRouter':currentProvider;
-      try{k=localStorage.getItem('fracsAiKey:'+store)||'';}catch(e){}
+      try{k=localStorage.getItem('fracsAiKey:'+currentProvider)||'';}catch(e){}
     }
     return k;
   }
@@ -1730,25 +1725,24 @@
     var hint=$('aiProHint');
     if(hint){
       if(info.pro_only&&info.allowed){hint.style.display='';
-        if(info.configured===false){hint.textContent='Fracs AI пока не активен на этой сборке. Вставьте API ключ в поле ниже — он сохранится в программе, и нейронка заработает. Или обратитесь к тому, кто собрал программу.';hint.style.color='#F26522';}
+        if(info.configured===false){hint.textContent='Fracs AI временно недоступен. Попробуйте позже.';hint.style.color='#F26522';}
         else{hint.textContent='Fracs AI активен — ключ вводить не нужно, моделями управляет Fracs.';hint.style.color='#34d399';}}
       else{hint.style.display='none';hint.textContent='';}
     }
     var keyWrap=$('aiKey'),keyHint=$('aiKeyHint');
     if(keyWrap){
       var needKey=!info.pro_only&&info.needs_key!==false;
-      /* Сборка без серверного ключа: Fracs AI работает через ключ OpenRouter пользователя. */
-      var fracsOwnKey=!!(info.pro_only&&info.configured===false);
+      var fracsOwnKey=false;
       keyWrap.disabled=!(needKey||fracsOwnKey);
       keyWrap.placeholder=(needKey||fracsOwnKey)?'Вставьте API ключ':'Ключ не нужен — работает подписка Fracs';
       if(keyHint)keyHint.textContent=(needKey||fracsOwnKey)?('Вставьте API ключ'+(fracsOwnKey?' — нейронка заработает, ключ сохранится в программе':' '+currentProvider)):'Fracs AI работает на подписке Fracs — ключ вводить не нужно.';
-      /* Автоподстановка сохранённого ключа (для Fracs AI — ключ OpenRouter). */
+      /* Автоподстановка сохранённого ключа. */
       if((needKey||fracsOwnKey)&&!keyWrap.value.trim()){
-        try{var sk=localStorage.getItem('fracsAiKey:'+(fracsOwnKey?'OpenRouter':currentProvider));if(sk)keyWrap.value=sk;}catch(e){}
+        try{var sk=localStorage.getItem('fracsAiKey:'+currentProvider);if(sk)keyWrap.value=sk;}catch(e){}
       }
     }
     var bu=$('aiBaseUrlWrap');if(bu)bu.hidden=currentProvider!=='Custom';
-    /* Fracs AI = OpenRouter под капотом, модели подбираются автоматически —
+    /* Fracs AI: модели подбираются автоматически —
        при выборе Fracs AI вкладка «Модель» скрывается целиком (и сбрасывается
        ручной ввод, чтобы скрытая модель не подставилась в запрос). */
     var msect=$('aiModelSect');if(msect)msect.hidden=!!info.pro_only;
@@ -1817,7 +1811,7 @@
        API отдают список только со своим ключом) */
     var key=$('aiKey');
     if(key){var t=null;key.addEventListener('input',function(){clearTimeout(t);t=setTimeout(function(){
-      try{localStorage.setItem('fracsAiKey:'+(currentProvider==='Fracs AI'?'OpenRouter':currentProvider),key.value.trim());}catch(e){}
+      if(currentProvider!=='Fracs AI'){try{localStorage.setItem('fracsAiKey:'+currentProvider,key.value.trim());}catch(e){}}
       loadModels(false);
     },1200);});}
   }
@@ -1885,7 +1879,7 @@
     }
     var needKey=!info.pro_only&&info.needs_key!==false;
     if(needKey&&!key){addMsg('sys','Введите API-ключ в поле слева.');return;}
-    if(info.pro_only&&info.configured===false&&!key){addMsg('sys','Fracs AI пока не активен: вставьте API ключ в поле ключа — он сохранится в программе, и нейронка заработает.');return;}
+    if(info.pro_only&&info.configured===false){addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
     var man=$('aiModelManual');
     var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
     if(!model&&info.models&&info.models.length)model=info.models[0];
@@ -1929,7 +1923,7 @@
       return;
     }
     var key=activeKey();
-    if(info.pro_only&&info.configured===false&&!key){addMsg('sys','Fracs AI пока не активен: вставьте API ключ в поле ключа — он сохранится в программе, и нейронка заработает.');return;}
+    if(info.pro_only&&info.configured===false){addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
     var man=$('aiModelManual');
     var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
     if(!model&&info.models&&info.models.length)model=info.models[0];

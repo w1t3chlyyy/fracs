@@ -280,7 +280,7 @@ appRouter.post('/ai', h(async (req, res) => {
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
   if (!config.openrouterApiKey) {
-    return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI не настроен на сервере (нет OPENROUTER_API_KEY).' });
+    return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
   const uid = String(gate.user.id);
   const clean = sanitizeAiBody(req.body?.body ?? req.body);
@@ -333,7 +333,7 @@ appRouter.post('/ai', h(async (req, res) => {
     }
     res.status(upstream.status).type('application/json').send(text);
   } catch (e: any) {
-    res.status(502).json({ ok: false, error: 'upstream', message: 'OpenRouter недоступен: ' + String(e?.message || e) });
+    res.status(502).json({ ok: false, error: 'upstream', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
 }));
 

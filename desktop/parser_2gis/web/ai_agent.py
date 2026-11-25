@@ -104,8 +104,8 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 _OPENROUTER_URL = 'https://openrouter.ai/api/v1'
-_FRACS_AI_KEY = (os.environ.get('FRACS_AI_API_KEY')
-                 or os.environ.get('OPENROUTER_API_KEY') or '').strip()
+_FRACS_AI_KEY = (os.environ.get('OPENROUTER_API_KEY') or '').strip()
+_FRACS_DOWN = 'Fracs AI временно недоступен. Попробуйте позже.'
 
 _PROVIDERS: dict[str, dict] = {
     'Fracs AI': {
@@ -700,12 +700,8 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
             api_key = proxy[1]
         elif _FRACS_AI_KEY:
             api_key = _FRACS_AI_KEY
-        elif not (api_key or '').strip():
-            return {'ok': False, 'error': 'Fracs AI пока не активен на этой сборке: '
-                                          'вставьте API ключ в поле ключа — он сохранится '
-                                          'в программе и будет использоваться автоматически.'}
         else:
-            api_key = api_key.strip()
+            return {'ok': False, 'error': _FRACS_DOWN}
     else:
         api_key = (api_key or '').strip()
         if cfg['needs_key'] and not api_key:
@@ -744,7 +740,19 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     try:
         r = requests.post(url, headers=headers, json=body, timeout=180)
     except requests.RequestException as e:
+        if provider == 'Fracs AI':
+            return {'ok': False, 'error': _FRACS_DOWN, 'ms': _ms(started), 'skipped_images': skipped}
         return {'ok': False, 'error': f'network: {e}', 'ms': _ms(started), 'skipped_images': skipped}
+    if r.status_code >= 400 and provider == 'Fracs AI':
+        # наружу — только «свои» сообщения Fracs (лимиты прокси), без деталей движка
+        msg = _FRACS_DOWN
+        try:
+            err = r.json()
+            if isinstance(err, dict) and err.get('ok') is False and isinstance(err.get('message'), str):
+                msg = err['message']
+        except Exception:
+            pass
+        return {'ok': False, 'error': msg, 'ms': _ms(started), 'skipped_images': skipped}
     if r.status_code >= 400:
         try:
             err = r.json()
@@ -1339,8 +1347,7 @@ def fracs_ai_allowed() -> dict:
 
 
 def _fracs_ai_ready() -> bool:
-    """Fracs AI настроен на этой сборке: есть ключ (FRACS_AI_API_KEY или
-    OPENROUTER_API_KEY) или работает прокси сайта Fracs."""
+    """Fracs AI настроен на этой сборке: есть ключ (OPENROUTER_API_KEY) или работает прокси сайта Fracs."""
     if _FRACS_AI_KEY:
         return True
     try:
@@ -1352,10 +1359,7 @@ def _fracs_ai_ready() -> bool:
 def _fracs_key_env() -> str:
     """Имя переменной окружения, из которой взят ключ Fracs AI (для диагностики
     в UI). Пусто — ключа в окружении нет."""
-    if os.environ.get('FRACS_AI_API_KEY', '').strip():
-        return 'FRACS_AI_API_KEY'
-    if os.environ.get('OPENROUTER_API_KEY', '').strip():
-        return 'OPENROUTER_API_KEY'
+    # имя движка наружу не отдаём
     return ''
 
 
@@ -1405,7 +1409,7 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                 'allowed': ok,
                 'reason': reason,
                 'configured': (not cfg.get('pro_only')) or _fracs_ai_ready(),
-                'key_env': _fracs_key_env() if need == 'fracs_ai' else '',
+                'key_env': '',
                 'models': list(cfg.get('default_models') or []),
             })
         return {'ok': True, 'features': _plan_features(), 'providers': items}
@@ -1648,9 +1652,8 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             if not gate.get('allowed'):
                 return jsonify({'ok': False, 'error': str(gate.get('reason') or 'pro_required'),
                                 'pro_required': True})
-            if not _FRACS_AI_KEY and not api_key:
-                return jsonify({'ok': False, 'error': 'Fracs AI пока не активен: '
-                                                      'вставьте API ключ в поле ключа.'})
+            if not _fracs_ai_ready():
+                return jsonify({'ok': False, 'error': _FRACS_DOWN})
         else:
             if _provider_cfg(provider).get('needs_key') and not api_key:
                 return jsonify({'ok': False, 'error': 'no_api_key'}), 400
@@ -1678,9 +1681,8 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             if not gate.get('allowed'):
                 return jsonify({'ok': False, 'error': str(gate.get('reason') or 'pro_required'),
                                 'pro_required': True})
-            if not _FRACS_AI_KEY and not api_key:
-                return jsonify({'ok': False, 'error': 'Fracs AI пока не активен: '
-                                                      'вставьте API ключ в поле ключа.'})
+            if not _fracs_ai_ready():
+                return jsonify({'ok': False, 'error': _FRACS_DOWN})
         else:
             if _provider_cfg(provider).get('needs_key') and not api_key:
                 return jsonify({'ok': False, 'error': 'no_api_key'}), 400
