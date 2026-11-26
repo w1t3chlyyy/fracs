@@ -35,13 +35,13 @@ const SectionHead = ({ eyebrow, line1, line2, aside, children }: { eyebrow: stri
   <div className="mb-10 lg:mb-14 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
     <div>
       <Eyebrow>{eyebrow}</Eyebrow>
-      <h2 className="font-heading font-medium mt-5 text-[clamp(2.1rem,5vw,3.9rem)] leading-[1.06] tracking-[-0.02em] text-white">
+      <h2 className="font-heading font-medium mt-5 text-white">
         {line1}
         <br />
         <span className="text-[#F26522]">{line2}</span>
       </h2>
     </div>
-    {children ?? (aside && <p className="max-w-[26rem] text-[15px] sm:text-[17px] leading-relaxed text-[#8a8a8a]">{aside}</p>)}
+    {children ?? (aside && <p className="max-w-[26rem] text-[15px] leading-relaxed text-[#8a8a8a]">{aside}</p>)}
   </div>
 );
 
@@ -87,7 +87,7 @@ function Sources() {
         <SectionHead eyebrow="Источники" line1="Два источника клиентов" line2="в одном кабинете" aside="Пример выдачи — так результаты выглядят в кабинете до оплаты." />
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {SOURCES.map(({ icon: Icon, tag, badge, title, text, rows, cta, dark }) => (
-            <article key={tag} className="fx-card rounded-[32px] lg:rounded-[40px] p-6 sm:p-9 flex flex-col">
+            <article key={tag} className="fx-card min-w-0 rounded-[32px] lg:rounded-[40px] p-6 sm:p-9 flex flex-col">
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[#141414] px-4 py-2 text-[14px] text-[#d6d6d6]">
                   <Icon className="w-4 h-4 text-[#F26522]" />
@@ -95,14 +95,14 @@ function Sources() {
                 </span>
                 <span className="rounded-full bg-[#F26522]/12 px-3 py-1 text-[12px] text-[#F26522]">{badge}</span>
               </div>
-              <h3 className="font-heading font-medium mt-9 text-[clamp(1.5rem,2.6vw,2.2rem)] leading-tight tracking-[-0.01em] text-white">{title}</h3>
-              <p className="mt-3 text-[15px] leading-relaxed text-[#777]">{text}</p>
+              <h3 className="font-heading font-medium mt-9 text-white">{title}</h3>
+              <p className="mt-3 text-[15px] leading-relaxed text-[#8a8a8a]">{text}</p>
               <ul className="mt-8 space-y-3">
                 {rows.map((r) => (
                   <li key={r.title} className="flex items-center justify-between gap-4 rounded-[20px] bg-[#151515] px-5 py-4">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-white">{r.title}</p>
-                      <p className="mt-0.5 text-[13px] text-[#777]">{r.meta}</p>
+                      <p className="mt-0.5 text-[13px] text-[#8a8a8a]">{r.meta}</p>
                     </div>
                     <span aria-hidden="true" className="shrink-0 select-none text-[13px] text-[#9a9a9a] blur-[5px]">{r.hidden}</span>
                   </li>
@@ -159,7 +159,7 @@ function HowItWorks() {
                 style={{ flex: active ? 6.5 : 1 }}
                 className={`fx-panel relative min-w-0 overflow-hidden rounded-[28px] lg:rounded-[36px] border text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F26522] ${grad ? 'border-[#F26522]/50 fx-panel-hot' : 'border-white/9 bg-[#111]'}`}
               >
-                <span className={`absolute top-4 sm:top-5 z-10 rounded-full px-3 sm:px-4 py-1.5 text-[13px] sm:text-[14px] text-white whitespace-nowrap ${grad ? 'bg-black/35' : 'bg-black'} ${active ? 'left-4 sm:left-5' : 'left-1/2 -translate-x-1/2'}`}>
+                <span className={`absolute top-4 sm:top-5 z-10 rounded-full px-3 sm:px-4 py-1.5 text-[13px] text-white whitespace-nowrap ${grad ? 'bg-black/35' : 'bg-black'} ${active ? 'left-4 sm:left-5' : 'left-1/2 -translate-x-1/2'}`}>
                   {active ? `${s.n} · ${s.label}` : s.n}
                 </span>
                 {s.img && (
@@ -176,7 +176,7 @@ function HowItWorks() {
         </div>
 
         <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto] lg:items-end" aria-live="polite">
-          <p className="max-w-[44rem] text-[18px] sm:text-[22px] leading-[1.45] text-[#7d7d7d]">
+          <p className="max-w-[44rem] text-[15px] leading-relaxed text-[#8a8a8a]">
             <span className="text-white font-medium">{cur.lead}</span> {cur.text}
           </p>
           <div>
@@ -207,12 +207,12 @@ const STATS: [string, string][] = [
 
 function Stats() {
   return (
-    <section className="fx-section px-5 sm:px-8 lg:px-12 py-6 lg:py-10">
+    <section className="px-5 sm:px-8 lg:px-12 py-6 lg:py-10">
       <div className="max-w-[1320px] mx-auto grid grid-cols-2 lg:grid-cols-4 border-y border-white/8">
         {STATS.map(([big, small], i) => (
           <div key={big} className={`py-9 lg:py-12 px-5 sm:px-8 lg:px-10 border-white/8 ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t lg:border-t-0' : ''} ${i > 0 ? 'lg:border-l' : ''}`}>
-            <p className="fx-num font-heading font-normal text-[clamp(2rem,4vw,3.4rem)] leading-none text-white whitespace-nowrap">{big}</p>
-            <p className="mt-5 lg:mt-8 text-[13px] sm:text-[14px] text-[#7a7a7a]">{small}</p>
+            <p className="font-heading font-normal text-[clamp(2rem,4vw,3.4rem)] leading-none text-white whitespace-nowrap">{big}</p>
+            <p className="mt-5 lg:mt-8 text-[13px] text-[#8a8a8a]">{small}</p>
           </div>
         ))}
       </div>
@@ -238,7 +238,7 @@ function Slider({ label, value, shown, min, max, step, onChange }: { label: stri
     <div>
       <div className="flex items-baseline justify-between gap-4 mb-3">
         <label htmlFor={id} className="text-[15px] text-[#cfcfcf]">{label}</label>
-        <output htmlFor={id} className="font-heading text-[18px] font-semibold text-white tabular-nums">{shown}</output>
+        <output htmlFor={id} className="font-heading text-[15px] font-semibold text-white tabular-nums">{shown}</output>
       </div>
       <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="fx-range" style={{ ['--p' as string]: `${pct}%` }} />
     </div>
@@ -265,9 +265,9 @@ function Calculator() {
             <Slider label="Средний чек" value={check} shown={`${fmt(check)} ₽`} min={5000} max={500000} step={5000} onChange={setCheck} />
           </div>
           <div className="p-6 sm:p-10 border-t lg:border-t-0 lg:border-l border-white/8 bg-[radial-gradient(90%_70%_at_0%_0%,rgba(242,101,34,0.10),transparent_70%)] flex flex-col">
-            <p className="text-[14px] text-[#8a8a8a]">В месяц при таких цифрах</p>
-            <p className="fx-num font-heading font-normal mt-5 text-[clamp(2.6rem,5.4vw,4.4rem)] leading-none tracking-[-0.02em] text-white tabular-nums" aria-live="polite">{fmt(deals * check)} ₽</p>
-            <p className="mt-4 text-[20px] text-[#d6d6d6]">{dealsRound < 1 ? 'меньше одной сделки' : `≈ ${dealsRound} ${dealsWord(dealsRound)}`}</p>
+            <p className="text-[13px] text-[#8a8a8a]">В месяц при таких цифрах</p>
+            <p className="fx-num font-heading font-normal mt-5 text-white tabular-nums" aria-live="polite">{fmt(deals * check)} ₽</p>
+            <p className="mt-4 text-[15px] text-[#d6d6d6]">{dealsRound < 1 ? 'меньше одной сделки' : `≈ ${dealsRound} ${dealsWord(dealsRound)}`}</p>
             <dl className="mt-8 space-y-3">
               {[['Контакты', fmt(contacts)], ['Ответили', fmt(answered)], ['Купили', fmt(deals)]].map(([k, v], i) => (
                 <div key={k} className={`flex items-center justify-between rounded-2xl px-5 py-3.5 text-[15px] ${i === 2 ? 'bg-[#1c1c1c]' : 'bg-[#161616]'}`}>
@@ -330,13 +330,13 @@ function Pricing() {
             const hot = p.id === 'pro';
             const sub = PLAN_SUB[p.id] ?? p.badge ?? '';
             return (
-              <article key={p.id} className={`relative rounded-[32px] lg:rounded-[40px] p-7 sm:p-9 flex flex-col ${hot ? 'fx-card-hot' : 'fx-card'}`}>
+              <article key={p.id} className={`relative min-w-0 rounded-[32px] lg:rounded-[40px] p-7 sm:p-9 flex flex-col ${hot ? 'fx-card-hot' : 'fx-card'}`}>
                 {hot && <span className="absolute top-7 right-7 rounded-full bg-[#F26522]/15 px-3 py-1 text-[12px] text-[#F26522]">Популярный</span>}
-                <h3 className="font-heading font-medium text-[26px] text-white">{p.title}</h3>
-                {sub && <p className="mt-1.5 text-[14px] text-[#777]">{sub}</p>}
-                <p className="fx-num mt-10 font-heading font-normal text-white text-[clamp(2.4rem,4.2vw,3.6rem)] leading-none tabular-nums">
+                <h3 className="font-heading font-medium text-white">{p.title}</h3>
+                {sub && <p className="mt-1.5 text-[13px] text-[#8a8a8a]">{sub}</p>}
+                <p className="fx-num mt-10 font-heading font-normal text-white tabular-nums">
                   {p.priceRub.toLocaleString('ru-RU')} ₽
-                  <span className="ml-2 text-[15px] text-[#777] font-normal">/ {p.days} дн.</span>
+                  <span className="ml-2 font-sans text-[15px] text-[#8a8a8a] font-normal">/ {p.days} дн.</span>
                 </p>
                 <ul className="mt-9 space-y-4 text-[15px]">
                   {planRows(plans, i).map((r) => (
@@ -350,9 +350,9 @@ function Pricing() {
               </article>
             );
           })}
-          {state === 'loading' && <p className="text-[#777] text-[14px] md:col-span-3">Тарифы загружаются…</p>}
+          {state === 'loading' && <p className="text-[#8a8a8a] text-[15px] md:col-span-3">Тарифы загружаются…</p>}
           {state === 'error' && (
-            <p className="text-[#999] text-[14px] md:col-span-3">
+            <p className="text-[#8a8a8a] text-[15px] md:col-span-3">
               Не удалось загрузить тарифы. Актуальные цены — <a href="/app" className="text-[#F26522] underline underline-offset-4">в личном кабинете</a>.
             </p>
           )}
@@ -379,12 +379,12 @@ function Faq() {
       <div className="max-w-[1320px] mx-auto grid grid-cols-1 gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
         <div>
           <Eyebrow>Вопросы</Eyebrow>
-          <h2 className="font-heading font-medium mt-5 text-[clamp(2.1rem,5vw,3.9rem)] leading-[1.06] tracking-[-0.02em] text-white">
+          <h2 className="font-heading font-medium mt-5 text-white">
             Частые
             <br />
             <span className="text-[#F26522]">вопросы</span>
           </h2>
-          <p className="mt-6 max-w-[26rem] text-[15px] sm:text-[17px] leading-relaxed text-[#8a8a8a]">Не нашли ответ? Напишите нам в Telegram — отвечаем в течение дня.</p>
+          <p className="mt-6 max-w-[26rem] text-[15px] leading-relaxed text-[#8a8a8a]">Не нашли ответ? Напишите нам в Telegram — отвечаем в течение дня.</p>
           <div className="mt-8">
             <Cta dark href="https://t.me/HelpManage" external>Написать в Telegram</Cta>
           </div>
@@ -396,13 +396,13 @@ function Faq() {
               <div key={q} className="border-b border-white/8 first:lg:border-t-0">
                 <h3>
                   <button type="button" id={`faq-q-${i}`} aria-expanded={isOpen} aria-controls={`faq-a-${i}`} onClick={() => setOpen(isOpen ? null : i)} className="w-full py-6 sm:py-7 flex items-center justify-between gap-6 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F26522]">
-                    <span className="font-heading font-medium text-[18px] sm:text-[22px] text-white">{q}</span>
+                    <span className="font-heading font-medium text-white">{q}</span>
                     {isOpen ? <Minus className="w-5 h-5 shrink-0 text-[#F26522]" aria-hidden="true" /> : <Plus className="w-5 h-5 shrink-0 text-[#F26522]" aria-hidden="true" />}
                   </button>
                 </h3>
                 <div id={`faq-a-${i}`} role="region" aria-labelledby={`faq-q-${i}`} className={`grid transition-[grid-template-rows] duration-300 ${isOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
                   <div className="overflow-hidden">
-                    <p className="pb-7 max-w-[40rem] text-[15px] sm:text-[17px] leading-relaxed text-[#8a8a8a]">{a}</p>
+                    <p className="pb-7 max-w-[40rem] text-[15px] leading-relaxed text-[#8a8a8a]">{a}</p>
                   </div>
                 </div>
               </div>
@@ -420,13 +420,13 @@ function Closing() {
   return (
     <section className="fx-section px-5 sm:px-8 lg:px-12 py-10 lg:py-0">
       <div className="w-full max-w-[1320px] mx-auto fx-final rounded-[32px] lg:rounded-[40px] p-8 sm:p-12 lg:p-16 grid grid-cols-1 gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-end">
-        <h2 className="font-heading font-medium text-[clamp(2.4rem,5.6vw,4.6rem)] leading-[1.05] tracking-[-0.02em] text-white">
+        <h2 className="font-heading font-medium text-white">
           Клиенты уже ищут&nbsp;вас.
           <br />
           Осталось их найти.
         </h2>
         <div>
-          <p className="max-w-[28rem] text-[16px] sm:text-[18px] leading-relaxed text-[#f1d9c9]">Первый поиск — бесплатно: увидите количество и примеры контактов ещё до оплаты.</p>
+          <p className="max-w-[28rem] text-[15px] leading-relaxed text-[#f1d9c9]">Первый поиск — бесплатно: увидите количество и примеры контактов ещё до оплаты.</p>
           <div className="mt-7">
             <Cta dark>Попробовать поиск</Cta>
           </div>
@@ -440,7 +440,7 @@ function Closing() {
 function Footer() {
   const link = 'text-[#7a7a7a] hover:text-white transition-colors';
   return (
-    <footer className="w-full max-w-[1320px] mx-auto mt-8 lg:mt-10 border-t border-white/8 pt-8 text-[13px] sm:text-[14px]">
+    <footer className="w-full max-w-[1320px] mx-auto mt-8 lg:mt-10 border-t border-white/8 pt-8 text-[13px]">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-[#7a7a7a]">© 2026 Fracs</p>
         <nav aria-label="Документы" className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -461,7 +461,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const links = [['Источники', '#sources'], ['Как это работает', '#how'], ['Расчёт', '#calc'], ['Тарифы', '#pricing'], ['Вопросы', '#faq']];
   return (
-    <div className="fx-bg min-h-screen text-white font-sans antialiased selection:bg-[#F26522] selection:text-white">
+    <div className="fx-landing fx-bg min-h-screen text-white font-sans antialiased selection:bg-[#F26522] selection:text-white">
       <section className="fx-section fx-hero relative">
         <header className="absolute top-4 sm:top-6 inset-x-0 z-30 w-full max-w-[1440px] mx-auto px-4 sm:px-6">
           <nav className="ember-glass rounded-full p-[4px] flex items-center justify-between">

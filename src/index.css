@@ -229,6 +229,26 @@ html { scroll-behavior: smooth; }
 }
 .fx-range:focus-visible { outline: 2px solid #F26522; outline-offset: 6px; border-radius: 999px; }
 
+/* ── Единая типографика на всём лендинге: одна шкала заголовков,
+   цифр и текста во всех блоках и на всех ширинах ── */
+.fx-landing h2 {
+  font-size: clamp(1.9rem, 3.6vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+.fx-landing h3 {
+  font-size: clamp(1.35rem, 2.1vw, 1.9rem);
+  line-height: 1.25;
+}
+.fx-landing .fx-num {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 1;
+}
+/* Хиро: заголовок остаётся акцентным, остальной текст — в общем шрифте */
+.fx-landing .hfh-root { font-family: 'Montserrat', sans-serif; }
+.fx-landing .hfh-desc { font-size: 15px; }
+.fx-landing .hfh-go { font-size: 14px; }
+
 /* ── Лендинг (ПК): единый вертикальный ритм. Секции идут естественной
    высотой с одним и тем же отступом сверху и снизу — заголовки всех блоков
    начинаются на одинаковой глубине, интервалы между блоками ровные,
@@ -238,11 +258,6 @@ html { scroll-behavior: smooth; }
   .fx-section {
     padding-block: clamp(64px, 8vh, 104px);
   }
-
-  /* Единая типографика: заголовки и цифры — одна шкала во всех блоках. */
-  .fx-section h2 { font-size: clamp(1.9rem, 3.6vw, 3.2rem); }
-  .fx-section h3 { font-size: clamp(1.35rem, 2.1vw, 1.9rem); }
-  .fx-section .fx-num { font-size: clamp(2rem, 3.4vw, 3.2rem); }
 
   /* Единая шкала вертикальных отступов (фиксированные значения — ритм
      не зависит от высоты окна). */
@@ -279,4 +294,44 @@ html { scroll-behavior: smooth; }
   .fx-section .hfh-desc { margin-top: clamp(8px, 2vh, 22px); }
   .fx-section .hfh-form { margin-top: clamp(14px, 3vh, 32px); }
   .fx-section .hfh-proof { margin-top: clamp(10px, 2vh, 22px); }
+}
+
+/* Невысокие экраны (ноутбуки 768px): тот же ритм, но компактнее,
+   чтобы блок целиком помещался в окно без обрезания. */
+@media (min-width: 1024px) and (max-height: 880px) {
+  .fx-section { padding-block: 40px; }
+
+  .fx-section .mb-10, .fx-section .lg\:mb-14 { margin-bottom: 32px; }
+  .fx-section .mt-3 { margin-top: 8px; }
+  .fx-section .mt-5 { margin-top: 12px; }
+  .fx-section .mt-6 { margin-top: 16px; }
+  .fx-section .mt-7 { margin-top: 18px; }
+  .fx-section .mt-8 { margin-top: 20px; }
+  .fx-section .mt-9 { margin-top: 24px; }
+  .fx-section .mt-10 { margin-top: 26px; }
+  .fx-section .pb-7 { padding-bottom: 18px; }
+  .fx-section .py-4 { padding-block: 12px; }
+  .fx-section .py-3\.5 { padding-block: 10px; }
+  .fx-section .space-y-3 > * + * { margin-top: 8px; }
+  .fx-section .space-y-4 > * + * { margin-top: 10px; }
+  .fx-section .space-y-9 > * + * { margin-top: 22px; }
+
+  .fx-section .fx-card, .fx-section .fx-card-hot { padding-block: 24px; }
+  .fx-section .fx-final { padding-block: 40px; }
+  .fx-section .fx-panels { height: clamp(280px, 40vh, 360px); }
+}
+
+/* Совсем невысокие окна (720px): минимальный, но ровный ритм. */
+@media (min-width: 1024px) and (max-height: 740px) {
+  .fx-section { padding-block: 32px; }
+  .fx-section .mb-10, .fx-section .lg\:mb-14 { margin-bottom: 28px; }
+  .fx-section .mt-8 { margin-top: 16px; }
+  .fx-section .mt-9 { margin-top: 20px; }
+  .fx-section .mt-10 { margin-top: 22px; }
+  .fx-section .py-4 { padding-block: 10px; }
+  .fx-section .py-3\.5 { padding-block: 8px; }
+  .fx-section .space-y-9 > * + * { margin-top: 18px; }
+  .fx-section .fx-card, .fx-section .fx-card-hot { padding-block: 20px; }
+  .fx-section .fx-final { padding-block: 32px; }
+  .fx-section .fx-panels { height: clamp(240px, 36vh, 300px); }
 }
