@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { config } from './config.ts';
+import { config, TOKEN_PACKS } from './config.ts';
 import {
   claimTrial, countSearchesSince, getActiveFeatures, getPlans, getSearch, getTraining, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
   type SearchRecord, type User,
@@ -56,15 +56,16 @@ api.get('/config', h(async (_req, res) => {
     devLogin: config.devLogin,
     payment: config.paymentProvider,
     plans: await getPlans(),
+    tokenPacks: TOKEN_PACKS,
     demo: { maps: false, tg: false },
     adminUsername: config.adminUsername || undefined,
   });
 }));
 
-/** Публичный список тарифов — для десктопной программы (модалка подписки дёргает
- *  локальный Flask /api/plans, который проксирует сюда) и для любого внешнего клиента. */
+/** Публичный список тарифов и пакетов токенов — для десктопной программы (модалка подписки
+ *  дёргает локальный Flask /api/plans, который проксирует сюда) и для любого внешнего клиента. */
 api.get('/plans', h(async (_req, res) => {
-  res.json({ ok: true, plans: await getPlans() });
+  res.json({ ok: true, plans: await getPlans(), tokenPacks: TOKEN_PACKS });
 }));
 
 api.get('/cities', (req, res) => {
@@ -466,17 +467,20 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
   res.send(csv);
 }));
 
-/** Заявка на подписку: уведомляем админа в Telegram, клиент затем сам открывает чат с ним. */
+/** Заявка на подписку или пакет токенов: уведомляем админа в Telegram, клиент затем сам открывает чат с ним. */
 api.post('/payments/request', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`payreq:${req.user!.id}`, 5, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
-  const plans = await getPlans();
-  const plan = plans.find((p) => p.id === String(req.body?.planId || ''));
-  if (!plan) return void res.status(400).json({ error: 'bad_plan', message: 'Неизвестный тариф' });
+  const pack = TOKEN_PACKS.find((t) => t.id === String(req.body?.planId || ''));
+  const plans = pack ? [] : await getPlans();
+  const plan = pack ? undefined : plans.find((p) => p.id === String(req.body?.planId || ''));
+  if (!pack && !plan) return void res.status(400).json({ error: 'bad_plan', message: 'Неизвестный тариф' });
   const u = req.user!;
   if (config.adminTgId > 0) {
     await notify(
       config.adminTgId,
-      `🧾 Заявка на подписку\n${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})\nТариф: ${plan.title}, ${plan.priceRub} ₽\n\nВыдать: /grant ${u.tgId} ${plan.days}`,
+      pack
+        ? `🧾 Заявка на токены Fracs AI\n${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})\nПакет: ${pack.title}, ${pack.priceRub} ₽\n\nВыдать: /grant-tokens ${u.tgId} ${pack.tokens}`
+        : `🧾 Заявка на подписку\n${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})\nТариф: ${plan!.title}, ${plan!.priceRub} ₽\n\nВыдать: /grant ${u.tgId} ${plan!.days}`,
     );
   }
   res.json({ ok: true });

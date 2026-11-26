@@ -1,8 +1,11 @@
 export interface Plan { id: string; title: string; days: number; priceRub: number; badge?: string; description?: string; features?: string[] }
+export interface TokenPack { id: string; title: string; tokens: number; priceRub: number; badge?: string }
 export interface AppConfig {
   devLogin: boolean;
   payment: 'mock' | 'yookassa';
   plans: Plan[];
+  /** Пакеты токенов Fracs AI: разовая покупка поверх подписки Ultra, баланс не истекает. */
+  tokenPacks?: TokenPack[];
   demo: { maps: boolean; tg: boolean };
   /** Если задан — оплата идёт через чат с админом в Telegram (t.me/<adminUsername>) */
   adminUsername?: string;

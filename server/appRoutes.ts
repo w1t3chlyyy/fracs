@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { config } from './config.ts';
-import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, aiUsageToday, aiUsageAdd, demoCreate, demoGet, demoCounts } from './db.ts';
+import { config, loadTokenPacks } from './config.ts';
+import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, aiUsageToday, aiUsageAdd, aiTokensGet, aiTokensSpend, demoCreate, demoGet, demoCounts } from './db.ts';
 import { requireAuth } from './auth.ts';
 import { searchTg } from './providers.ts';
 import { cleanText } from './util.ts';
 import { checkChannelSubs } from './bot.ts';
+import { DESIGN_VERSION, DESIGN_LIBRARIES, FRACS_DESIGN_SYSTEM } from './aiDesign.ts';
 
 /**
  * Программа Fracs Parser: ключ лицензии, проверка подписки и выдача файлов только платным пользователям.
@@ -216,12 +217,15 @@ const AI_LIMITS = {
   perMinute: envNum('AI_USER_PER_MIN', 4),          // всплеск: не больше N запросов в минуту
   perHour: envNum('AI_USER_PER_HOUR', 12),          // …в час
   perDay: envNum('AI_USER_PER_DAY', 30),            // …в сутки (генерация + правки + фразы)
+  dailyTokens: envNum('AI_DAILY_TOKENS', 150_000),  // включённая дневная квота токенов (~7 генераций сайта)
   userDailyUsd: envNum('AI_USER_DAILY_USD', 1.5),   // потолок расходов на одного пользователя в сутки
   globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 40), // аварийный предохранитель: общий бюджет в сутки
   maxTokens: envNum('AI_MAX_TOKENS', 12000),        // потолок ответа модели
   maxInputChars: envNum('AI_MAX_INPUT_CHARS', 40000),
   maxImages: 3,
 };
+// Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
+const DESIGN_MARKER = 'DESIGN_SYSTEM_VERSION:';
 // Только недорогие модели: иначе можно указать в запросе дорогую модель и сжечь баланс.
 const AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS ||
   'openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct')
@@ -287,6 +291,18 @@ appRouter.post('/ai', h(async (req, res) => {
   if ('err' in clean) return void res.status(clean.err[0]).json(clean.err[1]);
   const { body, inChars } = clean;
 
+  // 0) Дизайн-система против «нейрослопа»: подмешиваем её в system сервером, чтобы
+  //    любой запрос Fracs AI шёл с актуальным промтом даже на старой версии программы.
+  //    Если программа сама прислала system с маркером DESIGN_SYSTEM_VERSION: — не дублируем.
+  let designChars = 0;
+  const hasDesign = body.messages.some((m: any) => m.role === 'system' && typeof m.content === 'string' && m.content.includes(DESIGN_MARKER));
+  if (!hasDesign) {
+    const sys = `DESIGN_SYSTEM_VERSION: ${DESIGN_VERSION}\n` + FRACS_DESIGN_SYSTEM;
+    body.messages.unshift({ role: 'system', content: sys });
+    designChars = sys.length;
+  }
+  const totalInChars = inChars + designChars;
+
   // 1) частота: минута / час / сутки (failClosed — при сбое счётчика не пускаем)
   if (!(await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 60_000, true))) {
     return void res.status(429).json({ ok: false, error: 'quota_minute', message: 'Слишком часто. Подождите минуту и повторите.' });
@@ -298,14 +314,33 @@ appRouter.post('/ai', h(async (req, res) => {
     return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит Fracs AI на сутки исчерпан (${AI_LIMITS.perDay} запросов). Он обновится завтра. С собственным API-ключом лимитов нет.` });
   }
 
-  // 2) бюджет в долларах: по пользователю и общий. Худший случай этого запроса учитываем заранее.
-  const [pin, pout] = priceOf(body.model);
-  const worstUsd = (inChars / 3.5) * pin / 1e6 + body.max_tokens * pout / 1e6;
+  // 2) лимит по токенам: включённая дневная квота + купленные пакеты (пакеты не истекают).
+  //    Худший случай этого запроса считаем заранее: вход (≈3.5 символа на токен) + потолок ответа.
+  const worstTokens = Math.round(totalInChars / 3.5) + body.max_tokens;
   let usage;
-  try { usage = await aiUsageToday(uid); } catch (e) {
-    console.error('[ai] usage read failed — запрос отклонён (предохранитель):', e);
+  let balance = 0;
+  try {
+    usage = await aiUsageToday(uid);
+    balance = await aiTokensGet(uid);
+  } catch (e) {
+    console.error('[ai] usage/tokens read failed — запрос отклонён (предохранитель):', e);
     return void res.status(503).json({ ok: false, error: 'budget_unavailable', message: 'Fracs AI временно недоступен. Попробуйте позже или используйте свой API-ключ.' });
   }
+  const tokensAllowed = AI_LIMITS.dailyTokens + balance;
+  if (usage.userTokens + worstTokens > tokensAllowed) {
+    const left = Math.max(0, tokensAllowed - usage.userTokens);
+    return void res.status(429).json({
+      ok: false,
+      error: 'quota_tokens',
+      message: `Дневной лимит токенов Fracs AI исчерпан (включено ${AI_LIMITS.dailyTokens.toLocaleString('ru-RU')}/сутки). Купите дополнительные токены в кабинете — они не истекают: ${config.appUrl}/app`,
+      tokensLeft: left,
+      buyUrl: `${config.appUrl}/app`,
+    });
+  }
+
+  // 3) бюджет в долларах: по пользователю и общий (предохранители от дорогих моделей).
+  const [pin, pout] = priceOf(body.model);
+  const worstUsd = (totalInChars / 3.5) * pin / 1e6 + body.max_tokens * pout / 1e6;
   if (usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
     return void res.status(503).json({ ok: false, error: 'daily_budget', message: 'Общий лимит Fracs AI на сегодня исчерпан — он обновится завтра. Со своим API-ключом можно работать без ограничений.' });
   }
@@ -327,8 +362,11 @@ appRouter.post('/ai', h(async (req, res) => {
         const u = JSON.parse(text)?.usage || {};
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
         const cost = Number(u.cost) > 0 ? Number(u.cost)
-          : ((Number(u.prompt_tokens) || inChars / 3.5) * pin + (Number(u.completion_tokens) || body.max_tokens) * pout) / 1e6;
+          : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || body.max_tokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
+        // Списание с купленного баланса: только то, что сверх включённой дневной квоты.
+        const over = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
+        if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error('[ai] tokens spend failed:', e));
       } catch (e) { console.error('[ai] usage write failed:', e); }
     }
     res.status(upstream.status).type('application/json').send(text);
@@ -363,6 +401,50 @@ appRouter.get('/ai/models', h(async (req, res) => {
   } catch (e: any) {
     res.status(502).json({ ok: false, error: 'upstream' });
   }
+}));
+
+/** Остаток токенов Fracs AI: включённая дневная квота + купленный баланс + пакеты к покупке.
+ *  Программа и кабинет показывают это в интерфейсе AI-агента. */
+appRouter.get('/ai/usage', h(async (req, res) => {
+  if (!(await rateLimit(`app-ai-usage:${req.ip}`, 120, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  }
+  const gate = await fracsAiGate(req);
+  if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  try {
+    const [usage, balance] = await Promise.all([aiUsageToday(String(gate.user.id)), aiTokensGet(String(gate.user.id))]);
+    const allowed = AI_LIMITS.dailyTokens + balance;
+    res.json({
+      ok: true,
+      dailyIncluded: AI_LIMITS.dailyTokens,
+      usedToday: usage.userTokens,
+      requestsToday: usage.userRequests,
+      balance,
+      tokensLeft: Math.max(0, allowed - usage.userTokens),
+      packs: loadTokenPacks(),
+    });
+  } catch (e) {
+    console.error('[ai] usage endpoint failed:', e);
+    res.status(503).json({ ok: false, error: 'usage_unavailable' });
+  }
+}));
+
+/** Дизайн-пакет: system-промт против «нейрослопа» + каталог MIT-библиотек.
+ *  Программа может забрать его заранее (GET, Authorization: Bearer <license_key>)
+ *  и положить в system-сообщение — тогда сервер не будет дублировать промт
+ *  (маркер DESIGN_SYSTEM_VERSION: в первой строке). Обновляется без пересборки приложения. */
+appRouter.get('/ai/design', h(async (req, res) => {
+  if (!(await rateLimit(`app-ai-design:${req.ip}`, 60, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  }
+  const gate = await fracsAiGate(req);
+  if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  res.json({
+    ok: true,
+    version: DESIGN_VERSION,
+    system: `DESIGN_SYSTEM_VERSION: ${DESIGN_VERSION}\n` + FRACS_DESIGN_SYSTEM,
+    libraries: DESIGN_LIBRARIES,
+  });
 }));
 
 

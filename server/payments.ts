@@ -1,7 +1,7 @@
-import { config } from './config.ts';
+import { config, TOKEN_PACKS } from './config.ts';
 import {
   cancelPayment, claimPayment, extendSubscription, findPaymentByProviderId, getPlans, getUser, insertPayment,
-  newId, revertPayment, setPaymentProviderId, type PaymentRecord, type User,
+  newId, aiTokensAdd, revertPayment, setPaymentProviderId, type PaymentRecord, type User,
 } from './db.ts';
 import { notify } from './bot.ts';
 
@@ -10,6 +10,20 @@ const ykAuth = () => 'Basic ' + Buffer.from(`${config.yookassaShopId}:${config.y
 
 async function activate(p: PaymentRecord) {
   const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
+  // Пакет токенов Fracs AI — разовая покупка, баланс не истекает вместе с подпиской.
+  const pack = TOKEN_PACKS.find((t) => t.id === p.planId);
+  if (pack) {
+    if (!user) return;
+    if (!(await claimPayment(p.id))) return;
+    try {
+      await aiTokensAdd(user.id, pack.tokens);
+      await notify(user.tgId, `⚡️ Токены Fracs AI зачислены: +${pack.tokens.toLocaleString('ru-RU')}. Баланс не истекает — смотрите остаток в кабинете: ${config.appUrl}/app`);
+    } catch (e) {
+      await revertPayment(p.id); // зачисление не удалось — вернём в pending, чтобы повторный вебхук мог добить
+      throw e;
+    }
+    return;
+  }
   const plan = plans.find((x) => x.id === p.planId);
   if (!user || !plan) return;
   // Идемпотентность: claim атомарно переводит pending → succeeded, повторный вебхук получит null и ничего не продлит.
@@ -24,12 +38,16 @@ async function activate(p: PaymentRecord) {
 }
 
 export async function createPayment(user: User, planId: string): Promise<{ confirmationUrl?: string; activated?: boolean }> {
-  const plans = await getPlans();
-  const plan = plans.find((p) => p.id === planId);
-  if (!plan) throw Object.assign(new Error('Неизвестный тариф'), { status: 400 });
+  const pack = TOKEN_PACKS.find((t) => t.id === planId);
+  const plans = pack ? [] : await getPlans();
+  const plan = pack ? undefined : plans.find((p) => p.id === planId);
+  if (!pack && !plan) throw Object.assign(new Error('Неизвестный тариф'), { status: 400 });
+
+  const amountRub = pack ? pack.priceRub : plan!.priceRub;
+  const title = pack ? `Токены Fracs AI: ${pack.title}` : `Подписка Fracs: ${plan!.title}`;
 
   const rec: PaymentRecord = {
-    id: newId(), userId: user.id, planId: plan.id, amountRub: plan.priceRub, status: 'pending',
+    id: newId(), userId: user.id, planId: (pack ?? plan!).id, amountRub, status: 'pending',
     provider: config.paymentProvider, providerId: null, createdAt: new Date().toISOString(), paidAt: null,
   };
   await insertPayment(rec);
@@ -40,10 +58,10 @@ export async function createPayment(user: User, planId: string): Promise<{ confi
       method: 'POST',
       headers: { Authorization: ykAuth(), 'Idempotence-Key': rec.id, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        amount: { value: plan.priceRub.toFixed(2), currency: 'RUB' },
+        amount: { value: amountRub.toFixed(2), currency: 'RUB' },
         capture: true,
         confirmation: { type: 'redirect', return_url: `${config.appUrl}/app?paid=1` },
-        description: `Подписка Fracs: ${plan.title}`,
+        description: title,
         metadata: { paymentId: rec.id },
       }),
       signal: AbortSignal.timeout(15000),
@@ -55,7 +73,7 @@ export async function createPayment(user: User, planId: string): Promise<{ confi
   }
 
   if (!config.allowMockPayments) throw Object.assign(new Error('Оплата не настроена'), { status: 503 });
-  await activate(rec); // тестовый режим: подписка выдаётся сразу
+  await activate(rec); // тестовый режим: выдаётся сразу
   return { activated: true };
 }
 

@@ -535,28 +535,33 @@ export async function rateLimit(key: string, max: number, windowMs: number, fail
 
 /* ── учёт расходов Fracs AI (таблица ai_usage, supabase/ai_usage.sql) ── */
 
-export interface AiUsageDay { userRequests: number; userCostUsd: number; totalRequests: number; totalCostUsd: number }
+export interface AiUsageDay { userRequests: number; userCostUsd: number; userTokens: number; totalRequests: number; totalCostUsd: number; totalTokens: number }
 const memAiUsage = new Map<string, { requests: number; tokens: number; cost: number }>(); // ключ `${день}|${userId}`
 const utcDay = () => new Date().toISOString().slice(0, 10);
 
 /** Расходы за текущие сутки (UTC): по пользователю и по всем. Бросает ошибку при сбое — вызывающий закрывает доступ. */
 export async function aiUsageToday(userId: string): Promise<AiUsageDay> {
   const day = utcDay();
-  const out: AiUsageDay = { userRequests: 0, userCostUsd: 0, totalRequests: 0, totalCostUsd: 0 };
+  const out: AiUsageDay = { userRequests: 0, userCostUsd: 0, userTokens: 0, totalRequests: 0, totalCostUsd: 0, totalTokens: 0 };
   if (useSupabase) {
-    const r = await sb().from('ai_usage').select('user_id,requests,cost_usd').eq('day', day).limit(20000);
+    const r = await sb().from('ai_usage').select('user_id,requests,tokens,cost_usd').eq('day', day).limit(20000);
     if (r.error) throw new Error(`[db] aiUsageToday: ${r.error.message}`);
     for (const row of r.data ?? []) {
       out.totalRequests += Number(row.requests) || 0;
       out.totalCostUsd += Number(row.cost_usd) || 0;
-      if (row.user_id === userId) { out.userRequests += Number(row.requests) || 0; out.userCostUsd += Number(row.cost_usd) || 0; }
+      out.totalTokens += Number(row.tokens) || 0;
+      if (row.user_id === userId) {
+        out.userRequests += Number(row.requests) || 0;
+        out.userCostUsd += Number(row.cost_usd) || 0;
+        out.userTokens += Number(row.tokens) || 0;
+      }
     }
     return out;
   }
   for (const [k, v] of memAiUsage) {
     if (!k.startsWith(day + '|')) continue;
-    out.totalRequests += v.requests; out.totalCostUsd += v.cost;
-    if (k === `${day}|${userId}`) { out.userRequests += v.requests; out.userCostUsd += v.cost; }
+    out.totalRequests += v.requests; out.totalCostUsd += v.cost; out.totalTokens += v.tokens;
+    if (k === `${day}|${userId}`) { out.userRequests += v.requests; out.userCostUsd += v.cost; out.userTokens += v.tokens; }
   }
   return out;
 }
@@ -570,6 +575,45 @@ export async function aiUsageAdd(userId: string, tokens: number, costUsd: number
   const k = `${utcDay()}|${userId}`;
   const v = memAiUsage.get(k) ?? { requests: 0, tokens: 0, cost: 0 };
   memAiUsage.set(k, { requests: v.requests + 1, tokens: v.tokens + tokens, cost: v.cost + costUsd });
+}
+
+/* ── баланс токенов Fracs AI (таблица ai_tokens, supabase/ai_tokens.sql) ──
+   Купленные пакеты — разовая покупка поверх подписки, не истекают с подпиской.
+   Расход списывается только в объёме, превышающем дневную включённую квоту. */
+
+const memAiTokens = new Map<string, number>();
+
+/** Остаток купленных токенов пользователя. Бросает ошибку при сбое — вызывающий закрывает доступ. */
+export async function aiTokensGet(userId: string): Promise<number> {
+  if (useSupabase) {
+    const r = await sb().from('ai_tokens').select('balance').eq('user_id', userId).maybeSingle();
+    if (r.error) throw new Error(`[db] aiTokensGet: ${r.error.message}`);
+    return Math.max(0, Math.round(Number(r.data?.balance) || 0));
+  }
+  return Math.max(0, Math.round(memAiTokens.get(userId) || 0));
+}
+
+export async function aiTokensAdd(userId: string, tokens: number): Promise<void> {
+  const n = Math.round(tokens);
+  if (n <= 0) return;
+  if (useSupabase) {
+    const r = await sb().rpc('ai_tokens_add', { p_user: userId, p_tokens: n });
+    if (r.error) throw new Error(`[db] aiTokensAdd: ${r.error.message}`);
+    return;
+  }
+  memAiTokens.set(userId, (memAiTokens.get(userId) || 0) + n);
+}
+
+/** Списать токены (не уходит в минус). */
+export async function aiTokensSpend(userId: string, tokens: number): Promise<void> {
+  const n = Math.round(tokens);
+  if (n <= 0) return;
+  if (useSupabase) {
+    const r = await sb().rpc('ai_tokens_spend', { p_user: userId, p_tokens: n });
+    if (r.error) throw new Error(`[db] aiTokensSpend: ${r.error.message}`);
+    return;
+  }
+  memAiTokens.set(userId, Math.max(0, (memAiTokens.get(userId) || 0) - n));
 }
 
 /* ── демо-страницы (видеообзор по QR), таблица demos — supabase/demos.sql ── */

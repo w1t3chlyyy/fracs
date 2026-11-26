@@ -113,5 +113,32 @@ export const PLANS: Plan[] = [
   },
 ];
 
+/** Пакеты токенов Fracs AI — разовая покупка поверх подписки Ultra (не истекают вместе с подпиской).
+ *  Цены ориентированы на себестоимость OpenRouter (~$0.15/$0.6 за 1M вх/исх токенов у gpt-4o-mini:
+ *  генерация сайта ≈ 30k вх + 12k исх ≈ $0.012), наценка умеренная. Меняются без кода: env AI_TOKEN_PACKS
+ *  (JSON-массив) или таблица app_settings → key 'token_packs'. */
+export interface TokenPack { id: string; title: string; tokens: number; priceRub: number; badge?: string }
+
+export const TOKEN_PACKS: TokenPack[] = [
+  { id: 'tokens_100k', title: '100 000 токенов', tokens: 100_000, priceRub: 149, badge: '≈ 3–4 генерации сайта' },
+  { id: 'tokens_500k', title: '500 000 токенов', tokens: 500_000, priceRub: 590, badge: 'Выгоднее: ≈ 15–20 генераций' },
+  { id: 'tokens_1m', title: '1 000 000 токенов', tokens: 1_000_000, priceRub: 990, badge: 'Максимум: ≈ 30–40 генераций' },
+];
+
+/** Загружает пакеты из env AI_TOKEN_PACKS / app_settings, если заданы (иначе — дефолт выше). */
+export function loadTokenPacks(fromDb?: unknown): TokenPack[] {
+  try {
+    if (Array.isArray(fromDb) && fromDb.length) {
+      return (fromDb as TokenPack[]).filter((p) => p && typeof p.id === 'string' && p.tokens > 0 && p.priceRub > 0);
+    }
+    const raw = process.env.AI_TOKEN_PACKS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed.filter((p) => p && typeof p.id === 'string' && p.tokens > 0 && p.priceRub > 0);
+    }
+  } catch { /* некорректный конфиг — используем дефолт */ }
+  return TOKEN_PACKS;
+}
+
 /** Все известные коды возможностей (админу выдаём весь список). */
 export const ALL_FEATURES = Array.from(new Set(PLANS.flatMap((p) => p.features ?? [])));

@@ -18,9 +18,12 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
     try {
       // Оплата через админа: уведомляем его в боте и открываем чат с готовым текстом
       if (config.adminUsername) {
+        const pack = config.tokenPacks?.find((p) => p.id === planId);
         const plan = config.plans.find((p) => p.id === planId)!;
         await api.requestPlan(planId).catch(() => {});
-        const text = `Здравствуйте! Хочу оформить подписку Fracs: ${plan.title} (${plan.priceRub.toLocaleString('ru-RU')} ₽).`;
+        const text = pack
+          ? `Здравствуйте! Хочу купить токены Fracs AI: ${pack.title} (${pack.priceRub.toLocaleString('ru-RU')} ₽).`
+          : `Здравствуйте! Хочу оформить подписку Fracs: ${plan.title} (${plan.priceRub.toLocaleString('ru-RU')} ₽).`;
         window.open(`https://t.me/${config.adminUsername}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
         setBusy('');
         return;
@@ -83,6 +86,29 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
             );
           })}
         </div>
+
+        {config.tokenPacks?.length ? (
+          <>
+            <p className="font-heading text-lg font-medium text-[#ffffff] mt-7">Токены Fracs AI</p>
+            <p className="mt-1 text-[12.5px] text-[#888888]">
+              Дневная квота токенов входит в тариф Ultra. Пакеты — разовая покупка сверх квоты: расход сверх квоты списывается с баланса, сам баланс не истекает.
+            </p>
+            <div className="mt-3 grid gap-3">
+              {config.tokenPacks.map((p) => (
+                <button key={p.id} onClick={() => pay(p.id)} disabled={!!busy} className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.02)] hover:border-[#F26522] text-left transition-colors cursor-pointer disabled:opacity-60">
+                  <div>
+                    <p className="font-medium text-[#ffffff]">{p.title}</p>
+                    {p.badge && <p className="text-[12px] text-[#F26522] mt-0.5">{p.badge}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-heading text-lg font-semibold text-[#ffffff]">{p.priceRub.toLocaleString('ru-RU')} ₽</span>
+                    {busy === p.id && <Loader2 className="w-4 h-4 animate-spin text-[#888888]" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
 
         {error && <p className="text-[13px] text-[#F26522] mt-3">{error}</p>}
         <p className="text-[12px] text-[#888888] mt-4">{note}</p>
