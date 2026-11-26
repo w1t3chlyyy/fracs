@@ -77,6 +77,11 @@ h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-seri
     border: 1px solid rgba(255,255,255,0.09);
     box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   }
+  /* Экран входа (макет Frame 127): чистый чёрный без точек и свечения. */
+  .ember-login {
+    background-color: #000000;
+    color: #ffffff;
+  }
   .ember-card-2 {
     background: linear-gradient(180deg, rgba(26,26,26,0.9), rgba(16,16,16,0.9));
     border: 1px solid rgba(255,255,255,0.1);

@@ -24,6 +24,10 @@ export const api = {
   me: () => req<Me>('/me'),
   authStart: () => post<{ token: string; url: string }>('/auth/start'),
   authStatus: (token: string) => req<{ status: 'pending' | 'ok' | 'expired' }>(`/auth/status?token=${encodeURIComponent(token)}`),
+  /** Email-вход: просим отправить одноразовый код на почту (Supabase Auth OTP). */
+  emailStart: (email: string) => post<{ ok: true; email: string }>('/auth/email/start', { email }),
+  /** Email-вход: подтверждаем код из письма, получаем сессию. */
+  emailVerify: (email: string, code: string) => post<{ ok: true }>('/auth/email/verify', { email, code }),
   devLogin: () => post('/auth/dev'),
   logout: () => post('/auth/logout'),
   cities: (q: string) => req<{ items: CityItem[] }>(`/cities?q=${encodeURIComponent(q)}`),

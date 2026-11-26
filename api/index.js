@@ -130,6 +130,7 @@ function sb() {
 }
 var memUsers = /* @__PURE__ */ new Map();
 var memTgUsers = /* @__PURE__ */ new Map();
+var memEmailUsers = /* @__PURE__ */ new Map();
 var memTokens = /* @__PURE__ */ new Map();
 var memSearches = /* @__PURE__ */ new Map();
 var memPayments = /* @__PURE__ */ new Map();
@@ -150,7 +151,8 @@ function withAdmin(u) {
 }
 var userOf = (r) => withAdmin({
   id: r.id,
-  tgId: Number(r.tg_id),
+  tgId: r.tg_id == null ? null : Number(r.tg_id),
+  email: r.email ?? null,
   username: r.username,
   firstName: r.first_name,
   createdAt: r.created_at,
@@ -187,6 +189,7 @@ async function upsertTgUser(from) {
   const newUser = {
     id,
     tgId: from.id,
+    email: null,
     username: from.username ?? null,
     firstName: from.first_name || "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C",
     createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -195,6 +198,30 @@ async function upsertTgUser(from) {
   };
   memUsers.set(id, newUser);
   memTgUsers.set(from.id, id);
+  return withAdmin({ ...newUser });
+}
+async function upsertEmailUser(email) {
+  if (useSupabase) {
+    const existing = check(await sb().from("users").select("*").eq("email", email).maybeSingle(), "upsertEmailUser.find");
+    if (existing) return userOf(existing);
+    const r = await sb().from("users").insert({ tg_id: null, email, first_name: email.split("@")[0] || "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C" }).select("*").single();
+    return userOf(check(r, "upsertEmailUser"));
+  }
+  const existingId = memEmailUsers.get(email);
+  if (existingId && memUsers.has(existingId)) return withAdmin({ ...memUsers.get(existingId) });
+  const id = newId();
+  const newUser = {
+    id,
+    tgId: null,
+    email,
+    username: null,
+    firstName: email.split("@")[0] || "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    subscriptionUntil: null,
+    planId: null
+  };
+  memUsers.set(id, newUser);
+  memEmailUsers.set(email, id);
   return withAdmin({ ...newUser });
 }
 var isSubscribed = (u) => !!u.subscriptionUntil && Date.parse(u.subscriptionUntil) > Date.now();
@@ -912,7 +939,7 @@ async function tg(method, body = {}, timeoutMs = 1e4) {
   return r.json();
 }
 async function notify(tgId, text, extra = {}) {
-  if (!config.botToken) return;
+  if (tgId == null || !config.botToken) return;
   try {
     await tg("sendMessage", { chat_id: tgId, text, ...extra });
   } catch (e) {
@@ -955,6 +982,7 @@ async function resolveChannel(ch) {
 var subsCache = /* @__PURE__ */ new Map();
 var SUBS_TTL = 6e4;
 async function checkChannelSubs(tgId) {
+  if (tgId == null) return true;
   const channels = await getRequiredChannels();
   if (!channels.length) return true;
   if (config.adminTgId > 0 && tgId === config.adminTgId) return true;
@@ -1662,10 +1690,10 @@ async function attachUser(req, _res, next) {
 }
 async function requireAuth(req, res, next) {
   if (!req.user) {
-    res.status(401).json({ error: "unauthorized", message: "\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 Telegram" });
+    res.status(401).json({ error: "unauthorized", message: "\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 Telegram \u0438\u043B\u0438 email" });
     return;
   }
-  if (!await checkChannelSubs(req.user.tgId)) {
+  if (req.user.tgId != null && !await checkChannelSubs(req.user.tgId)) {
     res.status(403).json({ error: "channels_required", message: "\u041F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u0432 \u0431\u043E\u0442\u0435 Fracs, \u0447\u0442\u043E\u0431\u044B \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u044C." });
     return;
   }
@@ -1707,6 +1735,70 @@ authRouter.post("/logout", (req, res) => {
   res.append("Set-Cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure ? "; Secure" : ""}`);
   res.json({ ok: true });
 });
+var EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
+var CODE_RE = /^\d{6}$/;
+var normalizeEmail = (raw) => raw.trim().toLowerCase();
+var emailAuthReady = () => Boolean(config.supabaseUrl && config.supabaseKey);
+function supabaseAuthHeaders() {
+  return {
+    apikey: config.supabaseKey,
+    Authorization: `Bearer ${config.supabaseKey}`,
+    "Content-Type": "application/json"
+  };
+}
+async function supabaseOtpStart(email) {
+  const r = await fetch(`${config.supabaseUrl}/auth/v1/otp`, {
+    method: "POST",
+    headers: supabaseAuthHeaders(),
+    body: JSON.stringify({ email, create_user: true })
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    const msg = body?.error_description || body?.msg || body?.message || `supabase_${r.status}`;
+    throw Object.assign(new Error(msg), { code: r.status === 429 ? "email_rate_limited" : "email_start_failed" });
+  }
+}
+async function supabaseOtpVerify(email, code) {
+  const r = await fetch(`${config.supabaseUrl}/auth/v1/verify`, {
+    method: "POST",
+    headers: supabaseAuthHeaders(),
+    body: JSON.stringify({ type: "email", email, token: code })
+  });
+  return r.ok;
+}
+authRouter.post("/email/start", h(async (req, res) => {
+  if (!emailAuthReady()) return void res.status(503).json({ error: "email_auth_unavailable", message: "Email-\u0432\u0445\u043E\u0434 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" });
+  const email = normalizeEmail(String(req.body?.email || ""));
+  if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: "bad_email", message: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 \u044D\u043B. \u043F\u043E\u0447\u0442\u044B" });
+  if (!await rateLimit(`auth-email-ip:${req.ip}`, 10, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited" });
+  if (!await rateLimit(`auth-email-addr:${email}`, 4, 30 * 6e4, true)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E \u2014 \u043A\u043E\u0434 \u0443\u0436\u0435 \u043B\u0435\u0442\u0438\u0442." });
+  try {
+    await supabaseOtpStart(email);
+  } catch (e) {
+    if (e?.code === "email_rate_limited") return void res.status(429).json({ error: "rate_limited", message: "\u041F\u0438\u0441\u044C\u043C\u043E \u0443\u0436\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u043F\u0435\u0440\u0435\u0434 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u043E\u0439 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u043E\u0439." });
+    console.warn("[auth] email/start supabase:", e?.message);
+    return void res.status(502).json({ error: "email_start_failed", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u0434. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
+  }
+  res.json({ ok: true, email });
+}));
+authRouter.post("/email/verify", h(async (req, res) => {
+  if (!emailAuthReady()) return void res.status(503).json({ error: "email_auth_unavailable", message: "Email-\u0432\u0445\u043E\u0434 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" });
+  const email = normalizeEmail(String(req.body?.email || ""));
+  const code = String(req.body?.code || "").replace(/\D/g, "");
+  if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: "bad_email", message: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 \u044D\u043B. \u043F\u043E\u0447\u0442\u044B" });
+  if (!CODE_RE.test(code)) return void res.status(400).json({ error: "bad_code", message: "\u041A\u043E\u0434 \u2014 6 \u0446\u0438\u0444\u0440 \u0438\u0437 \u043F\u0438\u0441\u044C\u043C\u0430" });
+  if (!await rateLimit(`auth-email-verify:${req.ip}:${email}`, 8, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u043F\u043E\u043F\u044B\u0442\u043E\u043A. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 10 \u043C\u0438\u043D\u0443\u0442." });
+  let ok = false;
+  try {
+    ok = await supabaseOtpVerify(email, code);
+  } catch (e) {
+    console.warn("[auth] email/verify supabase:", e);
+  }
+  if (!ok) return void res.status(400).json({ error: "bad_code", message: "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0438\u043B\u0438 \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0439 \u043A\u043E\u0434" });
+  const user = await upsertEmailUser(email);
+  setSession(req, res, user.id);
+  res.json({ ok: true });
+}));
 
 // server/appRoutes.ts
 import crypto5 from "node:crypto";

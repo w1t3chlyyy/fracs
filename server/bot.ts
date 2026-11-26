@@ -26,8 +26,9 @@ async function tg(method: string, body: Record<string, unknown> = {}, timeoutMs 
   return r.json();
 }
 
-export async function notify(tgId: number, text: string, extra: Record<string, unknown> = {}) {
-  if (!config.botToken) return;
+export async function notify(tgId: number | null, text: string, extra: Record<string, unknown> = {}) {
+  // Аккаунт без Telegram (вход по email-коду) уведомить некуда — молча пропускаем.
+  if (tgId == null || !config.botToken) return;
   try {
     await tg('sendMessage', { chat_id: tgId, text, ...extra });
   } catch (e) {
@@ -84,7 +85,9 @@ const SUBS_TTL = 60_000;
 /** true — пользователь подписан на все обязательные каналы (или каналы не заданы / это админ).
  *  Экспортируется: cabinet и программа тоже проверяют подписки на каждом действии.
  *  Список каналов берётся из БД (getRequiredChannels) — редактируется из админки. */
-export async function checkChannelSubs(tgId: number): Promise<boolean> {
+export async function checkChannelSubs(tgId: number | null): Promise<boolean> {
+  // Аккаунт без Telegram (вход по email-коду) проверять нечем — не блокируем.
+  if (tgId == null) return true;
   const channels = await getRequiredChannels();
   if (!channels.length) return true;
   if (config.adminTgId > 0 && tgId === config.adminTgId) return true;
@@ -180,7 +183,7 @@ function docsMarkup(includeCabinet = true) {
 /* ── админ-панель ── */
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ru-RU') : '—');
-const who = (u: { firstName: string; username: string | null; tgId: number }) =>
+const who = (u: { firstName: string; username: string | null; tgId: number | null }) =>
   `${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})`;
 
 const ADMIN_HELP = `Админ-панель Fracs

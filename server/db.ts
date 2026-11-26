@@ -6,7 +6,10 @@ import { config, PLANS, ALL_FEATURES, type Plan } from './config.ts';
 
 export interface User {
   id: string;
-  tgId: number;
+  /** Telegram ID. Для аккаунтов, созданных входом по email-коду, — null. */
+  tgId: number | null;
+  /** Email (вход по одноразовому коду через Supabase Auth). У TG-пользователей — null. */
+  email: string | null;
   username: string | null;
   firstName: string;
   createdAt: string;
@@ -67,6 +70,7 @@ function sb(): SupabaseClient {
 /* ── Fallback in-memory storage (работает автономно, если Supabase не настроен) ── */
 const memUsers = new Map<string, User>();
 const memTgUsers = new Map<number, string>();
+const memEmailUsers = new Map<string, string>();
 const memTokens = new Map<string, { token: string; createdAt: number; userId?: string }>();
 const memSearches = new Map<string, SearchRecord>();
 const memPayments = new Map<string, PaymentRecord>();
@@ -96,7 +100,7 @@ export const newId = () => crypto.randomUUID();
 
 const ADMIN_UNTIL = '2099-12-31T00:00:00.000Z';
 
-const isAdminTg = (tgId: number) => config.adminTgId > 0 && tgId === config.adminTgId;
+const isAdminTg = (tgId: number | null) => config.adminTgId > 0 && tgId === config.adminTgId;
 
 /** Админу (ADMIN_TG_ID) подписка не нужна: считаем её вечной. В базу это не пишется. */
 function withAdmin(u: User): User {
@@ -105,7 +109,8 @@ function withAdmin(u: User): User {
 
 const userOf = (r: any): User => withAdmin({
   id: r.id,
-  tgId: Number(r.tg_id),
+  tgId: r.tg_id == null ? null : Number(r.tg_id),
+  email: r.email ?? null,
   username: r.username,
   firstName: r.first_name,
   createdAt: r.created_at,
@@ -150,6 +155,7 @@ export async function upsertTgUser(from: { id: number; username?: string; first_
   const newUser: User = {
     id,
     tgId: from.id,
+    email: null,
     username: from.username ?? null,
     firstName: from.first_name || 'Пользователь',
     createdAt: new Date().toISOString(),
@@ -158,6 +164,41 @@ export async function upsertTgUser(from: { id: number; username?: string; first_
   };
   memUsers.set(id, newUser);
   memTgUsers.set(from.id, id);
+  return withAdmin({ ...newUser });
+}
+
+/**
+ * Вход по email-коду: находим пользователя по email или создаём его (tg_id = NULL).
+ * Email нормализуется заранее (нижний регистр, trim) в server/auth.ts.
+ */
+export async function upsertEmailUser(email: string): Promise<User> {
+  if (useSupabase) {
+    const existing = check(await sb().from('users').select('*').eq('email', email).maybeSingle(), 'upsertEmailUser.find');
+    if (existing) return userOf(existing);
+    const r = await sb()
+      .from('users')
+      .insert({ tg_id: null, email, first_name: email.split('@')[0] || 'Пользователь' })
+      .select('*')
+      .single();
+    return userOf(check(r, 'upsertEmailUser'));
+  }
+
+  const existingId = memEmailUsers.get(email);
+  if (existingId && memUsers.has(existingId)) return withAdmin({ ...memUsers.get(existingId)! });
+
+  const id = newId();
+  const newUser: User = {
+    id,
+    tgId: null,
+    email,
+    username: null,
+    firstName: email.split('@')[0] || 'Пользователь',
+    createdAt: new Date().toISOString(),
+    subscriptionUntil: null,
+    planId: null,
+  };
+  memUsers.set(id, newUser);
+  memEmailUsers.set(email, id);
   return withAdmin({ ...newUser });
 }
 

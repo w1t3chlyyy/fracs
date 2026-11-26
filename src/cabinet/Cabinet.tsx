@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Loader2, LogOut, Map, Send } from 'lucide-react';
 import { api } from './api';
 import AppPanel from './gis/AppPanel';
 import PlansModal from './PlansModal';
+import AsciiFlower from './AsciiFlower';
 import type { AppConfig, Me } from './types';
 
-function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }) {
+function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void }) {
+  // Telegram: создали ссылку — ждём подтверждения в боте (опрос /auth/status).
   const [link, setLink] = useState<{ token: string; url: string } | null>(null);
-  const [error, setError] = useState('');
+  // Email: шаг «форма» (адрес) → шаг «код» (6 цифр из письма).
+  const [step, setStep] = useState<'form' | 'code'>('form');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [cooldown, setCooldown] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const codeRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!link) return;
@@ -29,7 +37,14 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
     return () => { stopped = true; clearInterval(t); };
   }, [link, onDone]);
 
-  const start = async () => {
+  // Таймер «отправить код ещё раз».
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
+
+  const startTg = async () => {
     setBusy(true);
     setError('');
     try {
@@ -43,45 +58,170 @@ function LoginCard({ config, onDone }: { config: AppConfig; onDone: () => void }
     }
   };
 
+  const sendCode = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.emailStart(email);
+      setStep('code');
+      setCooldown(60);
+      setTimeout(() => codeRef.current?.focus(), 50);
+    } catch (e: any) {
+      setError(e.message || 'Не удалось отправить код');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const verify = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.emailVerify(email, code);
+      onDone();
+    } catch (e: any) {
+      setError(e.message || 'Неверный код');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const dev = async () => { await api.devLogin(); onDone(); };
 
   return (
-    <div className="max-w-md mx-auto ember-card rounded-3xl p-8 text-center">
-      <img
-        src="/assets/aistudio/image_a4a02fc4.png"
-        alt="Fracs"
-        className="w-14 h-14 rounded-2xl mx-auto mb-4 object-cover shadow-sm"
-      />
-      <h1 className="font-heading text-3xl font-medium tracking-[-0.02em] text-[#ffffff]">Личный кабинет</h1>
-      <p className="text-[14px] text-[#cccccc] mt-2">Войдите через Telegram-бота — пароль и email не нужны.</p>
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Левая половина: форма входа (по макету — прижата к левому краю) */}
+      <div className="flex-1 flex items-center px-5 sm:px-10 xl:px-[7vw] py-12">
+        <div className="w-full max-w-[473px]">
+          <h1 className="font-sans text-[40px] sm:text-[52px] leading-[1.08] font-bold tracking-[-0.02em] text-[#ffffff]">
+            Личный кабинет
+          </h1>
+          <p className="mt-6 text-[16px] sm:text-[18px] text-[#cccccc] leading-snug max-w-[420px]">
+            Выберите удобный способ входа или регистрации аккаунта
+          </p>
 
-      {link ? (
-        <div className="mt-6">
-          <a href={link.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#F26522] hover:bg-[#e05a1a] text-white text-[14px] font-medium transition-colors">
-            <Send className="w-4 h-4" /> Открыть бота
-          </a>
-          <p className="text-[13px] text-[#888888] mt-4 flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" /> Нажмите «Start» в Telegram — вход произойдёт сам
+          {link ? (
+            /* Ожидание подтверждения в Telegram */
+            <div className="mt-10">
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] text-white text-[16px] font-medium transition-colors"
+              >
+                <Send className="w-5 h-5" /> Открыть бота
+              </a>
+              <p className="mt-5 text-[14px] text-[#888888] flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Нажмите «Start» в Telegram — вход произойдёт сам
+              </p>
+              <button
+                onClick={() => { setLink(null); setError(''); }}
+                className="mt-5 block mx-auto text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
+              >
+                Назад
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={startTg}
+                disabled={busy}
+                className="mt-10 flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[16px] font-medium transition-colors cursor-pointer"
+              >
+                <Send className="w-5 h-5" /> Войти через Telegram
+              </button>
+
+              <div className="my-7 flex items-center gap-4">
+                <span className="mx-auto text-[14px] tracking-wide text-[#888888]">ИЛИ</span>
+              </div>
+
+              {step === 'form' ? (
+                <>
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && email) sendCode(); }}
+                    placeholder="Адрес эл. почты"
+                    className="w-full h-14 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[16px] text-[#ffffff] placeholder:text-[#888888] transition-colors"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!email.trim()) { setError('Введите адрес эл. почты'); return; }
+                      sendCode();
+                    }}
+                    disabled={busy}
+                    className="mt-4 flex items-center justify-center w-full h-14 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[16px] font-semibold transition-colors cursor-pointer"
+                  >
+                    {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Продолжить с почтой'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-[14px] text-[#888888]">
+                    Код отправлен на <span className="text-[#ffffff]">{email}</span>
+                  </p>
+                  <input
+                    ref={codeRef}
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6) verify(); }}
+                    placeholder="000000"
+                    className="mt-4 w-full h-14 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[20px] tracking-[0.45em] text-[#ffffff] placeholder:text-[#444444] transition-colors"
+                  />
+                  <button
+                    onClick={verify}
+                    disabled={busy || code.length !== 6}
+                    className="mt-4 flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[16px] font-semibold transition-colors cursor-pointer"
+                  >
+                    {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Подтвердить'}
+                  </button>
+                  <div className="mt-4 flex items-center justify-between text-[13px]">
+                    <button
+                      onClick={() => { setStep('form'); setError(''); }}
+                      className="text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
+                    >
+                      Назад
+                    </button>
+                    <button
+                      onClick={() => sendCode()}
+                      disabled={cooldown > 0 || busy}
+                      className="text-[#888888] hover:text-[#ffffff] disabled:opacity-50 underline underline-offset-4 cursor-pointer"
+                    >
+                      {cooldown > 0 ? `Отправить ещё раз через ${cooldown} с` : 'Отправить код ещё раз'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {error && <p className="mt-4 text-[14px] text-[#F26522]">{error}</p>}
+          {config.devLogin && !link && (
+            <button onClick={dev} type="button" className="mt-6 text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer">
+              Войти без бота (dev-режим)
+            </button>
+          )}
+
+          <p className="mt-12 text-[14px] text-[#888888] leading-relaxed">
+            Входя в кабинет, вы принимаете{' '}
+            <a href="/terms" className="text-[#cccccc] hover:text-[#ffffff] underline underline-offset-2">пользовательское соглашение</a>{' '}
+            и{' '}
+            <a href="/privacy" className="text-[#cccccc] hover:text-[#ffffff] underline underline-offset-2">политику конфиденциальности</a>.
           </p>
         </div>
-      ) : (
-        <button onClick={start} disabled={busy} className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[14px] font-medium transition-colors cursor-pointer">
-          <Send className="w-4 h-4" /> Войти через Telegram
-        </button>
-      )}
+      </div>
 
-      {error && <p className="text-[13px] text-[#F26522] mt-4">{error}</p>}
-      {config.devLogin && (
-        <button onClick={dev} type="button" className="mt-4 block mx-auto text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer">
-          Войти без бота (dev-режим)
-        </button>
-      )}
-      <p className="mt-6 pt-4 border-t border-[rgba(255,255,255,0.1)] text-[12px] text-[#888888] leading-relaxed">
-        Входя в кабинет, вы принимаете{' '}
-        <a href="/terms" className="text-[#cccccc] hover:text-[#ffffff] underline underline-offset-2">пользовательское соглашение</a>{' '}
-        и{' '}
-        <a href="/privacy" className="text-[#cccccc] hover:text-[#ffffff] underline underline-offset-2">политику конфиденциальности</a>.
-      </p>
+      {/* Правая половина: ASCII-цветок — распускается из «0» и крутится по кругу */}
+      <div className="hidden lg:flex flex-1 items-center justify-center overflow-hidden">
+        <AsciiFlower />
+      </div>
     </div>
   );
 }
@@ -164,11 +304,11 @@ export default function Cabinet() {
   const logout = async () => { await api.logout(); setMe({ user: null }); };
   const openPlans = () => setPlansOpen(true);
 
-  // Не вошёл — центральный экран входа.
+  // Не вошёл — полноэкранный экран входа: слева форма, справа ASCII-цветок.
   if (!me.user) {
     return (
-      <div className="ember-cabinet min-h-screen ember-bg text-[#ffffff] font-sans antialiased flex items-center justify-center px-4 py-10">
-        <LoginCard config={config} onDone={refresh} />
+      <div className="ember-cabinet ember-login min-h-screen text-[#ffffff] font-sans antialiased">
+        <LoginScreen config={config} onDone={refresh} />
         {plansOpen && <PlansModal config={config} onClose={() => setPlansOpen(false)} onActivated={async () => { await refresh(); setPlansOpen(false); }} />}
       </div>
     );
