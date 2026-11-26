@@ -86,6 +86,25 @@ var PLANS = [
     description: "\u0412\u0441\u0451 \u0438\u0437 \xABPRO\xBB + \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u044B\u0439 Fracs AI (\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0441\u0430\u0439\u0442\u043E\u0432 \u0438 \u0444\u0440\u0430\u0437 \u043D\u0430 \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u043E\u043C \u043A\u043B\u044E\u0447\u0435, \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u0430\u044F \u043A\u043D\u043E\u043F\u043A\u0430 \u0432 AI-\u0430\u0433\u0435\u043D\u0442\u0435). \u0420\u0430\u0441\u0441\u044B\u043B\u043A\u0430 \u043E\u0442\u043A\u0440\u044B\u0442\u043E\u043A \u0438\u0437 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D\u043D\u044B\u0445 Telegram-\u0430\u043A\u043A\u0430\u0443\u043D\u0442\u043E\u0432. \u041C\u0430\u043A\u0441\u0438\u043C\u0443\u043C \u0432\u043E\u0437\u043C\u043E\u0436\u043D\u043E\u0441\u0442\u0435\u0439."
   }
 ];
+var TOKEN_PACKS = [
+  { id: "tokens_100k", title: "100 000 \u0442\u043E\u043A\u0435\u043D\u043E\u0432", tokens: 1e5, priceRub: 149, badge: "\u2248 3\u20134 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0441\u0430\u0439\u0442\u0430" },
+  { id: "tokens_500k", title: "500 000 \u0442\u043E\u043A\u0435\u043D\u043E\u0432", tokens: 5e5, priceRub: 590, badge: "\u0412\u044B\u0433\u043E\u0434\u043D\u0435\u0435: \u2248 15\u201320 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0439" },
+  { id: "tokens_1m", title: "1 000 000 \u0442\u043E\u043A\u0435\u043D\u043E\u0432", tokens: 1e6, priceRub: 990, badge: "\u041C\u0430\u043A\u0441\u0438\u043C\u0443\u043C: \u2248 30\u201340 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0439" }
+];
+function loadTokenPacks(fromDb) {
+  try {
+    if (Array.isArray(fromDb) && fromDb.length) {
+      return fromDb.filter((p) => p && typeof p.id === "string" && p.tokens > 0 && p.priceRub > 0);
+    }
+    const raw = process.env.AI_TOKEN_PACKS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed.filter((p) => p && typeof p.id === "string" && p.tokens > 0 && p.priceRub > 0);
+    }
+  } catch {
+  }
+  return TOKEN_PACKS;
+}
 var ALL_FEATURES = Array.from(new Set(PLANS.flatMap((p) => p.features ?? [])));
 
 // server/db.ts
@@ -482,16 +501,18 @@ var memAiUsage = /* @__PURE__ */ new Map();
 var utcDay = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
 async function aiUsageToday(userId) {
   const day = utcDay();
-  const out = { userRequests: 0, userCostUsd: 0, totalRequests: 0, totalCostUsd: 0 };
+  const out = { userRequests: 0, userCostUsd: 0, userTokens: 0, totalRequests: 0, totalCostUsd: 0, totalTokens: 0 };
   if (useSupabase) {
-    const r = await sb().from("ai_usage").select("user_id,requests,cost_usd").eq("day", day).limit(2e4);
+    const r = await sb().from("ai_usage").select("user_id,requests,tokens,cost_usd").eq("day", day).limit(2e4);
     if (r.error) throw new Error(`[db] aiUsageToday: ${r.error.message}`);
     for (const row of r.data ?? []) {
       out.totalRequests += Number(row.requests) || 0;
       out.totalCostUsd += Number(row.cost_usd) || 0;
+      out.totalTokens += Number(row.tokens) || 0;
       if (row.user_id === userId) {
         out.userRequests += Number(row.requests) || 0;
         out.userCostUsd += Number(row.cost_usd) || 0;
+        out.userTokens += Number(row.tokens) || 0;
       }
     }
     return out;
@@ -500,9 +521,11 @@ async function aiUsageToday(userId) {
     if (!k.startsWith(day + "|")) continue;
     out.totalRequests += v.requests;
     out.totalCostUsd += v.cost;
+    out.totalTokens += v.tokens;
     if (k === `${day}|${userId}`) {
       out.userRequests += v.requests;
       out.userCostUsd += v.cost;
+      out.userTokens += v.tokens;
     }
   }
   return out;
@@ -516,6 +539,35 @@ async function aiUsageAdd(userId, tokens, costUsd) {
   const k = `${utcDay()}|${userId}`;
   const v = memAiUsage.get(k) ?? { requests: 0, tokens: 0, cost: 0 };
   memAiUsage.set(k, { requests: v.requests + 1, tokens: v.tokens + tokens, cost: v.cost + costUsd });
+}
+var memAiTokens = /* @__PURE__ */ new Map();
+async function aiTokensGet(userId) {
+  if (useSupabase) {
+    const r = await sb().from("ai_tokens").select("balance").eq("user_id", userId).maybeSingle();
+    if (r.error) throw new Error(`[db] aiTokensGet: ${r.error.message}`);
+    return Math.max(0, Math.round(Number(r.data?.balance) || 0));
+  }
+  return Math.max(0, Math.round(memAiTokens.get(userId) || 0));
+}
+async function aiTokensAdd(userId, tokens) {
+  const n = Math.round(tokens);
+  if (n <= 0) return;
+  if (useSupabase) {
+    const r = await sb().rpc("ai_tokens_add", { p_user: userId, p_tokens: n });
+    if (r.error) throw new Error(`[db] aiTokensAdd: ${r.error.message}`);
+    return;
+  }
+  memAiTokens.set(userId, (memAiTokens.get(userId) || 0) + n);
+}
+async function aiTokensSpend(userId, tokens) {
+  const n = Math.round(tokens);
+  if (n <= 0) return;
+  if (useSupabase) {
+    const r = await sb().rpc("ai_tokens_spend", { p_user: userId, p_tokens: n });
+    if (r.error) throw new Error(`[db] aiTokensSpend: ${r.error.message}`);
+    return;
+  }
+  memAiTokens.set(userId, Math.max(0, (memAiTokens.get(userId) || 0) - n));
 }
 var memDemos = /* @__PURE__ */ new Map();
 var DEMO_TTL_DAYS = 45;
@@ -2162,6 +2214,101 @@ function getRows(rec, offset, limit2) {
 }
 var headRows = (rec) => rec.demo ? getRows(rec, 0, 3) : rec.head ?? [];
 
+// server/aiDesign.ts
+var DESIGN_VERSION = "2026-11-26.1";
+var DESIGN_LIBRARIES = {
+  design: [
+    { name: "motionsites.ai", url: "https://motionsites.ai", license: "MIT", useFor: "\u0420\u0435\u0444\u0435\u0440\u0435\u043D\u0441\u044B \u043C\u043E\u0443\u0448\u043D-\u0434\u0438\u0437\u0430\u0439\u043D\u0430 \u043B\u0435\u043D\u0434\u0438\u043D\u0433\u043E\u0432: \u0445\u0438\u0440\u043E-\u0441\u0446\u0435\u043D\u044B, \u0441\u043A\u0440\u043E\u043B\u043B-\u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438" },
+    { name: "21st.dev", url: "https://21st.dev", license: "MIT", useFor: "\u041A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B \u0438 \u043A\u0430\u0441\u0442\u043E\u043C\u043D\u044B\u0435 \u043A\u0443\u0440\u0441\u043E\u0440\u044B" },
+    { name: "motion.dev", url: "https://motion.dev", license: "MIT", useFor: "\u0410\u043D\u0438\u043C\u0430\u0446\u0438\u0438 (Vanilla Motion One / Motion \u0434\u043B\u044F React)" },
+    { name: "kokonutui.com", url: "https://kokonutui.com", license: "MIT", useFor: "\u0413\u043E\u0442\u043E\u0432\u044B\u0435 Tailwind-\u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B \u043B\u0435\u043D\u0434\u0438\u043D\u0433\u043E\u0432" },
+    { name: "bklit.com", url: "https://bklit.com", license: "\u0447\u0430\u0441\u0442\u0438\u0447\u043D\u043E MIT", useFor: "\u041B\u0435\u043D\u0434\u0438\u043D\u0433\u0438 \u0438 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B" },
+    { name: "styles.refero.design", url: "https://styles.refero.design", license: "MIT", useFor: "\u041A\u0430\u0442\u0430\u043B\u043E\u0433 \u0442\u0438\u043F\u043E\u0433\u0440\u0430\u0444\u0438\u043A\u0438 \u0438 \u0441\u0442\u0438\u043B\u0435\u0439 \u0440\u0435\u0430\u043B\u044C\u043D\u044B\u0445 \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u043E\u0432" },
+    { name: "thrine.app", url: "https://thrine.app", license: "MIT", useFor: "\u0420\u0435\u0444\u0435\u0440\u0435\u043D\u0441\u044B \u0441\u043E\u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E\u0433\u043E \u0438\u043D\u0442\u0435\u0440\u0444\u0435\u0439\u0441\u043D\u043E\u0433\u043E \u0434\u0438\u0437\u0430\u0439\u043D\u0430" },
+    { name: "originkit.dev", url: "https://originkit.dev", license: "MIT", useFor: "\u041A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B, \u043A\u0443\u0440\u0441\u043E\u0440\u044B" },
+    { name: "particles.casberry.in", url: "https://particles.casberry.in", license: "MIT", useFor: "\u0424\u043E\u043D\u043E\u0432\u044B\u0435 \u0447\u0430\u0441\u0442\u0438\u0446\u044B/\u044D\u0444\u0444\u0435\u043A\u0442\u044B" },
+    { name: "animate-ui.com", url: "https://animate-ui.com", license: "MIT", useFor: "\u0410\u043D\u0438\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B \u0434\u043B\u044F \u043B\u0435\u043D\u0434\u0438\u043D\u0433\u043E\u0432 \u0438 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C" },
+    { name: "inspira-ui.com", url: "https://inspira-ui.com", license: "MIT", useFor: "Effects-\u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B (shimmer, beams, particles) \u0434\u043B\u044F \u043B\u0435\u043D\u0434\u0438\u043D\u0433\u043E\u0432" }
+  ],
+  icons: [
+    { name: "iconimate.app", url: "https://iconimate.app", license: "MIT", useFor: "\u0410\u043D\u0438\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435 \u0438\u043A\u043E\u043D\u043A\u0438" }
+  ],
+  cursors: [
+    { name: "21st.dev", url: "https://21st.dev", license: "MIT (\u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0435 \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u044B)", useFor: "\u041A\u0430\u0441\u0442\u043E\u043C\u043D\u044B\u0435 \u043A\u0443\u0440\u0441\u043E\u0440\u044B" },
+    { name: "originkit.dev", url: "https://originkit.dev", license: "MIT", useFor: "\u041A\u0430\u0441\u0442\u043E\u043C\u043D\u044B\u0435 \u043A\u0443\u0440\u0441\u043E\u0440\u044B" },
+    { name: "motion.dev", url: "https://motion.dev", license: "MIT", useFor: "\u0421\u0432\u043E\u0438 \u043A\u0443\u0440\u0441\u043E\u0440\u043D\u044B\u0435 \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u043D\u0430 Motion" }
+  ],
+  platforms: [
+    { name: "heroui.com", url: "https://www.heroui.com", license: "MIT", useFor: "\u041F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B, \u0444\u043E\u0440\u043C\u044B, \u043F\u0430\u043D\u0435\u043B\u0438, \u0442\u0430\u0431\u043B\u0438\u0446\u044B, \u0434\u0430\u0448\u0431\u043E\u0440\u0434\u044B" },
+    { name: "bklit.com", url: "https://bklit.com", license: "MIT", useFor: "\u041F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B \u0438 \u0430\u0434\u043C\u0438\u043D-\u043F\u0430\u043D\u0435\u043B\u0438" },
+    { name: "skiper-ui.com", url: "https://www.skiper-ui.com", license: "MIT (\u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0435 \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u044B)", useFor: "\u041E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C" },
+    { name: "animate-ui.com", url: "https://animate-ui.com", license: "MIT", useFor: "\u0410\u043D\u0438\u043C\u0430\u0446\u0438\u0438 \u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u043E\u0432 \u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u044B" }
+  ]
+};
+var FRACS_DESIGN_SYSTEM = `\u0422\u044B \u2014 senior product-\u0434\u0438\u0437\u0430\u0439\u043D\u0435\u0440 \u0438 frontend-\u0438\u043D\u0436\u0435\u043D\u0435\u0440 \u0441 10-\u043B\u0435\u0442\u043D\u0438\u043C \u043E\u043F\u044B\u0442\u043E\u043C. \u0422\u044B \u0434\u0435\u043B\u0430\u0435\u0448\u044C \u0441\u0430\u0439\u0442\u044B, \u043A\u043E\u0442\u043E\u0440\u044B\u0435 \u0432\u044B\u0433\u043B\u044F\u0434\u044F\u0442 \u043A\u0430\u043A \u0440\u0430\u0431\u043E\u0442\u0430 \u0441\u0442\u0443\u0434\u0438\u0438 \u0443\u0440\u043E\u0432\u043D\u044F Awwwards Honorable Mention, \u0430 \u043D\u0435 \u043A\u0430\u043A \u0442\u0438\u043F\u043E\u0432\u0430\u044F \u043D\u0435\u0439\u0440\u043E\u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F. \u0422\u0432\u043E\u044F \u0433\u043B\u0430\u0432\u043D\u0430\u044F \u0437\u0430\u0434\u0430\u0447\u0430 \u2014 \u041D\u0415 \xAB\u0441\u0433\u0435\u043D\u0435\u0440\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443\xBB, \u0430 \u0441\u043F\u0440\u043E\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u0435\u0451: \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0440\u0435\u0448\u0435\u043D\u0438\u044F, \u043F\u043E\u0442\u043E\u043C \u043A\u043E\u0434.
+
+## 0. \u041F\u0440\u043E\u0446\u0435\u0441\u0441 \u2014 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u0435\u043D
+\u041F\u0440\u0435\u0436\u0434\u0435 \u0447\u0435\u043C \u043F\u0438\u0441\u0430\u0442\u044C \u043A\u043E\u0434, \u043C\u043E\u043B\u0447\u0430 \u043F\u0440\u0438\u043C\u0438 5 \u0434\u0438\u0437\u0430\u0439\u043D-\u0440\u0435\u0448\u0435\u043D\u0438\u0439 \u0438 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u0443\u0439 \u0438\u0445 \u0432 HTML-\u043A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0438 \u0432 \u043D\u0430\u0447\u0430\u043B\u0435 \u0444\u0430\u0439\u043B\u0430 (\u043E\u0434\u043D\u043E\u0439 \u0441\u0442\u0440\u043E\u043A\u043E\u0439 \u043A\u0430\u0436\u0434\u043E\u0435):
+1) \u0422\u0438\u043F \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u0430 \u0438 \u0435\u0433\u043E \xAB\u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\xBB (\u0441\u0442\u0440\u043E\u0433\u0438\u0439 B2B / \u0442\u0451\u043F\u043B\u044B\u0439 \u043B\u043E\u043A\u0430\u043B\u044C\u043D\u044B\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 / \u0442\u0435\u0445\u043D\u043E\u043B\u043E\u0433\u0438\u0447\u043D\u044B\u0439 / \u043F\u0440\u0435\u043C\u0438\u0443\u043C).
+2) \u041F\u0430\u043B\u0438\u0442\u0440\u0430: \u043E\u0434\u0438\u043D \u0430\u043A\u0446\u0435\u043D\u0442\u043D\u044B\u0439 \u0446\u0432\u0435\u0442 (HSL), \u043D\u0435\u0439\u0442\u0440\u0430\u043B\u044C\u043D\u0430\u044F \u0448\u043A\u0430\u043B\u0430 \u0438\u0437 8\u201310 \u0441\u0442\u0443\u043F\u0435\u043D\u0435\u0439, \u0440\u043E\u043B\u044C \u043A\u0430\u0436\u0434\u043E\u0433\u043E \u0446\u0432\u0435\u0442\u0430.
+3) \u041F\u0430\u0440\u0430 \u0448\u0440\u0438\u0444\u0442\u043E\u0432: display-\u0433\u0430\u0440\u043D\u0438\u0442\u0443\u0440\u0430 \u0434\u043B\u044F \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432 + \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u0430\u044F \u0434\u043B\u044F \u043A\u043E\u043D\u0442\u0435\u043D\u0442\u0430 (\u0441\u043C. \xA73).
+4) \u041A\u043E\u043C\u043F\u043E\u0437\u0438\u0446\u0438\u044F: \u0447\u0435\u043C \u043E\u0442\u043B\u0438\u0447\u0430\u044E\u0442\u0441\u044F \u0434\u0440\u0443\u0433 \u043E\u0442 \u0434\u0440\u0443\u0433\u0430 \u0441\u0435\u043A\u0446\u0438\u0438 (\u043D\u0438 \u043E\u0434\u043D\u0430 \u043D\u0435 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u0435\u0442 \u0441\u043E\u0441\u0435\u0434\u043D\u044E\u044E).
+5) \u041E\u0434\u0438\u043D \xAB\u0444\u0438\u0440\u043C\u0435\u043D\u043D\u044B\u0439 \u043F\u0440\u0438\u0451\u043C\xBB \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B (signature move) \u2014 \u0435\u0434\u0438\u043D\u0441\u0442\u0432\u0435\u043D\u043D\u0430\u044F \u0437\u0430\u043F\u043E\u043C\u0438\u043D\u0430\u044E\u0449\u0430\u044F\u0441\u044F \u0434\u0435\u0442\u0430\u043B\u044C.
+
+## 1. \u0416\u0451\u0441\u0442\u043A\u0438\u0435 \u0437\u0430\u043F\u0440\u0435\u0442\u044B (\u043D\u0435\u0439\u0440\u043E\u0441\u043B\u043E\u043F)
+- \u041D\u0415 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u0441\u0438\u043D\u0435-\u0444\u0438\u043E\u043B\u0435\u0442\u043E\u0432\u044B\u0435 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u044B (indigo/violet/purple) \u0438 \xABhero \u0441 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043D\u044B\u043C \u043F\u044F\u0442\u043D\u043E\u043C + centered \u0442\u0435\u043A\u0441\u0442\xBB \u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E.
+- \u041D\u0415 \u0441\u0442\u0430\u0432\u044C \u0442\u0440\u0438 \u043E\u0434\u0438\u043D\u0430\u043A\u043E\u0432\u044B\u0435 \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u0432 \u0440\u044F\u0434 (\xABfeature cards grid\xBB). \u0427\u0435\u0440\u0435\u0434\u0443\u0439: 2+1, \u0441\u043F\u0438\u0441\u043E\u043A \u0441 \u0447\u0435\u0440\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u0435\u043C \u0441\u0442\u043E\u0440\u043E\u043D, \u0441\u0442\u0443\u043F\u0435\u043D\u0447\u0430\u0442\u0430\u044F \u0441\u0435\u0442\u043A\u0430, \u0442\u0430\u0439\u043C\u043B\u0430\u0439\u043D, \u043E\u0434\u043D\u0430 \u0448\u0438\u0440\u043E\u043A\u0430\u044F + \u0434\u0432\u0435 \u0443\u0437\u043A\u0438\u0435.
+- \u041D\u0415 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 \u0438\u043A\u043E\u043D\u043A\u0438-\xAB\u0437\u0430\u0433\u043B\u0443\u0448\u043A\u0438\xBB \u0432 \u043A\u0430\u0436\u0434\u043E\u043C \u0432\u0442\u043E\u0440\u043E\u043C \u0431\u043B\u043E\u043A\u0435. \u0418\u043A\u043E\u043D\u043A\u0430 \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0442\u0430\u043C, \u0433\u0434\u0435 \u043E\u043D\u0430 \u043D\u0435\u0441\u0451\u0442 \u0441\u043C\u044B\u0441\u043B.
+- \u041D\u0415 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 Inter/Roboto/\xABsystem-ui \u043A\u0430\u043A display-\u0448\u0440\u0438\u0444\u0442\xBB \u0434\u043B\u044F \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u043E\u0432.
+- \u041D\u0415 \u0434\u043E\u0431\u0430\u0432\u043B\u044F\u0439 emoji \u0432 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438, \u043A\u043D\u043E\u043F\u043A\u0438 \u0438 \u043F\u0443\u043D\u043A\u0442\u044B \u043C\u0435\u043D\u044E.
+- \u041D\u0415 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 lorem ipsum \u0438 \u0432\u044B\u0434\u0443\u043C\u0430\u043D\u043D\u044B\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F (\xABCompany\xBB, \xABJohn Doe\xBB) \u2014 \u043F\u0438\u0448\u0438 \u043D\u0430\u0441\u0442\u043E\u044F\u0449\u0438\u0435 \u0442\u0435\u043A\u0441\u0442\u044B \u043F\u043E \u0422\u0417 \u043D\u0430 \u044F\u0437\u044B\u043A\u0435 \u0437\u0430\u043A\u0430\u0437\u0447\u0438\u043A\u0430; \u0435\u0441\u043B\u0438 \u0434\u0430\u043D\u043D\u044B\u0445 \u043D\u0435\u0442 \u2014 \u0440\u0435\u0430\u043B\u0438\u0441\u0442\u0438\u0447\u043D\u044B\u0435, \u043A\u043E\u043D\u043A\u0440\u0435\u0442\u043D\u044B\u0435 \u0444\u043E\u0440\u043C\u0443\u043B\u0438\u0440\u043E\u0432\u043A\u0438, \u0431\u0435\u0437 \xAB Lorem \xBB.
+- \u041D\u0415 \u043A\u043B\u0430\u0434\u0438 \u0442\u0435\u043A\u0441\u0442 \u043D\u0430 \u043F\u0451\u0441\u0442\u0440\u044B\u0435/\u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043D\u044B\u0435 \u043F\u043E\u0434\u043B\u043E\u0436\u043A\u0438; \u043A\u043E\u043D\u0442\u0440\u0430\u0441\u0442 \u0442\u0435\u043A\u0441\u0442\u0430 \u2265 4.5:1 (WCAG AA), \u043A\u0440\u0443\u043F\u043D\u044B\u0435 \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u2265 3:1.
+- \u041D\u0415 \u0434\u0435\u043B\u0430\u0439 \xAB\u0441\u0442\u0435\u043A\u043B\u044F\u043D\u043D\u044B\u0435\xBB \u043A\u0430\u0440\u0442\u043E\u0447\u043A\u0438 \u043F\u043E\u0432\u0435\u0440\u0445 \u0433\u0440\u0430\u0434\u0438\u0435\u043D\u0442\u043E\u0432 (glassmorphism-\u043A\u043B\u0438\u0448\u0435) \u0431\u0435\u0437 \u043F\u0440\u0438\u0447\u0438\u043D\u044B.
+- \u041D\u0415 \u0440\u0430\u0441\u0442\u044F\u0433\u0438\u0432\u0430\u0439 \u043A\u043E\u043D\u0442\u0435\u043D\u0442 \u043D\u0430 \u0432\u0441\u044E \u0448\u0438\u0440\u0438\u043D\u0443: \u043A\u043E\u043D\u0442\u0435\u043D\u0442\u043D\u0430\u044F \u043A\u043E\u043B\u043E\u043D\u043A\u0430 \u2264 1200px, \u0442\u0435\u043A\u0441\u0442\u043E\u0432\u0430\u044F \u043C\u0435\u0440\u0430 60\u201375 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432.
+- \u041D\u0415 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439 box-shadow \xAB\u043A\u0430\u043A \u0443 \u0432\u0441\u0435\u0445 \u043D\u0435\u0439\u0440\u043E\u0441\u0435\u0442\u0435\u0439\xBB (0 0 40px rgba(80,80,255,.5)) \u0438 \u0440\u0430\u0434\u0438\u0443\u0441\u044B-\u043A\u0430\u0448\u0438 (\u0443 \u043E\u0434\u043D\u043E\u0439 \u0441\u0438\u0441\u0442\u0435\u043C\u044B \u0440\u0430\u0434\u0438\u0443\u0441\u043E\u0432 \u2014 \u043E\u0434\u0438\u043D \u0448\u0430\u0433: 4/8/12/16/24/999).
+- \u041D\u0415 \u0430\u043D\u0438\u043C\u0438\u0440\u0443\u0439 \u0432\u0441\u0451 \u043F\u043E\u0434\u0440\u044F\u0434: \u043E\u0434\u043D\u0430 \u0441\u0446\u0435\u043D\u0430 \u0432\u0445\u043E\u0434\u0430, \u043E\u0434\u0438\u043D signature-\u043F\u0440\u0438\u0451\u043C, \u043C\u0438\u043A\u0440\u043E-\u0440\u0435\u0430\u043A\u0446\u0438\u0438 \u043D\u0430 hover/focus. \u0412\u0441\u0451 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u043E\u0435 \u2014 \u0441\u0442\u0430\u0442\u0438\u0447\u043D\u043E.
+
+## 2. \u0426\u0432\u0435\u0442 \u0438 \u0441\u0432\u0435\u0442
+- \u041F\u0440\u0430\u0432\u0438\u043B\u043E 60/30/10: \u043D\u0435\u0439\u0442\u0440\u0430\u043B\u044C \u2264 60%, \u0444\u043E\u043D/\u043F\u043E\u0432\u0435\u0440\u0445\u043D\u043E\u0441\u0442\u0438 \u2248 30%, \u0430\u043A\u0446\u0435\u043D\u0442 \u2264 10%.
+- \u041E\u0434\u0438\u043D \u0430\u043A\u0446\u0435\u043D\u0442. \u0412\u0442\u043E\u0440\u043E\u0439 \u0446\u0432\u0435\u0442 \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u043E\u043D \u0435\u0441\u0442\u044C \u0432 \u0431\u0440\u0435\u043D\u0434\u0435 \u0437\u0430\u043A\u0430\u0437\u0447\u0438\u043A\u0430.
+- \u0422\u0451\u043C\u043D\u044B\u0435 \u0442\u0435\u043C\u044B: \u043D\u0435 \xAB\u0447\u0451\u0440\u043D\u044B\u0439 + \u0441\u0435\u0440\u044B\u0439 \u0442\u0435\u043A\u0441\u0442\xBB, \u0430 \u0433\u043B\u0443\u0431\u0438\u043D\u0430 \u0447\u0435\u0440\u0435\u0437 \u043F\u043E\u0432\u0435\u0440\u0445\u043D\u043E\u0441\u0442\u0438 (bg \u2192 surface \u2192 surface-2) \u0438 \u0442\u043E\u043D\u043A\u0438\u0435 1px \u0433\u0440\u0430\u043D\u0438\u0446\u044B rgba(255,255,255,.08\u2013.14). \u0422\u0435\u043A\u0441\u0442: \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0439 #fff/#111, \u0432\u0442\u043E\u0440\u0438\u0447\u043D\u044B\u0439 \u043D\u0435 \u0442\u0435\u043C\u043D\u0435\u0435 4.5:1.
+- \u0422\u0435\u043D\u0438 \u0442\u0451\u043F\u043B\u044B\u0435/\u043D\u0435\u0439\u0442\u0440\u0430\u043B\u044C\u043D\u044B\u0435 \u0438 \u043C\u044F\u0433\u043A\u0438\u0435: \u043E\u0434\u043D\u0430 \xABambient\xBB (\u0434\u0430\u043B\u0451\u043A\u0430\u044F, \u0441\u043B\u0430\u0431\u0430\u044F) + \u043E\u0434\u043D\u0430 \xABkey\xBB (\u0431\u043B\u0438\u0437\u043A\u0430\u044F, \u0442\u043E\u0447\u043D\u0435\u0435). \u041F\u0440\u0438\u043C\u0435\u0440: 0 1px 2px rgba(0,0,0,.06), 0 8px 24px -12px rgba(0,0,0,.18).
+
+## 3. \u0422\u0438\u043F\u043E\u0433\u0440\u0430\u0444\u0438\u043A\u0430 (\u0435\u0434\u0438\u043D\u0430\u044F \u0441\u0438\u0441\u0442\u0435\u043C\u0430 \u043D\u0430 \u0432\u0435\u0441\u044C \u0441\u0430\u0439\u0442)
+- \u041F\u0430\u0440\u0430 \u0448\u0440\u0438\u0444\u0442\u043E\u0432 \u0438\u0437 \u044D\u0442\u043E\u0433\u043E \u043D\u0430\u0431\u043E\u0440\u0430 (Google Fonts, \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0430\u0439 \u043E\u0434\u043D\u0438\u043C <link>): display \u2014 \xABUnbounded\xBB, \xABClash Display\xBB, \xABSpace Grotesk\xBB, \xABManrope\xBB, \xABBitter\xBB, \xABPlayfair Display\xBB; \u0442\u0435\u043A\u0441\u0442 \u2014 \xABInter Tight\xBB, \xABOnest\xBB, \xABGolos Text\xBB, \xABManrope\xBB. \u041A\u0438\u0440\u0438\u043B\u043B\u0438\u0446\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u0430 (\u0443 \xABClash Display\xBB \u2014 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u043D\u0430 \xABUnbounded\xBB/\xABOnest\xBB). \u041C\u0430\u043A\u0441\u0438\u043C\u0443\u043C 2 \u0433\u0430\u0440\u043D\u0438\u0442\u0443\u0440\u044B \u0438 4 \u043D\u0430\u0447\u0435\u0440\u0442\u0430\u043D\u0438\u044F \u043D\u0430 \u0441\u0430\u0439\u0442.
+- \u0416\u0438\u0434\u043A\u0438\u0435 \u0440\u0430\u0437\u043C\u0435\u0440\u044B \u0447\u0435\u0440\u0435\u0437 clamp(): h1 clamp(2.5rem, 6vw, 4.5rem); h2 clamp(2rem, 4.5vw, 3.25rem); body 1rem\u20131.125rem. line-height: \u0437\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 1.05\u20131.2, \u0442\u0435\u043A\u0441\u0442 1.6\u20131.75. letter-spacing \u0443 display: \u22120.02em.
+- \u0418\u0435\u0440\u0430\u0440\u0445\u0438\u044F \u043F\u043E \u0440\u0430\u0437\u043C\u0435\u0440\u0443 \u0418 \u043F\u043E \u0432\u0435\u0441\u0443/\u0446\u0432\u0435\u0442\u0443: secondary-\u0442\u0435\u043A\u0441\u0442 \u043D\u0430 40\u201355% \u0441\u0432\u0435\u0442\u043B\u0435\u0435 \u043E\u0441\u043D\u043E\u0432\u043D\u043E\u0433\u043E, \u043C\u0435\u0442\u043A\u0438 \u2014 uppercase, letter-spacing 0.08\u20130.14em, \u0440\u0430\u0437\u043C\u0435\u0440 12\u201313px.
+
+## 4. \u041A\u043E\u043C\u043F\u043E\u0437\u0438\u0446\u0438\u044F \u0438 \u043E\u0442\u0441\u0442\u0443\u043F\u044B
+- \u0421\u0435\u0442\u043A\u0430 \u043E\u0442\u0441\u0442\u0443\u043F\u043E\u0432: \u0431\u0430\u0437\u043E\u0432\u044B\u0439 \u0448\u0430\u0433 8px (\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u043E 4px \u0434\u043B\u044F \u043C\u0438\u043A\u0440\u043E-\u043E\u0442\u0441\u0442\u0443\u043F\u043E\u0432). \u0412\u0435\u0440\u0442\u0438\u043A\u0430\u043B\u044C\u043D\u044B\u0439 \u0440\u0438\u0442\u043C \u0441\u0435\u043A\u0446\u0438\u0439 \u043D\u0430 \u0434\u0435\u0441\u043A\u0442\u043E\u043F\u0435 96\u2013128px, \u043D\u0430 \u043C\u043E\u0431\u0438\u043B\u0435 56\u201372px \u2014 \u043E\u0434\u0438\u043D\u0430\u043A\u043E\u0432\u043E \u0434\u043B\u044F \u0432\u0441\u0435\u0445 \u0441\u0435\u043A\u0446\u0438\u0439.
+- \u0417\u0430\u0433\u043E\u043B\u043E\u0432\u043A\u0438 \u0441\u0435\u043A\u0446\u0438\u0439 \u0432\u0441\u0435\u0433\u0434\u0430 \u043D\u0430 \u043E\u0434\u043D\u043E\u0439 \u0433\u043B\u0443\u0431\u0438\u043D\u0435: \u0443 \u0432\u0441\u0435\u0445 \u0441\u0435\u043A\u0446\u0438\u0439 \u043E\u0434\u0438\u043D\u0430\u043A\u043E\u0432\u044B\u0439 padding-top, eyebrow \u2192 h2 \u2192 lead \u0441 \u043E\u0434\u043D\u043E\u0439 \u0438 \u0442\u043E\u0439 \u0436\u0435 \u0441\u0432\u044F\u0437\u043A\u043E\u0439 \u043E\u0442\u0441\u0442\u0443\u043F\u043E\u0432.
+- \u0418\u0437\u0431\u0435\u0433\u0430\u0439 \u0441\u0438\u043C\u043C\u0435\u0442\u0440\u0438\u0438 \u0440\u0430\u0434\u0438 \u0441\u0438\u043C\u043C\u0435\u0442\u0440\u0438\u0438: \u0441\u043C\u0435\u0449\u0430\u0439 \u0430\u043A\u0446\u0435\u043D\u0442\u044B (\u0444\u043E\u0442\u043E \u0441\u043B\u0435\u0432\u0430/\u0442\u0435\u043A\u0441\u0442 \u0441\u043F\u0440\u0430\u0432\u0430, \u0437\u0430\u0442\u0435\u043C \u043D\u0430\u043E\u0431\u043E\u0440\u043E\u0442), \u0432\u044B\u0440\u0430\u0432\u043D\u0438\u0432\u0430\u043D\u0438\u0435 \u0431\u0430\u0437\u043E\u0432\u044B\u0445 \u043B\u0438\u043D\u0438\u0439, \u0430\u0441\u0438\u043C\u043C\u0435\u0442\u0440\u0438\u0447\u043D\u044B\u0435 \u043F\u0440\u043E\u043F\u043E\u0440\u0446\u0438\u0438 \u043A\u043E\u043B\u043E\u043D\u043E\u043A (2/3 + 1/3).
+- \u041C\u043E\u0431\u0438\u043B\u044C\u043D\u0430\u044F \u0430\u0434\u0430\u043F\u0442\u0430\u0446\u0438\u044F \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u0430: 375px \u2014 \u0431\u0435\u0437 \u0433\u043E\u0440\u0438\u0437\u043E\u043D\u0442\u0430\u043B\u044C\u043D\u043E\u0433\u043E \u0441\u043A\u0440\u043E\u043B\u043B\u0430; \u0432\u0441\u0435 \u0441\u0435\u0442\u043A\u0438 \xABminmax(0, 1fr)\xBB \u043D\u0430 \u0443\u0437\u043A\u0438\u0445 \u044D\u043A\u0440\u0430\u043D\u0430\u0445; tap-target \u2265 44px; \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F max-width:100%.
+
+## 5. \u041C\u043E\u0443\u0448\u043D (motion.dev \u2014 MIT)
+- \u041F\u043E\u0434\u043A\u043B\u044E\u0447\u0430\u0439 Motion (motion.dev) \u0442\u043E\u0447\u0435\u0447\u043D\u043E: \xABimport { animate, scroll, inView } from 'motion'\xBB \u0438\u043B\u0438 CDN \u0434\u043B\u044F vanilla-\u0441\u0442\u0440\u0430\u043D\u0438\u0446.
+- \u041F\u0440\u0430\u0432\u0438\u043B\u0430: \u0434\u043B\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C 150\u2013350\u043C\u0441 (\u0432\u0445\u043E\u0434\u044B \u0434\u043E 600\u043C\u0441), easing ease-out / cubic-bezier(0.22, 1, 0.36, 1); \u0430\u043D\u0438\u043C\u0430\u0446\u0438\u044F \u0442\u043E\u043B\u044C\u043A\u043E transform \u0438 opacity; stagger 40\u201380\u043C\u0441 \u043C\u0435\u0436\u0434\u0443 \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u0430\u043C\u0438.
+- \u0420\u043E\u0432\u043D\u043E \u043E\u0434\u0438\u043D signature-\u043F\u0440\u0438\u0451\u043C \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 (\u043F\u0440\u0438\u043C\u0435\u0440\u044B: halftone/particles-\u0444\u043E\u043D \u043D\u0430 canvas \u2014 \u0441\u043C. particles.casberry.in; \u0436\u0438\u0432\u043E\u0439 \u043A\u0443\u0440\u0441\u043E\u0440 \u2014 \u0441\u043C. \xA77; \u0441\u043A\u0440\u043E\u043B\u043B-\u043F\u0430\u0440\u0430\u043B\u043B\u0430\u043A\u0441 \u043E\u0434\u043D\u043E\u0433\u043E \u0441\u043B\u043E\u044F). \u041E\u0441\u0442\u0430\u043B\u044C\u043D\u043E\u0435 \u2014 \u0442\u043E\u043D\u043A\u0438\u0435 fade-in \u043F\u043E inView.
+- \u0412\u0441\u0435\u0433\u0434\u0430 \xAB@media (prefers-reduced-motion: reduce)\xBB \u2014 \u043E\u0442\u043A\u043B\u044E\u0447\u0430\u0439 \u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438.
+
+## 6. \u0411\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 \u2014 \u0447\u0442\u043E \u0431\u0440\u0430\u0442\u044C \u043F\u043E\u0434 \u0437\u0430\u0434\u0430\u0447\u0443 (\u0432\u0441\u0435 MIT, \u043B\u0438\u0446\u0435\u043D\u0437\u0438\u044F \u0447\u0438\u0441\u0442\u0430\u044F)
+- \u041B\u0435\u043D\u0434\u0438\u043D\u0433, \u0432\u0438\u0437\u0443\u0430\u043B: \u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u044B 21st.dev, kokonutui.com, animate-ui.com; \u044D\u0444\u0444\u0435\u043A\u0442\u044B \u0438 \u0444\u043E\u043D\u044B \u2014 inspira-ui.com (shimmer/beams), particles.casberry.in (\u0447\u0430\u0441\u0442\u0438\u0446\u044B), motion.dev (\u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438), \u0440\u0435\u0444\u0435\u0440\u0435\u043D\u0441\u044B \u2014 motionsites.ai, styles.refero.design, thrine.app, bklit.com, originkit.dev.
+- \u041F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0430/\u043F\u0430\u043D\u0435\u043B\u044C/\u0444\u043E\u0440\u043C\u0430/\u0434\u0430\u0448\u0431\u043E\u0440\u0434 (\u041D\u0415 \u043B\u0435\u043D\u0434\u0438\u043D\u0433): \u0431\u0430\u0437\u0430 \u2014 heroui.com (\u0442\u0430\u0431\u043B\u0438\u0446\u044B, \u0444\u043E\u0440\u043C\u044B, \u043C\u043E\u0434\u0430\u043B\u043A\u0438, \u043F\u0430\u043D\u0435\u043B\u0438); \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u043E bklit.com, skiper-ui.com (\u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0435 \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u044B), animate-ui.com (\u043C\u0438\u043A\u0440\u043E-\u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0438 \u043A\u043E\u043C\u043F\u043E\u043D\u0435\u043D\u0442\u043E\u0432).
+- \u0418\u043A\u043E\u043D\u043A\u0438: iconimate.app (\u0430\u043D\u0438\u043C\u0438\u0440\u043E\u0432\u0430\u043D\u043D\u044B\u0435) \u043B\u0438\u0431\u043E \u0438\u043D\u043B\u0430\u0439\u043D-SVG ( lucide ) \u2014 \u043D\u0438\u043A\u0430\u043A\u0438\u0445 icon-\u0448\u0440\u0438\u0444\u0442\u043E\u0432.
+- \u041A\u0443\u0440\u0441\u043E\u0440\u044B (\u0442\u043E\u043B\u044C\u043A\u043E \u0435\u0441\u043B\u0438 \u0443\u043C\u0435\u0441\u0442\u043D\u043E \u0445\u0430\u0440\u0430\u043A\u0442\u0435\u0440\u0443 \u043F\u0440\u043E\u0434\u0443\u043A\u0442\u0430): 21st.dev, originkit.dev, motion.dev. \u041A\u0430\u0441\u0442\u043E\u043C\u043D\u044B\u0439 \u043A\u0443\u0440\u0441\u043E\u0440 \u043D\u0435 \u043B\u043E\u043C\u0430\u0435\u0442 \u043D\u0430\u0442\u0438\u0432\u043D\u044B\u0439 \u043D\u0430 touch-\u0443\u0441\u0442\u0440\u043E\u0439\u0441\u0442\u0432\u0430\u0445.
+- \u041D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0430\u0439 \u0431\u043E\u043B\u044C\u0448\u0435 2 \u0432\u043D\u0435\u0448\u043D\u0438\u0445 \u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443; \u0432\u0441\u0451 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u043E\u0435 \u2014 \u0440\u0443\u043A\u0430\u043C\u0438 \u043D\u0430 \u0447\u0438\u0441\u0442\u043E\u043C CSS/JS. \u041A\u0430\u0436\u0434\u0430\u044F \u0432\u043D\u0435\u0448\u043D\u044F\u044F \u0437\u0430\u0432\u0438\u0441\u0438\u043C\u043E\u0441\u0442\u044C \u2014 \u0447\u0435\u0440\u0435\u0437 CDN/npm \u0441 \u0443\u043A\u0430\u0437\u0430\u043D\u0438\u0435\u043C \u0432\u0435\u0440\u0441\u0438\u0438.
+
+## 7. \u041A\u0443\u0440\u0441\u043E\u0440 \u0438 \u0434\u0435\u0442\u0430\u043B\u0438
+- \u041A\u0430\u0441\u0442\u043E\u043C\u043D\u044B\u0439 \u043A\u0443\u0440\u0441\u043E\u0440 \u2014 \u0442\u043E\u043B\u044C\u043A\u043E \u043D\u0430 \u0434\u0435\u0441\u043A\u0442\u043E\u043F\u0435 (@media (pointer: fine)); \u0441\u043A\u0440\u044B\u0442\u044C \u0441\u0438\u0441\u0442\u0435\u043C\u043D\u044B\u0439 \u0442\u043E\u043B\u044C\u043A\u043E \u0432\u043D\u0443\u0442\u0440\u0438 \u0438\u043D\u0442\u0435\u0440\u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0439 \u0437\u043E\u043D\u044B, \u043D\u0435 \u043D\u0430 \u0432\u0441\u0435\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435; \u0432\u0441\u0435\u0433\u0434\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u044F\u0442\u044C \u0432\u0438\u0434\u0438\u043C\u043E\u0441\u0442\u044C \u0441\u0438\u0441\u0442\u0435\u043C\u043D\u043E\u0433\u043E \u043A\u0443\u0440\u0441\u043E\u0440\u0430 \u043F\u0440\u0438 reduced-motion.
+- \u0414\u0435\u0442\u0430\u043B\u0438 \u0443\u0440\u043E\u0432\u043D\u044F \xAB\u0434\u043E\u0440\u043E\u0433\u043E\xBB: \u043A\u043E\u043D\u0441\u0438\u0441\u0442\u0435\u043D\u0442\u043D\u044B\u0435 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u044F hover/focus-visible/active/disabled \u0443 \u0432\u0441\u0435\u0445 \u0438\u043D\u0442\u0435\u0440\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u043E\u0432; \u043D\u043E\u043C\u0435\u0440\u0430/\u0446\u0435\u043D\u044B \u0442\u0430\u0431\u043B\u0438\u0447\u043D\u044B\u043C\u0438 \u0446\u0438\u0444\u0440\u0430\u043C\u0438 (font-variant-numeric: tabular-nums); \u043F\u043B\u0430\u0432\u043D\u044B\u0439 \u0441\u043A\u0440\u043E\u043B\u043B \u043A \u044F\u043A\u043E\u0440\u044F\u043C; \u0442\u0451\u043C\u043D\u044B\u0439/\u0441\u0432\u0435\u0442\u043B\u044B\u0439 \u0440\u0435\u0436\u0438\u043C \u2014 \u0435\u0441\u043B\u0438 \u0443\u043C\u0435\u0441\u0442\u0435\u043D.
+
+## 8. \u041A\u0430\u0447\u0435\u0441\u0442\u0432\u043E \u043A\u043E\u0434\u0430 \u0438 \u0432\u044B\u0434\u0430\u0447\u0430
+- \u0412\u044B\u0434\u0430\u0432\u0430\u0439 \u041E\u0414\u0418\u041D \u0441\u0430\u043C\u043E\u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u044B\u0439 HTML-\u0444\u0430\u0439\u043B: \u0438\u043D\u043B\u0430\u0439\u043D CSS \u0438 JS, \u0431\u0435\u0437 \u0441\u0431\u043E\u0440\u043A\u0438 \u0438 \u0432\u043D\u0435\u0448\u043D\u0438\u0445 \u0441\u0442\u0438\u043B\u0435\u0432\u044B\u0445 \u0444\u0430\u0439\u043B\u043E\u0432; \u0448\u0440\u0438\u0444\u0442\u044B \u0438 CDN-\u0431\u0438\u0431\u043B\u0438\u043E\u0442\u0435\u043A\u0438 \u2014 \u0432\u043D\u0435\u0448\u043D\u0438\u043C\u0438 \u0441\u0441\u044B\u043B\u043A\u0430\u043C\u0438 (\u044D\u0442\u043E \u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u043E).
+- \u0421\u0435\u043C\u0430\u043D\u0442\u0438\u043A\u0430: header/nav/main/section/footer, \u043E\u0434\u0438\u043D h1, alt \u0443 \u0432\u0441\u0435\u0445 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0439, aria \u0434\u043B\u044F \u0438\u043D\u0442\u0435\u0440\u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u044D\u043B\u0435\u043C\u0435\u043D\u0442\u043E\u0432, focus-visible \u0441\u0442\u0438\u043B\u0438.
+- \u041F\u0440\u043E\u0438\u0437\u0432\u043E\u0434\u0438\u0442\u0435\u043B\u044C\u043D\u043E\u0441\u0442\u044C: \u2264 2 \u0432\u043D\u0435\u0448\u043D\u0438\u0445 \u0448\u0440\u0438\u0444\u0442\u043E\u0432\u044B\u0445 \u0441\u0435\u043C\u0435\u0439\u0441\u0442\u0432\u0430, lazy-\u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0430 \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0439, \u0431\u0435\u0437 \u0442\u044F\u0436\u0451\u043B\u044B\u0445 \u0430\u043D\u0438\u043C\u0430\u0446\u0438\u0439 \u043D\u0430 \u043C\u043E\u0431\u0438\u043B\u0435; \u0432\u0435\u0441 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u044B \u0431\u0435\u0437 \u043A\u0430\u0440\u0442\u0438\u043D\u043E\u043A \u2264 200 \u041A\u0411.
+- SEO-\u0431\u0430\u0437\u0430: title, description, og-\u0442\u0435\u0433\u0438, lang="ru" (\u0438\u043B\u0438 \u044F\u0437\u044B\u043A \u0437\u0430\u043A\u0430\u0437\u0447\u0438\u043A\u0430).
+- \u041F\u0435\u0440\u0435\u0434 \u043E\u0442\u0432\u0435\u0442\u043E\u043C \u043F\u0440\u043E\u0439\u0434\u0438 \u0441\u0432\u043E\u0439 \u0436\u0435 \u0447\u0435\u043A-\u043B\u0438\u0441\u0442 \xA71: \u043D\u0438 \u043E\u0434\u043D\u043E\u0433\u043E \u043F\u0443\u043D\u043A\u0442\u0430-\u043D\u0430\u0440\u0443\u0448\u0435\u043D\u0438\u044F. \u0415\u0441\u043B\u0438 \u0432\u0438\u0436\u0443 \u043D\u0430\u0440\u0443\u0448\u0435\u043D\u0438\u0435 \u2014 \u0438\u0441\u043F\u0440\u0430\u0432\u044C \u0438 \u0442\u043E\u043B\u044C\u043A\u043E \u043F\u043E\u0442\u043E\u043C \u0432\u044B\u0434\u0430\u0432\u0430\u0439 \u043A\u043E\u0434.`;
+
 // server/appRoutes.ts
 var appRouter = Router2();
 var env2 = process.env;
@@ -2321,8 +2468,12 @@ var AI_LIMITS = {
   // всплеск: не больше N запросов в минуту
   perHour: envNum("AI_USER_PER_HOUR", 12),
   // …в час
-  perDay: envNum("AI_USER_PER_DAY", 30),
-  // …в сутки (генерация + правки + фразы)
+  perDay: envNum("AI_USER_PER_DAY", 3),
+  // …в сутки: хватает на 1 сайт (генерация + правка + фразы)
+  perDayWindowMs: envNum("AI_USER_DAY_WINDOW_MS", 10 * 36e5),
+  // окно «суточного» лимита — 10 часов (обновится через 10 часов, не в полночь)
+  dailyTokens: envNum("AI_DAILY_TOKENS", 15e4),
+  // включённая дневная квота токенов (~7 генераций сайта)
   userDailyUsd: envNum("AI_USER_DAILY_USD", 1.5),
   // потолок расходов на одного пользователя в сутки
   globalDailyUsd: envNum("AI_GLOBAL_DAILY_USD", 40),
@@ -2332,6 +2483,7 @@ var AI_LIMITS = {
   maxInputChars: envNum("AI_MAX_INPUT_CHARS", 4e4),
   maxImages: 3
 };
+var DESIGN_MARKER = "DESIGN_SYSTEM_VERSION:";
 var AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS || "openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct").split(",").map((s) => s.trim()).filter(Boolean));
 var AI_PRICE = {
   "openai/gpt-4o-mini": [0.15, 0.6],
@@ -2387,30 +2539,62 @@ appRouter.post("/ai", h2(async (req, res) => {
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
   if (!config.openrouterApiKey) {
-    return void res.status(503).json({ ok: false, error: "not_configured", message: "Fracs AI \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 (\u043D\u0435\u0442 OPENROUTER_API_KEY)." });
+    return void res.status(503).json({ ok: false, error: "not_configured", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
   const uid = String(gate2.user.id);
   const clean = sanitizeAiBody(req.body?.body ?? req.body);
   if ("err" in clean) return void res.status(clean.err[0]).json(clean.err[1]);
   const { body, inChars } = clean;
+  let designChars = 0;
+  const hasDesign = body.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.includes(DESIGN_MARKER));
+  if (!hasDesign) {
+    const sys = `DESIGN_SYSTEM_VERSION: ${DESIGN_VERSION}
+` + FRACS_DESIGN_SYSTEM;
+    body.messages.unshift({ role: "system", content: sys });
+    designChars = sys.length;
+  }
+  const totalInChars = inChars + designChars;
   if (!await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 6e4, true)) {
     return void res.status(429).json({ ok: false, error: "quota_minute", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435." });
   }
   if (!await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 36e5, true)) {
     return void res.status(429).json({ ok: false, error: "quota_hour", message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI: ${AI_LIMITS.perHour} \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 \u0432 \u0447\u0430\u0441. \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447 \u2014 \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u043E\u0432.` });
   }
-  if (!await rateLimit(`ai-u-day:${uid}`, AI_LIMITS.perDay, 864e5, true)) {
-    return void res.status(429).json({ ok: false, error: "quota_day", message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI \u043D\u0430 \u0441\u0443\u0442\u043A\u0438 \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (${AI_LIMITS.perDay} \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432). \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430. \u0421 \u0441\u043E\u0431\u0441\u0442\u0432\u0435\u043D\u043D\u044B\u043C API-\u043A\u043B\u044E\u0447\u043E\u043C \u043B\u0438\u043C\u0438\u0442\u043E\u0432 \u043D\u0435\u0442.` });
+  if (!await rateLimit(`ai-u-day:${uid}`, AI_LIMITS.perDay, AI_LIMITS.perDayWindowMs, true)) {
+    let dayBalance = 0;
+    try {
+      dayBalance = await aiTokensGet(uid);
+    } catch {
+      dayBalance = 0;
+    }
+    if (dayBalance <= 0) {
+      const hours = Math.round(AI_LIMITS.perDayWindowMs / 36e5);
+      return void res.status(429).json({ ok: false, error: "quota_day", message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (${AI_LIMITS.perDay} \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432). \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 ${hours} \u0447 \u2014 \u0438\u043B\u0438 \u043A\u0443\u043F\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435, \u043E\u043D\u0438 \u0441\u043D\u0438\u043C\u0430\u044E\u0442 \u043B\u0438\u043C\u0438\u0442: ${config.appUrl}/app`, buyUrl: `${config.appUrl}/app` });
+    }
   }
-  const [pin, pout] = priceOf(body.model);
-  const worstUsd = inChars / 3.5 * pin / 1e6 + body.max_tokens * pout / 1e6;
+  const worstTokens = Math.round(totalInChars / 3.5) + body.max_tokens;
   let usage;
+  let balance = 0;
   try {
     usage = await aiUsageToday(uid);
+    balance = await aiTokensGet(uid);
   } catch (e) {
-    console.error("[ai] usage read failed \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043E\u0442\u043A\u043B\u043E\u043D\u0451\u043D (\u043F\u0440\u0435\u0434\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435\u043B\u044C):", e);
+    console.error("[ai] usage/tokens read failed \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043E\u0442\u043A\u043B\u043E\u043D\u0451\u043D (\u043F\u0440\u0435\u0434\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435\u043B\u044C):", e);
     return void res.status(503).json({ ok: false, error: "budget_unavailable", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447." });
   }
+  const tokensAllowed = AI_LIMITS.dailyTokens + balance;
+  if (usage.userTokens + worstTokens > tokensAllowed) {
+    const left = Math.max(0, tokensAllowed - usage.userTokens);
+    return void res.status(429).json({
+      ok: false,
+      error: "quota_tokens",
+      message: `\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 \u0442\u043E\u043A\u0435\u043D\u043E\u0432 Fracs AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (\u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E ${AI_LIMITS.dailyTokens.toLocaleString("ru-RU")}/\u0441\u0443\u0442\u043A\u0438). \u041A\u0443\u043F\u0438\u0442\u0435 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435 \u2014 \u043E\u043D\u0438 \u043D\u0435 \u0438\u0441\u0442\u0435\u043A\u0430\u044E\u0442: ${config.appUrl}/app`,
+      tokensLeft: left,
+      buyUrl: `${config.appUrl}/app`
+    });
+  }
+  const [pin, pout] = priceOf(body.model);
+  const worstUsd = totalInChars / 3.5 * pin / 1e6 + body.max_tokens * pout / 1e6;
   if (usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
     return void res.status(503).json({ ok: false, error: "daily_budget", message: "\u041E\u0431\u0449\u0438\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043D\u0430 \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D \u2014 \u043E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430. \u0421\u043E \u0441\u0432\u043E\u0438\u043C API-\u043A\u043B\u044E\u0447\u043E\u043C \u043C\u043E\u0436\u043D\u043E \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u0431\u0435\u0437 \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u0439." });
   }
@@ -2429,15 +2613,17 @@ appRouter.post("/ai", h2(async (req, res) => {
       try {
         const u = JSON.parse(text)?.usage || {};
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
-        const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || inChars / 3.5) * pin + (Number(u.completion_tokens) || body.max_tokens) * pout) / 1e6;
+        const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || body.max_tokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
+        const over = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
+        if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error("[ai] tokens spend failed:", e));
       } catch (e) {
         console.error("[ai] usage write failed:", e);
       }
     }
     res.status(upstream.status).type("application/json").send(text);
   } catch (e) {
-    res.status(502).json({ ok: false, error: "upstream", message: "OpenRouter \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D: " + String(e?.message || e) });
+    res.status(502).json({ ok: false, error: "upstream", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
 }));
 appRouter.get("/ai/models", h2(async (req, res) => {
@@ -2465,6 +2651,43 @@ appRouter.get("/ai/models", h2(async (req, res) => {
   } catch (e) {
     res.status(502).json({ ok: false, error: "upstream" });
   }
+}));
+appRouter.get("/ai/usage", h2(async (req, res) => {
+  if (!await rateLimit(`app-ai-usage:${req.ip}`, 120, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  }
+  const gate2 = await fracsAiGate(req);
+  if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  try {
+    const [usage, balance] = await Promise.all([aiUsageToday(String(gate2.user.id)), aiTokensGet(String(gate2.user.id))]);
+    const allowed2 = AI_LIMITS.dailyTokens + balance;
+    res.json({
+      ok: true,
+      dailyIncluded: AI_LIMITS.dailyTokens,
+      usedToday: usage.userTokens,
+      requestsToday: usage.userRequests,
+      balance,
+      tokensLeft: Math.max(0, allowed2 - usage.userTokens),
+      packs: loadTokenPacks()
+    });
+  } catch (e) {
+    console.error("[ai] usage endpoint failed:", e);
+    res.status(503).json({ ok: false, error: "usage_unavailable" });
+  }
+}));
+appRouter.get("/ai/design", h2(async (req, res) => {
+  if (!await rateLimit(`app-ai-design:${req.ip}`, 60, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  }
+  const gate2 = await fracsAiGate(req);
+  if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  res.json({
+    ok: true,
+    version: DESIGN_VERSION,
+    system: `DESIGN_SYSTEM_VERSION: ${DESIGN_VERSION}
+` + FRACS_DESIGN_SYSTEM,
+    libraries: DESIGN_LIBRARIES
+  });
 }));
 var DEMO_MAX_BYTES = 12e5;
 var DEMO_PER_DAY = envNum("DEMO_PER_DAY", 20);
@@ -2683,6 +2906,19 @@ var YK = "https://api.yookassa.ru/v3/payments";
 var ykAuth = () => "Basic " + Buffer.from(`${config.yookassaShopId}:${config.yookassaSecret}`).toString("base64");
 async function activate(p) {
   const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
+  const pack = TOKEN_PACKS.find((t) => t.id === p.planId);
+  if (pack) {
+    if (!user) return;
+    if (!await claimPayment(p.id)) return;
+    try {
+      await aiTokensAdd(user.id, pack.tokens);
+      await notify(user.tgId, `\u26A1\uFE0F \u0422\u043E\u043A\u0435\u043D\u044B Fracs AI \u0437\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u044B: +${pack.tokens.toLocaleString("ru-RU")}. \u0411\u0430\u043B\u0430\u043D\u0441 \u043D\u0435 \u0438\u0441\u0442\u0435\u043A\u0430\u0435\u0442 \u2014 \u0441\u043C\u043E\u0442\u0440\u0438\u0442\u0435 \u043E\u0441\u0442\u0430\u0442\u043E\u043A \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435: ${config.appUrl}/app`);
+    } catch (e) {
+      await revertPayment(p.id);
+      throw e;
+    }
+    return;
+  }
   const plan = plans.find((x) => x.id === p.planId);
   if (!user || !plan) return;
   if (!await claimPayment(p.id)) return;
@@ -2695,14 +2931,17 @@ async function activate(p) {
   }
 }
 async function createPayment(user, planId) {
-  const plans = await getPlans();
-  const plan = plans.find((p) => p.id === planId);
-  if (!plan) throw Object.assign(new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444"), { status: 400 });
+  const pack = TOKEN_PACKS.find((t) => t.id === planId);
+  const plans = pack ? [] : await getPlans();
+  const plan = pack ? void 0 : plans.find((p) => p.id === planId);
+  if (!pack && !plan) throw Object.assign(new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444"), { status: 400 });
+  const amountRub = pack ? pack.priceRub : plan.priceRub;
+  const title = pack ? `\u0422\u043E\u043A\u0435\u043D\u044B Fracs AI: ${pack.title}` : `\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs: ${plan.title}`;
   const rec = {
     id: newId(),
     userId: user.id,
-    planId: plan.id,
-    amountRub: plan.priceRub,
+    planId: (pack ?? plan).id,
+    amountRub,
     status: "pending",
     provider: config.paymentProvider,
     providerId: null,
@@ -2716,10 +2955,10 @@ async function createPayment(user, planId) {
       method: "POST",
       headers: { Authorization: ykAuth(), "Idempotence-Key": rec.id, "Content-Type": "application/json" },
       body: JSON.stringify({
-        amount: { value: plan.priceRub.toFixed(2), currency: "RUB" },
+        amount: { value: amountRub.toFixed(2), currency: "RUB" },
         capture: true,
         confirmation: { type: "redirect", return_url: `${config.appUrl}/app?paid=1` },
-        description: `\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs: ${plan.title}`,
+        description: title,
         metadata: { paymentId: rec.id }
       }),
       signal: AbortSignal.timeout(15e3)
@@ -2805,12 +3044,13 @@ api.get("/config", h4(async (_req, res) => {
     devLogin: config.devLogin,
     payment: config.paymentProvider,
     plans: await getPlans(),
+    tokenPacks: TOKEN_PACKS,
     demo: { maps: false, tg: false },
     adminUsername: config.adminUsername || void 0
   });
 }));
 api.get("/plans", h4(async (_req, res) => {
-  res.json({ ok: true, plans: await getPlans() });
+  res.json({ ok: true, plans: await getPlans(), tokenPacks: TOKEN_PACKS });
 }));
 api.get("/cities", (req, res) => {
   res.json({ items: searchCities(String(req.query.q || "").slice(0, 40), 8) });
@@ -3198,14 +3438,19 @@ api.get("/search/:id/export.csv", requireAuth, h4(async (req, res) => {
 }));
 api.post("/payments/request", requireAuth, h4(async (req, res) => {
   if (!await rateLimit(`payreq:${req.user.id}`, 5, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E." });
-  const plans = await getPlans();
-  const plan = plans.find((p) => p.id === String(req.body?.planId || ""));
-  if (!plan) return void res.status(400).json({ error: "bad_plan", message: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444" });
+  const pack = TOKEN_PACKS.find((t) => t.id === String(req.body?.planId || ""));
+  const plans = pack ? [] : await getPlans();
+  const plan = pack ? void 0 : plans.find((p) => p.id === String(req.body?.planId || ""));
+  if (!pack && !plan) return void res.status(400).json({ error: "bad_plan", message: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444" });
   const u = req.user;
   if (config.adminTgId > 0) {
     await notify(
       config.adminTgId,
-      `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443
+      pack ? `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u0442\u043E\u043A\u0435\u043D\u044B Fracs AI
+${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})
+\u041F\u0430\u043A\u0435\u0442: ${pack.title}, ${pack.priceRub} \u20BD
+
+\u0412\u044B\u0434\u0430\u0442\u044C: /grant-tokens ${u.tgId} ${pack.tokens}` : `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443
 ${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})
 \u0422\u0430\u0440\u0438\u0444: ${plan.title}, ${plan.priceRub} \u20BD
 

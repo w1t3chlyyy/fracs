@@ -216,7 +216,8 @@ const envNum = (k: string, d: number) => { const n = Number(process.env[k]); ret
 const AI_LIMITS = {
   perMinute: envNum('AI_USER_PER_MIN', 4),          // всплеск: не больше N запросов в минуту
   perHour: envNum('AI_USER_PER_HOUR', 12),          // …в час
-  perDay: envNum('AI_USER_PER_DAY', 30),            // …в сутки (генерация + правки + фразы)
+  perDay: envNum('AI_USER_PER_DAY', 3),             // …в сутки: хватает на 1 сайт (генерация + правка + фразы)
+  perDayWindowMs: envNum('AI_USER_DAY_WINDOW_MS', 10 * 3_600_000), // окно «суточного» лимита — 10 часов (обновится через 10 часов, не в полночь)
   dailyTokens: envNum('AI_DAILY_TOKENS', 150_000),  // включённая дневная квота токенов (~7 генераций сайта)
   userDailyUsd: envNum('AI_USER_DAILY_USD', 1.5),   // потолок расходов на одного пользователя в сутки
   globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 40), // аварийный предохранитель: общий бюджет в сутки
@@ -310,8 +311,18 @@ appRouter.post('/ai', h(async (req, res) => {
   if (!(await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 3_600_000, true))) {
     return void res.status(429).json({ ok: false, error: 'quota_hour', message: `Лимит Fracs AI: ${AI_LIMITS.perHour} запросов в час. Продолжите позже или подключите свой API-ключ — без лимитов.` });
   }
-  if (!(await rateLimit(`ai-u-day:${uid}`, AI_LIMITS.perDay, 86_400_000, true))) {
-    return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит Fracs AI на сутки исчерпан (${AI_LIMITS.perDay} запросов). Он обновится завтра. С собственным API-ключом лимитов нет.` });
+  if (!(await rateLimit(`ai-u-day:${uid}`, AI_LIMITS.perDay, AI_LIMITS.perDayWindowMs, true))) {
+    // «Можно продлить»: купленные токены снимают лимит запросов (расход всё равно списывается по факту).
+    let dayBalance = 0;
+    try {
+      dayBalance = await aiTokensGet(uid);
+    } catch {
+      dayBalance = 0;
+    }
+    if (dayBalance <= 0) {
+      const hours = Math.round(AI_LIMITS.perDayWindowMs / 3_600_000);
+      return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит Fracs AI исчерпан (${AI_LIMITS.perDay} запросов). Он обновится через ${hours} ч — или купите токены в кабинете, они снимают лимит: ${config.appUrl}/app`, buyUrl: `${config.appUrl}/app` });
+    }
   }
 
   // 2) лимит по токенам: включённая дневная квота + купленные пакеты (пакеты не истекают).
