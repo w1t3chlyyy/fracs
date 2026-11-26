@@ -228,3 +228,61 @@ html { scroll-behavior: smooth; }
   background: #fff; border: 0; box-shadow: 0 0 0 5px rgba(110,45,18,0.9);
 }
 .fx-range:focus-visible { outline: 2px solid #F26522; outline-offset: 6px; border-radius: 999px; }
+
+/* ── Лендинг: на десктопе каждый блок занимает ровно один экран ── */
+@media (min-width: 1024px) {
+  html { scroll-snap-type: y proximity; }
+
+  .fx-section {
+    height: 100svh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding-block: clamp(12px, 2.4vh, 40px);
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+  }
+
+  /* Вертикальный ритм привязан к высоте окна: блок помещается
+     и на 768px, и на 1080px, без обрезания контента. */
+  .fx-section h2 { font-size: clamp(1.9rem, 3.6vw, 3.2rem); }
+  .fx-section h3 { font-size: clamp(1.35rem, 2.1vw, 1.9rem); }
+  .fx-section .fx-num { font-size: clamp(2rem, 3.4vw, 3.2rem); }
+
+  .fx-section .mb-10, .fx-section .lg\:mb-14 { margin-bottom: clamp(18px, 4vh, 56px); }
+  .fx-section .mt-3 { margin-top: clamp(6px, 1.2vh, 12px); }
+  .fx-section .mt-4 { margin-top: clamp(8px, 1.4vh, 16px); }
+  .fx-section .mt-5 { margin-top: clamp(8px, 1.6vh, 20px); }
+  .fx-section .mt-6 { margin-top: clamp(10px, 2vh, 24px); }
+  .fx-section .mt-7 { margin-top: clamp(12px, 2.2vh, 28px); }
+  .fx-section .mt-8 { margin-top: clamp(12px, 2.6vh, 32px); }
+  .fx-section .mt-9 { margin-top: clamp(14px, 3vh, 36px); }
+  .fx-section .mt-10 { margin-top: clamp(16px, 3.2vh, 40px); }
+  .fx-section .pt-8, .fx-section .lg\:pt-8 { padding-top: clamp(10px, 2vh, 32px); }
+  .fx-section .pt-10 { padding-top: clamp(12px, 2.4vh, 40px); }
+  .fx-section .pb-7 { padding-bottom: clamp(12px, 2.4vh, 28px); }
+  .fx-section .py-4 { padding-block: clamp(10px, 1.6vh, 16px); }
+  .fx-section .py-3\.5 { padding-block: clamp(8px, 1.4vh, 14px); }
+  .fx-section .py-6, .fx-section .sm\:py-7 { padding-block: clamp(10px, 2.2vh, 28px); }
+  .fx-section .py-9, .fx-section .lg\:py-12 { padding-block: clamp(12px, 3vh, 48px); }
+  .fx-section .space-y-3 > * + * { margin-top: clamp(6px, 1.2vh, 12px); }
+  .fx-section .space-y-4 > * + * { margin-top: clamp(8px, 1.6vh, 16px); }
+  .fx-section .space-y-9 > * + * { margin-top: clamp(12px, 2.6vh, 36px); }
+
+  .fx-section .fx-card, .fx-section .fx-card-hot { padding-block: clamp(16px, 2.6vh, 40px); }
+  .fx-section .fx-final { padding-block: clamp(20px, 4vh, 64px); }
+  .fx-section .fx-panels { height: clamp(180px, 46vh, 500px); }
+
+  /* Хиро живёт внутри секции и использует её высоту, а не ещё одну 100svh */
+  .fx-section .hfh-root { height: 100% !important; }
+  .fx-section .hfh-inner { padding: clamp(16px, 3vh, 32px) 20px; }
+  .fx-section .hfh-h { margin-top: clamp(8px, 2vh, 22px); font-size: clamp(38px, 5.6vw, 84px); }
+  .fx-section .hfh-desc { margin-top: clamp(8px, 2vh, 22px); }
+  .fx-section .hfh-form { margin-top: clamp(14px, 3vh, 32px); }
+  .fx-section .hfh-proof { margin-top: clamp(10px, 2vh, 22px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-snap-type: none; }
+}

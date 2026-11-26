@@ -82,7 +82,7 @@ const SOURCES: { icon: React.ElementType; tag: string; badge: string; title: str
 
 function Sources() {
   return (
-    <section id="sources" className="py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="sources" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Источники" line1="Два источника клиентов" line2="в одном кабинете" aside="Пример выдачи — так результаты выглядят в кабинете до оплаты." />
         <div className="grid gap-5 lg:grid-cols-2">
@@ -124,8 +124,7 @@ function Sources() {
 const STEPS: { n: string; label: string; img: string | null; lead: string; text: string }[] = [
   { n: '01', label: 'Запрос', img: IMG.maps, lead: 'Опишите, кого ищете.', text: 'Ниша и город для карт или фраза, которую пишут ваши клиенты в Telegram, — подсказки помогут сформулировать.' },
   { n: '02', label: 'Поиск', img: IMG.tg, lead: 'Мы собираем выдачу.', text: 'Проходим по карточкам 2ГИС и публичным Telegram-чатам: оставляем компании без сайта и свежие сообщения людей.' },
-  { n: '03', label: 'Результат', img: null, lead: 'Смотрите результат до оплаты.', text: 'Количество найденных и три примера с замаскированными данными. Полные контакты откроются после оплаты.' },
-  { n: '04', label: 'Выгрузка', img: IMG.shop, lead: 'Забирайте в работу.', text: 'Контакты — в CSV для таблицы или CRM. Дальше менеджеры пишут тем, кто уже ищет вас.' },
+  { n: '03', label: 'Выгрузка', img: IMG.shop, lead: 'Забирайте в работу.', text: 'Контакты — в CSV для таблицы или CRM. Дальше менеджеры пишут тем, кто уже ищет вас.' },
 ];
 
 function HowItWorks() {
@@ -133,9 +132,9 @@ function HowItWorks() {
   const cur = STEPS[step];
   const nav = 'w-12 h-12 sm:w-[54px] sm:h-[54px] rounded-full flex items-center justify-center transition-colors disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F26522]';
   return (
-    <section id="how" className="py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="how" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
-        <SectionHead eyebrow="Как это работает" line1="От запроса до сделки —" line2="четыре шага">
+        <SectionHead eyebrow="Как это работает" line1="От запроса до сделки —" line2="три шага">
           <div className="flex gap-3">
             <button type="button" aria-label="Предыдущий шаг" disabled={step === 0} onClick={() => setStep((s) => Math.max(0, s - 1))} className={`${nav} border border-white/12 bg-[#151515] text-white hover:bg-[#1f1f1f]`}>
               <ArrowLeft className="w-4 h-4" />
@@ -146,7 +145,7 @@ function HowItWorks() {
           </div>
         </SectionHead>
 
-        <div className="flex gap-3 sm:gap-4 h-[320px] sm:h-[420px] lg:h-[500px]">
+        <div className="fx-panels flex gap-3 sm:gap-4 h-[320px] sm:h-[420px] lg:h-[500px]">
           {STEPS.map((s, i) => {
             const active = i === step;
             const grad = s.img === null;
@@ -208,11 +207,11 @@ const STATS: [string, string][] = [
 
 function Stats() {
   return (
-    <section className="px-5 sm:px-8 lg:px-12 py-6 lg:py-10">
+    <section className="fx-section px-5 sm:px-8 lg:px-12 py-6 lg:py-10">
       <div className="max-w-[1320px] mx-auto grid grid-cols-2 lg:grid-cols-4 border-y border-white/8">
         {STATS.map(([big, small], i) => (
           <div key={big} className={`py-9 lg:py-12 px-5 sm:px-8 lg:px-10 border-white/8 ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t lg:border-t-0' : ''} ${i > 0 ? 'lg:border-l' : ''}`}>
-            <p className="font-heading font-normal text-[clamp(2rem,4vw,3.4rem)] leading-none text-white whitespace-nowrap">{big}</p>
+            <p className="fx-num font-heading font-normal text-[clamp(2rem,4vw,3.4rem)] leading-none text-white whitespace-nowrap">{big}</p>
             <p className="mt-5 lg:mt-8 text-[13px] sm:text-[14px] text-[#7a7a7a]">{small}</p>
           </div>
         ))}
@@ -255,7 +254,7 @@ function Calculator() {
   const deals = (answered * close) / 100;
   const dealsRound = Math.round(deals);
   return (
-    <section id="calc" className="py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="calc" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Расчёт" line1="Сколько сделок" line2="дадут контакты" aside="Подставьте цифры своего отдела продаж — арифметика, а не обещания." />
         <div className="fx-card overflow-hidden rounded-[32px] lg:rounded-[40px] grid lg:grid-cols-[1.35fr_1fr]">
@@ -267,7 +266,7 @@ function Calculator() {
           </div>
           <div className="p-6 sm:p-10 border-t lg:border-t-0 lg:border-l border-white/8 bg-[radial-gradient(90%_70%_at_0%_0%,rgba(242,101,34,0.10),transparent_70%)] flex flex-col">
             <p className="text-[14px] text-[#8a8a8a]">В месяц при таких цифрах</p>
-            <p className="font-heading font-normal mt-5 text-[clamp(2.6rem,5.4vw,4.4rem)] leading-none tracking-[-0.02em] text-white tabular-nums" aria-live="polite">{fmt(deals * check)} ₽</p>
+            <p className="fx-num font-heading font-normal mt-5 text-[clamp(2.6rem,5.4vw,4.4rem)] leading-none tracking-[-0.02em] text-white tabular-nums" aria-live="polite">{fmt(deals * check)} ₽</p>
             <p className="mt-4 text-[20px] text-[#d6d6d6]">{dealsRound < 1 ? 'меньше одной сделки' : `≈ ${dealsRound} ${dealsWord(dealsRound)}`}</p>
             <dl className="mt-8 space-y-3">
               {[['Контакты', fmt(contacts)], ['Ответили', fmt(answered)], ['Купили', fmt(deals)]].map(([k, v], i) => (
@@ -323,7 +322,7 @@ function Pricing() {
       .catch(() => setState('error'));
   }, []);
   return (
-    <section id="pricing" className="py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="pricing" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Тарифы" line1="Одна подписка —" line2="все контакты" aside="Цены и состав — те же, что в личном кабинете." />
         <div className="grid gap-5 md:grid-cols-3 items-stretch">
@@ -335,7 +334,7 @@ function Pricing() {
                 {hot && <span className="absolute top-7 right-7 rounded-full bg-[#F26522]/15 px-3 py-1 text-[12px] text-[#F26522]">Популярный</span>}
                 <h3 className="font-heading font-medium text-[26px] text-white">{p.title}</h3>
                 {sub && <p className="mt-1.5 text-[14px] text-[#777]">{sub}</p>}
-                <p className="mt-10 font-heading font-normal text-white text-[clamp(2.4rem,4.2vw,3.6rem)] leading-none tabular-nums">
+                <p className="fx-num mt-10 font-heading font-normal text-white text-[clamp(2.4rem,4.2vw,3.6rem)] leading-none tabular-nums">
                   {p.priceRub.toLocaleString('ru-RU')} ₽
                   <span className="ml-2 text-[15px] text-[#777] font-normal">/ {p.days} дн.</span>
                 </p>
@@ -376,7 +375,7 @@ const FAQ: [string, string][] = [
 function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="faq" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
         <div>
           <Eyebrow>Вопросы</Eyebrow>
@@ -419,8 +418,8 @@ function Faq() {
 
 function Closing() {
   return (
-    <section className="px-5 sm:px-8 lg:px-12 pt-10 lg:pt-16 pb-10">
-      <div className="max-w-[1320px] mx-auto fx-final rounded-[32px] lg:rounded-[40px] p-8 sm:p-12 lg:p-16 grid gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-end">
+    <section className="fx-section px-5 sm:px-8 lg:px-12 py-10 lg:py-0">
+      <div className="w-full max-w-[1320px] mx-auto fx-final rounded-[32px] lg:rounded-[40px] p-8 sm:p-12 lg:p-16 grid gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-end">
         <h2 className="font-heading font-medium text-[clamp(2.4rem,5.6vw,4.6rem)] leading-[1.05] tracking-[-0.02em] text-white">
           Клиенты уже ищут&nbsp;вас.
           <br />
@@ -433,6 +432,7 @@ function Closing() {
           </div>
         </div>
       </div>
+      <Footer />
     </section>
   );
 }
@@ -440,19 +440,17 @@ function Closing() {
 function Footer() {
   const link = 'text-[#7a7a7a] hover:text-white transition-colors';
   return (
-    <footer className="px-5 sm:px-8 lg:px-12 pb-10">
-      <div className="max-w-[1320px] mx-auto border-t border-white/8 pt-8 text-[13px] sm:text-[14px]">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <p className="text-[#7a7a7a]">© 2026 Fracs</p>
-          <nav aria-label="Документы" className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <a href="/offer" className={link}>Оферта</a>
-            <a href="/privacy" className={link}>Конфиденциальность</a>
-            <a href="/terms" className={link}>Условия</a>
-            <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className={link}>Telegram</a>
-          </nav>
-        </div>
-        <p className="mt-5 text-[12px] text-[#555]">Самозанятый Бенаи Тимур Рустамович · ИНН 920159216794</p>
+    <footer className="w-full max-w-[1320px] mx-auto mt-8 lg:mt-10 border-t border-white/8 pt-8 text-[13px] sm:text-[14px]">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <p className="text-[#7a7a7a]">© 2026 Fracs</p>
+        <nav aria-label="Документы" className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <a href="/offer" className={link}>Оферта</a>
+          <a href="/privacy" className={link}>Конфиденциальность</a>
+          <a href="/terms" className={link}>Условия</a>
+          <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className={link}>Telegram</a>
+        </nav>
       </div>
+      <p className="mt-5 text-[12px] text-[#555]">Самозанятый Бенаи Тимур Рустамович · ИНН 920159216794</p>
     </footer>
   );
 }
@@ -464,7 +462,7 @@ export default function App() {
   const links = [['Источники', '#sources'], ['Как это работает', '#how'], ['Расчёт', '#calc'], ['Тарифы', '#pricing'], ['Вопросы', '#faq']];
   return (
     <div className="fx-bg min-h-screen text-white font-sans antialiased selection:bg-[#F26522] selection:text-white">
-      <section className="relative">
+      <section className="fx-section relative">
         <header className="absolute top-4 sm:top-6 inset-x-0 z-30 w-full max-w-[1440px] mx-auto px-4 sm:px-6">
           <nav className="ember-glass rounded-full p-[4px] flex items-center justify-between">
             <div className="flex items-center gap-5">
@@ -504,7 +502,6 @@ export default function App() {
       <Pricing />
       <Faq />
       <Closing />
-      <Footer />
     </div>
   );
 }
