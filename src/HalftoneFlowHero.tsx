@@ -16,7 +16,7 @@ export type HalftonePalette = {
 }
 
 export const HALFTONE_PALETTES = {
-  ember: { ground: "#110d0b", flow: "#d9521d", hot: "#ffb27c", text: "#fbf3ea" },
+  ember: { ground: "#110d0b", flow: "#d9521d", hot: "#F26522", text: "#fbf3ea" },
   cobalt: { ground: "#070a16", flow: "#3360f2", hot: "#a8c0ff", text: "#eef2ff" },
   jade: { ground: "#06110d", flow: "#1f9a6b", hot: "#a6f0c8", text: "#ecfbf3" },
 } satisfies Record<string, HalftonePalette>
@@ -137,7 +137,7 @@ const CSS =
   ".hfh-ph{position:absolute;inset:0;display:flex;align-items:center;font-size:16px;opacity:.55;pointer-events:none;white-space:nowrap;overflow:hidden}" +
   ".hfh-caret{display:inline-block;width:2px;height:1.1em;margin-left:2px;background:var(--hfh-hot);animation:hfh-blink 1s steps(1) infinite}" +
   ".hfh-go{flex:none;display:inline-flex;align-items:center;gap:8px;height:100%;padding:0 20px;border:0;border-radius:999px;cursor:pointer;font:inherit;font-size:15px;font-weight:600;" +
-  "color:var(--hfh-ground);background:var(--hfh-text);transition:transform .4s cubic-bezier(.3,1.5,.5,1),background-color .25s}" +
+  "color:#fff;background:var(--hfh-hot);transition:transform .4s cubic-bezier(.3,1.5,.5,1),background-color .25s}" +
   ".hfh-go:hover{transform:translateX(-2px)}" +
   ".hfh-go:active{transform:scale(.95)}" +
   ".hfh-go:focus-visible{outline:2px solid var(--hfh-hot);outline-offset:3px}" +
@@ -147,7 +147,7 @@ const CSS =
   ".hfh-avs{display:flex}" +
   ".hfh-av{display:grid;place-items:center;width:28px;height:28px;margin-left:-6px;letter-spacing:-.02em;border-radius:50%;font-size:10px;font-weight:700;color:var(--hfh-ground);background:var(--hfh-hot);box-shadow:0 0 0 2px var(--hfh-ground)}" +
   ".hfh-av:first-child{margin-left:0}" +
-  ".hfh-av:nth-child(2){background:var(--hfh-text)}.hfh-av:nth-child(3){background:var(--hfh-flow);color:var(--hfh-text)}" +
+  ".hfh-av:nth-child(2){background:#ff8a4c}.hfh-av:nth-child(3){background:var(--hfh-flow);color:var(--hfh-text)}" +
   "@keyframes hfh-blink{50%{opacity:0}}" +
   "@media (max-width:560px){.hfh-go span{display:none}.hfh-go{padding:0 16px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}}" +
   "@media (prefers-reduced-motion:reduce){.hfh-caret{animation:none}.hfh-card,.hfh-w,.hfh-fade,.hfh-go,.hfh-go svg{transition:none}}"

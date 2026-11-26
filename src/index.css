@@ -172,3 +172,59 @@ h1.font-serif-h, h2.font-serif-h, h3.font-serif-h, h4.font-serif-h, h5.font-seri
 .ember-cabinet .from-white\/30 { --tw-gradient-from: rgba(16, 12, 10, 0.3); }
 .ember-cabinet .via-white\/85 { --tw-gradient-via: rgba(16, 12, 10, 0.9); }
 .ember-cabinet .to-white { --tw-gradient-to: #000000; }
+
+/* —— Лендинг: тёмная система в духе макета (чистый чёрный, оранжевый акцент #F26522) —— */
+@layer utilities {
+  .fx-bg {
+    --color-background: transparent; /* рамка хиро прозрачная — под ней чистый чёрный */
+    background-color: #000;
+    scroll-behavior: smooth;
+  }
+  .fx-card {
+    background: #0e0e0e;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .fx-card-hot {
+    background: linear-gradient(180deg, #1f0f08 0%, #0e0e0e 70%);
+    border: 1px solid rgba(242,101,34,0.55);
+    box-shadow: 0 40px 120px -40px rgba(242,101,34,0.45);
+  }
+  .fx-final {
+    background:
+      radial-gradient(70% 120% at 100% 0%, #e8621f 0%, rgba(232,98,31,0) 60%),
+      radial-gradient(90% 90% at 70% 100%, rgba(110,38,10,0.9) 0%, rgba(110,38,10,0) 65%),
+      #0a0605;
+  }
+  .fx-panel { transition: flex 0.6s cubic-bezier(.2,.8,.2,1), border-color .3s; }
+  .fx-panel-hot {
+    background: radial-gradient(120% 60% at 15% 15%, #f26522 0%, rgba(242,101,34,0.55) 35%, rgba(90,30,8,0.9) 75%, #120804 100%);
+  }
+}
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .fx-panel { transition: none; }
+}
+
+/* Ползунки калькулятора */
+.fx-range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 24px; background: transparent; cursor: pointer;
+  --p: 0%;
+}
+.fx-range::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(90deg, #F26522 var(--p), #232323 var(--p));
+}
+.fx-range::-moz-range-track { height: 6px; border-radius: 999px; background: #232323; }
+.fx-range::-moz-range-progress { height: 6px; border-radius: 999px; background: #F26522; }
+.fx-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 20px; height: 20px; margin-top: -7px; border-radius: 50%;
+  background: #fff; border: 0; box-shadow: 0 0 0 5px rgba(110,45,18,0.9);
+}
+.fx-range::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; border: 0; box-shadow: 0 0 0 5px rgba(110,45,18,0.9);
+}
+.fx-range:focus-visible { outline: 2px solid #F26522; outline-offset: 6px; border-radius: 999px; }
