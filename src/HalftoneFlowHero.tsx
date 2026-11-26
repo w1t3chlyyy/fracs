@@ -134,7 +134,7 @@ const CSS =
   ".hfh-spark{flex:none;color:var(--hfh-hot)}" +
   ".hfh-field{position:relative;flex:1;min-width:0;height:100%}" +
   ".hfh-input{position:absolute;inset:0;width:100%;border:0;outline:0;background:transparent;color:inherit;font:inherit;font-size:16px}" +
-  ".hfh-ph{position:absolute;inset:0;display:flex;align-items:center;font-size:16px;opacity:.55;pointer-events:none;white-space:nowrap;overflow:hidden}" +
+  ".hfh-ph{position:absolute;inset:0;display:flex;align-items:center;font-size:16px;opacity:.55;pointer-events:none;white-space:nowrap;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}" +
   ".hfh-caret{display:inline-block;width:2px;height:1.1em;margin-left:2px;background:var(--hfh-hot);animation:hfh-blink 1s steps(1) infinite}" +
   ".hfh-go{flex:none;display:inline-flex;align-items:center;gap:8px;height:100%;padding:0 20px;border:0;border-radius:999px;cursor:pointer;font:inherit;font-size:15px;font-weight:600;" +
   "color:#fff;background:var(--hfh-hot);transition:transform .4s cubic-bezier(.3,1.5,.5,1),background-color .25s}" +

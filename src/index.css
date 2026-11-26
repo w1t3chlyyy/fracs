@@ -229,13 +229,14 @@ html { scroll-behavior: smooth; }
 }
 .fx-range:focus-visible { outline: 2px solid #F26522; outline-offset: 6px; border-radius: 999px; }
 
-/* ── Лендинг: на десктопе каждый блок занимает ровно один экран ── */
+/* ── Лендинг: на десктопе блок занимает ровно один экран, но никогда
+   не обрезается: если контент выше окна — секция растёт (min-height),
+   scroll-snap всё равно выравнивает её начало. ── */
 @media (min-width: 1024px) {
   html { scroll-snap-type: y proximity; }
 
   .fx-section {
-    height: 100svh;
-    min-height: 0;
+    min-height: 100svh;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -274,8 +275,11 @@ html { scroll-behavior: smooth; }
   .fx-section .fx-final { padding-block: clamp(20px, 4vh, 64px); }
   .fx-section .fx-panels { height: clamp(180px, 46vh, 500px); }
 
-  /* Хиро живёт внутри секции и использует её высоту, а не ещё одну 100svh */
-  .fx-section .hfh-root { height: 100% !important; }
+  /* Хиро живёт внутри секции: секция больше не задаёт высоту напрямую
+     (только min-height), поэтому герою назначаем высоту экрана явно,
+     а сама секция хиро — без вертикальных паддингов и центрирования. */
+  .fx-section.fx-hero { justify-content: flex-start; padding-block: 0; }
+  .fx-section .hfh-root { height: 100svh !important; }
   .fx-section .hfh-inner { padding: clamp(16px, 3vh, 32px) 20px; }
   .fx-section .hfh-h { margin-top: clamp(8px, 2vh, 22px); font-size: clamp(38px, 5.6vw, 84px); }
   .fx-section .hfh-desc { margin-top: clamp(8px, 2vh, 22px); }

@@ -32,7 +32,7 @@ const Eyebrow = ({ children }: { children: React.ReactNode }) => (
 
 /** Заголовок секции: первая строка белая, вторая оранжевая; справа — пояснение. */
 const SectionHead = ({ eyebrow, line1, line2, aside, children }: { eyebrow: string; line1: string; line2: string; aside?: string; children?: React.ReactNode }) => (
-  <div className="mb-10 lg:mb-14 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+  <div className="mb-10 lg:mb-14 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
     <div>
       <Eyebrow>{eyebrow}</Eyebrow>
       <h2 className="font-heading font-medium mt-5 text-[clamp(2.1rem,5vw,3.9rem)] leading-[1.06] tracking-[-0.02em] text-white">
@@ -85,7 +85,7 @@ function Sources() {
     <section id="sources" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Источники" line1="Два источника клиентов" line2="в одном кабинете" aside="Пример выдачи — так результаты выглядят в кабинете до оплаты." />
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {SOURCES.map(({ icon: Icon, tag, badge, title, text, rows, cta, dark }) => (
             <article key={tag} className="fx-card rounded-[32px] lg:rounded-[40px] p-6 sm:p-9 flex flex-col">
               <div className="flex items-center justify-between gap-3">
@@ -175,7 +175,7 @@ function HowItWorks() {
           })}
         </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end" aria-live="polite">
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_auto] lg:items-end" aria-live="polite">
           <p className="max-w-[44rem] text-[18px] sm:text-[22px] leading-[1.45] text-[#7d7d7d]">
             <span className="text-white font-medium">{cur.lead}</span> {cur.text}
           </p>
@@ -257,7 +257,7 @@ function Calculator() {
     <section id="calc" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Расчёт" line1="Сколько сделок" line2="дадут контакты" aside="Подставьте цифры своего отдела продаж — арифметика, а не обещания." />
-        <div className="fx-card overflow-hidden rounded-[32px] lg:rounded-[40px] grid lg:grid-cols-[1.35fr_1fr]">
+        <div className="fx-card overflow-hidden rounded-[32px] lg:rounded-[40px] grid grid-cols-1 lg:grid-cols-[1.35fr_1fr]">
           <div className="p-6 sm:p-10 space-y-9">
             <Slider label="Контактов в работе за месяц" value={contacts} shown={String(contacts)} min={20} max={1000} step={10} onChange={setContacts} />
             <Slider label="Отвечают на сообщение" value={reply} shown={`${reply}%`} min={1} max={30} step={1} onChange={setReply} />
@@ -325,7 +325,7 @@ function Pricing() {
     <section id="pricing" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Тарифы" line1="Одна подписка —" line2="все контакты" aside="Цены и состав — те же, что в личном кабинете." />
-        <div className="grid gap-5 md:grid-cols-3 items-stretch">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3 items-stretch">
           {plans.map((p, i) => {
             const hot = p.id === 'pro';
             const sub = PLAN_SUB[p.id] ?? p.badge ?? '';
@@ -376,7 +376,7 @@ function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
     <section id="faq" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
-      <div className="max-w-[1320px] mx-auto grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
+      <div className="max-w-[1320px] mx-auto grid grid-cols-1 gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
         <div>
           <Eyebrow>Вопросы</Eyebrow>
           <h2 className="font-heading font-medium mt-5 text-[clamp(2.1rem,5vw,3.9rem)] leading-[1.06] tracking-[-0.02em] text-white">
@@ -419,7 +419,7 @@ function Faq() {
 function Closing() {
   return (
     <section className="fx-section px-5 sm:px-8 lg:px-12 py-10 lg:py-0">
-      <div className="w-full max-w-[1320px] mx-auto fx-final rounded-[32px] lg:rounded-[40px] p-8 sm:p-12 lg:p-16 grid gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-end">
+      <div className="w-full max-w-[1320px] mx-auto fx-final rounded-[32px] lg:rounded-[40px] p-8 sm:p-12 lg:p-16 grid grid-cols-1 gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-end">
         <h2 className="font-heading font-medium text-[clamp(2.4rem,5.6vw,4.6rem)] leading-[1.05] tracking-[-0.02em] text-white">
           Клиенты уже ищут&nbsp;вас.
           <br />
@@ -462,7 +462,7 @@ export default function App() {
   const links = [['Источники', '#sources'], ['Как это работает', '#how'], ['Расчёт', '#calc'], ['Тарифы', '#pricing'], ['Вопросы', '#faq']];
   return (
     <div className="fx-bg min-h-screen text-white font-sans antialiased selection:bg-[#F26522] selection:text-white">
-      <section className="fx-section relative">
+      <section className="fx-section fx-hero relative">
         <header className="absolute top-4 sm:top-6 inset-x-0 z-30 w-full max-w-[1440px] mx-auto px-4 sm:px-6">
           <nav className="ember-glass rounded-full p-[4px] flex items-center justify-between">
             <div className="flex items-center gap-5">
