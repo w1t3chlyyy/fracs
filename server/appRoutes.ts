@@ -52,19 +52,19 @@ function parseKey(key: unknown): string | null {
 
 /* ── релиз с файлами ── */
 
-interface Asset { id: number; name: string; url: string }
+interface Asset { id: number; name: string; url: string; browserUrl: string }
 let cache: { at: number; tag: string; assets: Asset[] } | null = null;
 
 async function release(): Promise<{ tag: string; assets: Asset[] } | null> {
-  if (!REPO || !TOKEN) return null;
+  // Токен нужен только для приватного репо; публичный (например w1t3chlyyy/frccd) читается анонимно.
+  if (!REPO) return null;
   if (cache && Date.now() - cache.at < 5 * 60_000) return cache;
-  const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
-    headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
-    signal: AbortSignal.timeout(10_000),
-  });
+  const headers: Record<string, string> = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+  if (TOKEN) headers.Authorization = `Bearer ${TOKEN}`;
+  const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers, signal: AbortSignal.timeout(10_000) });
   if (!r.ok) return null;
   const j: any = await r.json();
-  cache = { at: Date.now(), tag: String(j.tag_name || ''), assets: (j.assets || []).map((a: any) => ({ id: a.id, name: String(a.name), url: String(a.url) })) };
+  cache = { at: Date.now(), tag: String(j.tag_name || ''), assets: (j.assets || []).map((a: any) => ({ id: a.id, name: String(a.name), url: String(a.url), browserUrl: String(a.browser_download_url || '') })) };
   return cache;
 }
 
@@ -95,6 +95,8 @@ appRouter.get('/download/:platform', requireAuth, h(async (req, res) => {
 
   const asset = assetFor(await release().catch(() => null), p.match);
   if (!asset) return void res.status(404).json({ error: 'not_built', message: 'Сборка для этой системы ещё не опубликована.' });
+  // Публичный репо (без токена): редирект на постоянную browser_download_url — отдаётся с CDN GitHub и не истекает.
+  if (!TOKEN && asset.browserUrl) return void res.redirect(302, asset.browserUrl);
   // Приватный ассет: GitHub отвечает редиректом на подписанную ссылку, действующую несколько минут.
   const r = await fetch(asset.url, { headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/octet-stream' }, redirect: 'manual', signal: AbortSignal.timeout(10_000) });
   const loc = r.headers.get('location');
@@ -230,13 +232,18 @@ const AI_LIMITS = {
 };
 // Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
 const DESIGN_MARKER = 'DESIGN_SYSTEM_VERSION:';
-// Только недорогие модели: иначе можно указать в запросе дорогую модель и сжечь баланс.
+// Белый список моделей Fracs AI. Премиум-кодинг (для генерации сайтов) + бюджетные (для фраз/чата).
+// ID и цены сверены с openrouter.ai/api/v1/models (2026-11). Расширять через env AI_ALLOWED_MODELS.
 const AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS ||
-  'openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct')
+  'anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct')
   .split(',').map((s) => s.trim()).filter(Boolean));
 // $ за 1M токенов (вход, выход) — ПРИБЛИЗИТЕЛЬНО, нужно только для оценки «до запроса»
 // и если OpenRouter не вернул фактическую стоимость. Сверяйте с openrouter.ai/models.
 const AI_PRICE: Record<string, [number, number]> = {
+  // премиум-кодинг (генерация сайтов)
+  'anthropic/claude-sonnet-5.5': [2, 10], 'openai/gpt-5.6-terra-pro': [2, 12],
+  'deepseek/deepseek-v4-pro-0813': [0.1, 5], 'deepseek/deepseek-v4.1-flash-1017': [0.15, 0.6],
+  // бюджетные (чат/фразы)
   'openai/gpt-4o-mini': [0.15, 0.6], 'anthropic/claude-3.5-haiku': [0.8, 4],
   'google/gemini-2.0-flash-001': [0.1, 0.4], 'meta-llama/llama-3.3-70b-instruct': [0.12, 0.3],
   'deepseek/deepseek-chat': [0.3, 0.9], 'qwen/qwen-2.5-72b-instruct': [0.12, 0.39],
@@ -672,8 +679,10 @@ export const demoPage: RequestHandler = async (req, res) => {
     if (!html) return void res.status(404).type('text/plain; charset=utf-8').send('Демо не найдено или срок хранения истёк.');
     res.set({
       'Content-Type': 'text/html; charset=utf-8',
-      // sandbox: страница живёт в «чужом» origin — без доступа к cookie/API этого сайта.
-      'Content-Security-Policy': 'sandbox allow-scripts allow-popups',
+      // sandbox: страница живёт в «чужом» origin. allow-same-origin нужен самому review.html
+      // (его JS читает <script type="application/json"> и грузит srcdoc iframe); сгенерированный
+      // сайт при этом остаётся изолированным — у внутреннего iframe выставлен свой sandbox.
+      'Content-Security-Policy': 'sandbox allow-scripts allow-popups allow-same-origin',
       'X-Robots-Tag': 'noindex, nofollow',
       'Referrer-Policy': 'no-referrer',
       'Cache-Control': 'public, max-age=300',

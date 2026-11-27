@@ -87,7 +87,15 @@ def business_parts(prompt: str) -> tuple[str, str]:
     m = re.search(r'^Название:\s*(.+)$', prompt, re.M)
     name = m.group(1).strip() if m else ''
     if not name:
-        first = prompt.strip().splitlines()[0] if prompt.strip() else ''
+        # первую строку-приветствие пропускаем — это не название бизнеса
+        lines = [ln.strip() for ln in prompt.splitlines() if ln.strip()]
+        first = ''
+        for ln in lines:
+            if re.match(r'^(привет(ству[ею]м|ствую)?|здравствуй(те)?|добрый\s+(день|вечер|утро)|'
+                        r'доброго\s+времени\s+суток|hi|hello|hey|здаров)\b[!,.\s]*$', ln, re.I):
+                continue
+            first = ln
+            break
         first = re.sub(r'^(сделай|сделайте|создай|создайте|нужен|нужно|сгенерируй|пожалуйста)'
                        r'[\s,]+(мне\s+)?(сайт|лендинг|страницу|визитку)?[\s,]*', '', first, flags=re.I)
         first = re.sub(r'^(сайт|лендинг|страница)\s+(для|про)\s+', '', first, flags=re.I)

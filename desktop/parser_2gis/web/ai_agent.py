@@ -107,6 +107,13 @@ _OPENROUTER_URL = 'https://openrouter.ai/api/v1'
 _FRACS_AI_KEY = (os.environ.get('OPENROUTER_API_KEY') or '').strip()
 _FRACS_DOWN = 'Fracs AI временно недоступен. Попробуйте позже.'
 
+# Fracs AI сам подбирает модель под задачу — пользователю не нужно разбираться в моделях
+# OpenRouter и переключать их вручную. Премиум-кодинг-модель идёт на генерацию сайтов (главный
+# продукт, здесь качество критично), дешёвая — на лёгкие задачи (поисковые фразы, чат, ответы).
+# Актуальные ID и цены сверены с openrouter.ai/api/v1/models (2026-11).
+_BEST_CODE_MODEL = 'anthropic/claude-sonnet-5.5'        # топ для фронтенд-кода, ctx 1M, vision
+_CHEAP_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash-1017'  # дёшево и быстро для не-кодинга
+
 _PROVIDERS: dict[str, dict] = {
     'Fracs AI': {
         'shape': 'openai',
@@ -117,9 +124,8 @@ _PROVIDERS: dict[str, dict] = {
         'vision': True,
         'desc': 'Встроенная нейронка Fracs. Свой ключ не нужен.',
         'default_models': [
-            'openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku',
-            'google/gemini-2.0-flash-001', 'meta-llama/llama-3.3-70b-instruct',
-            'deepseek/deepseek-chat', 'qwen/qwen-2.5-72b-instruct',
+            'anthropic/claude-sonnet-5.5', 'openai/gpt-5.6-terra-pro',
+            'deepseek/deepseek-v4-pro-0813', 'deepseek/deepseek-v4.1-flash-1017',
         ],
     },
     'Z.ai': {
@@ -207,6 +213,32 @@ _PROVIDERS: dict[str, dict] = {
         'desc': 'Grok от xAI',
         'default_models': ['grok-3', 'grok-3-mini', 'grok-2-vision-1212'],
     },
+    'Qwen': {
+        # Alibaba DashScope (international / Singapore). OpenAI-совместимый режим.
+        # 1M бесплатных токенов на 90 дней на каждую модель — ключ sk-... в кабинете
+        # bailian.alibaba.com. qwen3-coder-plus — лучшая для фронтенд-кода.
+        'shape': 'openai',
+        'chat_url': 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
+        'models_url': 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models',
+        'needs_key': True,
+        'vision': True,
+        'desc': 'Qwen от Alibaba (DashScope). 1M бесплатных токенов на 90 дней.',
+        'default_models': ['qwen3-coder-plus', 'qwen3.8-max', 'qwen3.7-plus',
+                           'qwen3-vl-plus', 'qwen3.8-flash'],
+    },
+    'BazaarLink': {
+        # Тайваньский AI-агрегатор. OpenAI-совместимый, бесплатные модели без кредитки.
+        # Ключ в кабинете bazaarlink.ai/keys. qwen3.7-flash — vision, 1M ctx, лучшая из бесплатных.
+        # Лимиты: 10 RPM / 60 units/day (без кредитки), 20 RPM / 120 units/day (с кредиткой).
+        'shape': 'openai',
+        'chat_url': 'https://api.bazaarlink.ai/v1/chat/completions',
+        'models_url': 'https://api.bazaarlink.ai/v1/models',
+        'needs_key': True,
+        'vision': True,
+        'desc': 'Бесплатные модели (Qwen, DeepSeek, NVIDIA) без кредитки.',
+        'default_models': ['qwen/qwen3.7-flash', 'deepseek/deepseek-v4-flash-0731free',
+                           'nvidia/nemotron-3.5-lightning-free', 'reflection/beam-free'],
+    },
     'Ollama': {
         'shape': 'openai',
         'chat_url': 'http://127.0.0.1:11434/v1/chat/completions',
@@ -281,10 +313,19 @@ _SYSTEM_PROMPT = (
     'подходит бизнесу -->.\n'
     '\n'
     'ТЕХНИЧЕСКИЕ ПРАВИЛА:\n'
-    '— Всё inline: стили в <style>, скрипты в <script>. Единственная внешняя ссылка — Google Fonts.\n'
+    '— Всё inline: стили в <style>, скрипты в <script>. Внешние ссылки только: Google Fonts и (одна) '
+    'CDN-библиотека моушна motion.dev. Никаких других внешних ресурсов.\n'
     '— Адаптив обязательно: grid/flex, clamp(), брейкпоинт 760px (навигация без ссылок, '
     'сетки в 1 колонку, H1 меньше).\n'
     '— Телефон — кликабельный href="tel:", Telegram — ссылкой t.me.\n'
+    '\n'
+    'МОУШН (motion.dev, MIT — ESM-модуль, НЕ UMD-скрипт): для ОДНОЙ signature-анимации на страницу '
+    'подключи через ESM: <script type="module"> import { animate, inView, scroll, stagger } from '
+    '"https://esm.run/motion@14"; </script> — функции БЕЗ префикса (animate(...), inView(...), '
+    'stagger(...)). Каскадный вход героя (delay: stagger(0.08)), либо скролл-параллакс одного слоя, '
+    'либо hover-эффект на ключевых карточках. Длительность 200-400мс, ease-out, только transform/opacity. '
+    'На @media (pointer: coarse) — упрощай. Всегда @media (prefers-reduced-motion: reduce) — отключать. '
+    'Больше одной внешней библиотеки не подключать.\n'
     '\n'
     'АНТИ-НЕЙРОСЛОП (главное):\n'
     '— Никакого шаблонного бюллетень-языка: «инновационный», «динамично развивающаяся», '
@@ -298,6 +339,20 @@ _SYSTEM_PROMPT = (
     '— Не более 1 эмодзи на секцию и только если он реально уместен.\n'
     '— Цены/сроки/контакты, которых нет в задании, помечай заметно для правки, например '
     '[ЦЕНА УТОЧНЯЕТСЯ], чтобы владелец бизнеса сразу их увидел.\n'
+    '\n'
+    'СКРЫТНОСТЬ — обязательно (нарушение = брак):\n'
+    '— Нигде в HTML, CSS, JS, комментариях, атрибутах data-*, видимом тексте, <title>, <meta>, alt, '
+    'aria-label НЕ упоминай: названия библиотек и UI-китов (motion, 21st, animate-ui, heroui, inspira, '
+    'particles, kokonut, bklit, skiper, originkit, iconimate, thrine, refero, motionsites, casberry); '
+    'названия нейросетей и моделей (GLM, GPT, Claude, Gemini, Llama, DeepSeek, Qwen, Grok, Mistral, '
+    'z.ai, OpenAI, Anthropic, «AI», «нейросеть», «сгенерировано», «powered by»); названия фреймворков '
+    'в видимом тексте сайта (React, Vue, Tailwind — в коде можно, в текстах нет).\n'
+    '— CDN-ссылка на motion.dev — допустима как обычный URL в <script src>, но БЕЗ комментариев '
+    '«// motion animation», БЕЗ data-атрибутов с именем библиотеки, БЕЗ упоминания в видимом тексте и footer.\n'
+    '— Комментарий design brief — о стиле и характере бизнеса (почему эта палитра/композиция), '
+    'а не о библиотеках, модели или инструментах.\n'
+    '— В подвале сайта: только контакты студии или нейтральная подпись «Разработка: студия Фракс». '
+    'Никаких «сделано с помощью AI», «powered by GPT/GLM», «generated by».\n'
     '\n'
     'Верни ТОЛЬКО полный HTML-документ, без пояснений и без markdown-обёртки.'
 )
@@ -508,7 +563,15 @@ def _business_name(prompt: str) -> str:
     if m:
         name = m.group(1).strip()
     else:
-        name = (prompt or '').strip().splitlines()[0] if (prompt or '').strip() else ''
+        # первую строку-приветствие пропускаем — это не название бизнеса
+        lines = [ln.strip() for ln in (prompt or '').splitlines() if ln.strip()]
+        name = ''
+        for ln in lines:
+            if re.match(r'^(привет(ству[ею]м|ствую)?|здравствуй(те)?|добрый\s+(день|вечер|утро)|'
+                        r'доброго\s+времени\s+суток|hi|hello|hey|здаров)\b[!,.\s]*$', ln, re.I):
+                continue
+            name = ln
+            break
         name = re.sub(r'^(сделай|сделайте|создай|создайте|нужен|нужно|сгенерируй|пожалуйста)'
                       r'[\s,]+(мне\s+)?(сайт|лендинг|страницу|визитку)?[\s,]*',
                       '', name, flags=re.I)
@@ -719,6 +782,10 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     vision_ok = bool(cfg.get('vision'))
     skipped = [a['name'] for a in uploads if a['kind'] == 'image' and not vision_ok]
     system = _SYSTEM_PROMPT if system is None else system
+    if provider == 'Fracs AI':
+        # Fracs подбирает модель под задачу автоматически: премиум-кодинг для генерации сайтов,
+        # дешёвая — для фраз/чата. Пользователю не нужно переключать модели в OpenRouter.
+        model = _BEST_CODE_MODEL if system is _SYSTEM_PROMPT else _CHEAP_CHAT_MODEL
     if system is _SYSTEM_PROMPT:
         # типографика + готовые блоки + ОДИН стилевой рецепт под рубрику бизнеса
         style_key = style if style in STYLE_PROMPTS else _pick_style(prompt)

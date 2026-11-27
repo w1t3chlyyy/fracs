@@ -144,7 +144,7 @@
         </span>
       </label>
       <label class="check mini"><input type="checkbox" id="aiModelManual"> <span data-i18n="manual">ввести модель вручную</span></label>
-      <label class="field" id="aiModelManualWrap" hidden><input type="text" id="aiModelManualInput" class="mono" placeholder="glm-4.6"></label>
+      <label class="field" id="aiModelManualWrap" hidden><input type="text" id="aiModelManualInput" class="mono" placeholder="название модели"></label>
     </div></details>
   </div>
 
@@ -154,8 +154,8 @@
       <textarea id="aiKey" class="mono" placeholder="sk_..." style="min-height:84px"></textarea>
       <span class="hint" id="aiKeyHint">Вставьте API ключ выбранной нейросети</span>
     </label>
-    <label class="field"><span data-i18n="key21st">Ключ 21st.dev (необязательно)</span>
-      <input type="text" id="aiKey21st" class="mono" placeholder="21st_sk_...">
+    <label class="field"><span data-i18n="key21st">Ключ референсов (необязательно)</span>
+      <input type="text" id="aiKey21st" class="mono" placeholder="sk_...">
       <span style="display:flex;gap:8px;align-items:center;margin-top:4px">
         <button type="button" class="btn-clear" id="aiTest21stBtn" data-i18n="check">Проверить</button>
         <span class="res" id="aiTest21stRes" style="font-size:11px;color:var(--muted)" data-i18n="key21st_hint">Бесплатный поиск референсов-компонентов перед генерацией</span>
@@ -206,7 +206,7 @@
       saved:'Saved', fracs_sub:'Included in Ultra · no key needed',
       h_provider:'Model and provider', provider:'Provider', model:'Model', model_auto:'Model (fetched automatically)',
       manual:'enter model manually', api_key:'Agent API key',
-      key21st:'21st.dev key (optional)', check:'Check', key21st_hint:'Free reference-component search before generation',
+      key21st:'Reference key (optional)', check:'Check', key21st_hint:'Free reference-component search before generation',
       test_conn:'Test connection', h_gen:'Generation',
       gen_site:'Build websites from business cards', gen_qr:'Attach a QR code to the layout',
       style:'Layout style', h_adv:'Advanced settings', temp:'Temperature', maxtok:'Max tokens',
@@ -221,7 +221,7 @@
       saved:'Сохранено', fracs_sub:'Включена в Ultra · свой ключ не нужен',
       h_provider:'Модель и провайдер', provider:'Провайдер', model:'Модель', model_auto:'Модель (подтягивается сама)',
       manual:'ввести модель вручную', api_key:'API ключ агента',
-      key21st:'Ключ 21st.dev (необязательно)', check:'Проверить', key21st_hint:'Бесплатный поиск референсов-компонентов перед генерацией',
+      key21st:'Ключ референсов (необязательно)', check:'Проверить', key21st_hint:'Бесплатный поиск референсов-компонентов перед генерацией',
       test_conn:'Проверить подключение', h_gen:'Генерация',
       gen_site:'Создавать сайты по карточкам бизнеса', gen_qr:'Выдавать QR-код на макет',
       style:'Стиль макета', h_adv:'Расширенные настройки', temp:'Температура', maxtok:'Макс. токенов',
@@ -281,7 +281,7 @@
       if(usable.some(function(p){return p.id===preferred;}))sel.value=preferred;
       onProviderChange();
     }).catch(function(){
-      sel.innerHTML='<option>Z.ai</option><option>OpenAI</option><option>Anthropic</option>';
+      sel.innerHTML='<option>Z.ai</option><option>OpenAI</option><option>Anthropic</option><option>OpenRouter</option><option>Qwen</option><option>BazaarLink</option><option>DeepSeek</option>';
       var saved=ls('fracsAiProvider');
       if([].some.call(sel.options,function(o){return o.value===saved;}))sel.value=saved;
       onProviderChange();
@@ -322,7 +322,7 @@
     var sel=$('aiModel');if(!sel)return;
     var info=providerInfo(currentProvider)||{};
     if(info.pro_only){
-      var fm=(info.models&&info.models.length)?info.models:['openai/gpt-4o-mini'];
+      var fm=(info.models&&info.models.length)?info.models:[];
       sel.innerHTML=fm.map(function(m){return '<option value="'+esc(m)+'">'+esc(m)+'</option>';}).join('');
       var sf=ls('fracsAiModel:'+currentProvider);
       if(sf&&fm.indexOf(sf)>=0)sel.value=sf;
@@ -336,7 +336,7 @@
     if(key)mh['X-Api-Key']=key;
     fetch('/api/ai/models'+qs,{headers:mh}).then(function(r){return r.json()}).then(function(d){
       var models=(d&&d.models)||[];
-      if(!models.length){models=(info.models&&info.models.length)?info.models:['glm-4.6'];}
+      if(!models.length){models=(info.models&&info.models.length)?info.models:[];}
       sel.innerHTML=models.map(function(m){return '<option value="'+esc(m)+'">'+esc(m)+'</option>';}).join('');
       var saved=ls('fracsAiModel:'+currentProvider);
       if(saved&&models.indexOf(saved)>=0)sel.value=saved;
@@ -345,7 +345,7 @@
         if(mi&&mi.value){sel.innerHTML+='<option value="'+esc(mi.value)+'" selected>'+esc(mi.value)+' ('+(LANG==='ru'?'вручную':'manual')+')</option>';sel.value=mi.value;}
       }
     }).catch(function(){
-      var fb=(info.models&&info.models.length)?info.models:['glm-4.6'];
+      var fb=(info.models&&info.models.length)?info.models:[];
       sel.innerHTML=fb.map(function(m){return '<option value="'+esc(m)+'">'+esc(m)+'</option>';}).join('');
     });
   }
@@ -394,7 +394,7 @@
     if(b21)b21.addEventListener('click',function(){
       var r=$('aiTest21stRes');
       var k=$('aiKey21st')&&$('aiKey21st').value.trim()||'';
-      if(!k){r.textContent=LANG==='ru'?'Сначала вставьте ключ 21st.dev.':'Paste the 21st.dev key first.';r.style.color='#f87171';return;}
+      if(!k){r.textContent=LANG==='ru'?'Сначала вставьте ключ референсов.':'Paste the reference key first.';r.style.color='#f87171';return;}
       r.textContent='…';r.style.color='';
       fetch('/api/ai/test21st',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key21st:k})})
         .then(function(x){return x.json()}).then(function(d){
