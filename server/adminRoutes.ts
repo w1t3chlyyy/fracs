@@ -1,10 +1,10 @@
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { config, type Plan, type PromoCode } from './config.ts';
+import { config, loadTokenPacks, type Plan, type PromoCode } from './config.ts';
 import { isAdminInitData } from './webapp.ts';
 import { notify, resolveChannel } from './bot.ts';
 import {
   extendSubscription, findUser, getUser, getPlans, getPromocodes, savePromoCode, deletePromoCode, togglePromoCode,
-  getTraining, addLesson, updateLesson, deleteLesson,
+  getTraining, addLesson, updateLesson, deleteLesson, aiTokensGet, aiTokensAdd, refundBudgetWindow,
   listRecentUsers, resetPlans, setSubscription, updatePlan, getRequiredChannels, setRequiredChannels, type User,
 } from './db.ts';
 
@@ -30,7 +30,7 @@ const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
 
 adminRouter.use(requireAdmin);
 
-const publicUser = (u: User) => ({
+const publicUser = (u: User, tokenBalance = 0) => ({
   id: u.id,
   tgId: u.tgId,
   email: u.email,
@@ -40,6 +40,7 @@ const publicUser = (u: User) => ({
   subscriptionUntil: u.subscriptionUntil,
   planId: u.planId,
   active: !!u.subscriptionUntil && Date.parse(u.subscriptionUntil) > Date.now(),
+  tokenBalance,
 });
 
 const publicPlan = (p: Plan) => ({ id: p.id, title: p.title, priceRub: p.priceRub, days: p.days, badge: p.badge ?? '', description: p.description ?? '', features: p.features ?? [] });
@@ -51,7 +52,8 @@ adminRouter.get('/me', h(async (_req, res) => {
 adminRouter.get('/users', h(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 200);
   const users = await listRecentUsers(limit);
-  res.json({ users: users.map(publicUser) });
+  const balances = await Promise.all(users.map((u) => aiTokensGet(u.id).catch(() => 0)));
+  res.json({ users: users.map((u, i) => publicUser(u, balances[i])) });
 }));
 
 /** Определяет пользователя по любому из идентификаторов: user-id (UUID), Telegram ID или email. */
@@ -78,20 +80,55 @@ adminRouter.post('/grant', h(async (req, res) => {
     return void res.status(404).json({ error: 'user_not_found', message: 'Пользователь не найден — пусть сначала войдёт в кабинет (Telegram или код с почты).' });
   }
   const updated = await extendSubscription(user.id, days, planId);
+  const balance = await aiTokensGet(updated.id).catch(() => 0);
   try {
     // У email-аккаунта (tgId = null) уведомление в Telegram не уйдёт — notify молча пропустит.
     await notify(updated.tgId, `✅ Подписка Fracs активна до ${new Date(updated.subscriptionUntil!).toLocaleDateString('ru-RU')}. Кабинет: ${config.appUrl}/app`);
   } catch {
     /* уведомление не критично */
   }
-  res.json({ user: publicUser(updated) });
+  res.json({ user: publicUser(updated, balance) });
 }));
 
 adminRouter.post('/revoke', h(async (req, res) => {
   const user = await locateUser(req.body);
   if (!user) return void res.status(404).json({ error: 'user_not_found' });
   const updated = await setSubscription(user.id, null);
-  res.json({ user: publicUser(updated) });
+  const balance = await aiTokensGet(updated.id).catch(() => 0);
+  res.json({ user: publicUser(updated, balance) });
+}));
+
+adminRouter.get('/token-packs', h(async (_req, res) => {
+  res.json({ packs: loadTokenPacks() });
+}));
+
+adminRouter.post('/tokens/grant', h(async (req, res) => {
+  const packId = typeof req.body?.packId === 'string' ? req.body.packId.trim() : '';
+  const pack = packId ? loadTokenPacks().find((p) => p.id === packId) : undefined;
+  const rawTokens = pack ? pack.tokens : Math.round(Number(req.body?.tokens));
+  if (!Number.isFinite(rawTokens) || rawTokens < 1 || rawTokens > 50_000_000) {
+    return void res.status(400).json({ error: 'bad_tokens', message: 'Укажите пакет или число токенов от 1 до 50 000 000.' });
+  }
+  const user = await locateUser(req.body);
+  if (!user) {
+    return void res.status(404).json({ error: 'user_not_found', message: 'Пользователь не найден — пусть сначала войдёт в кабинет (Telegram или код с почты).' });
+  }
+  await aiTokensAdd(user.id, rawTokens);
+  // Сбрасываем возможную блокировку по дневным окнам сложности/фраз, чтобы лимиты заработали сразу.
+  await Promise.all([
+    refundBudgetWindow(`ai-cx-day:${user.id}`, 10_000),
+    refundBudgetWindow(`ai-phrase-day:${user.id}`, 10_000),
+  ]).catch(() => {});
+  const balance = await aiTokensGet(user.id);
+  try {
+    await notify(
+      user.tgId,
+      `⚡️ Лимиты Fracs AI пополнены: +${rawTokens.toLocaleString('ru-RU')} токенов (баланс: ${balance.toLocaleString('ru-RU')}). Перезагрузите AI-вкладку или продолжайте работу: ${config.appUrl}/app`,
+    );
+  } catch {
+    /* уведомление не критично */
+  }
+  res.json({ user: publicUser(user, balance), granted: rawTokens, tokenBalance: balance });
 }));
 
 adminRouter.get('/plans', h(async (_req, res) => {

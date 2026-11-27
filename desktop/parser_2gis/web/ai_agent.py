@@ -136,11 +136,7 @@ _PROVIDERS: dict[str, dict] = {
         'pro_only': True,
         'vision': True,
         'desc': 'Встроенная нейронка Fracs. Свой ключ не нужен.',
-        'default_models': [
-            'anthropic/claude-sonnet-5.5', 'openai/gpt-5.6-terra-pro',
-            'deepseek/deepseek-v4-pro-0813', 'deepseek/deepseek-v4.1-flash-1017',
-            'command-a-03-2025',
-        ],
+        'default_models': ['fracs-ai'],
     },
     'Cohere': {
         # Свой ключ Cohere (dashboard.cohere.com). OpenAI-совместимый режим. Command A отвечает до
@@ -742,12 +738,32 @@ def _provider_cfg(provider: str) -> dict:
     return _PROVIDERS.get(provider) or _PROVIDERS['Z.ai']
 
 
+_LIC_MOD = None
+
+
+def _lic_mod():
+    """Ленивый импорт и кэш модуля parser_2gis.license."""
+    global _LIC_MOD
+    if _LIC_MOD is not None:
+        return _LIC_MOD
+    try:
+        from .. import license as _lic
+    except Exception:
+        try:
+            from parser_2gis import license as _lic
+        except Exception:
+            return None
+    _LIC_MOD = _lic
+    return _LIC_MOD
+
+
 def _fracs_license_key() -> str:
     """Ключ лицензии из локального файла (пусто, если его нет)."""
     try:
-        if _LIC_MOD is None:
-            _plan_features()          # инициализирует _LIC_MOD
-        return str((_LIC_MOD._load() or {}).get('key') or '').strip()
+        lic = _lic_mod()
+        if not lic:
+            return ''
+        return str((lic._load() or {}).get('key') or '').strip()
     except Exception:
         return ''
 
@@ -761,9 +777,12 @@ def _fracs_proxy() -> tuple[str, str] | None:
     где ключ хранится на сервере: POST /api/app/ai (Authorization: ключ лицензии).
     """
     try:
-        if _LIC_MOD is not None and _LIC_MOD._owner_mode():
+        lic = _lic_mod()
+        if not lic:
             return None
-        site = (_LIC_MOD._site() if _LIC_MOD else '') or ''
+        if lic._owner_mode() and _FRACS_AI_KEY:
+            return None
+        site = (lic._site() or '').strip()
         key = _fracs_license_key()
         if site and key:
             return site.rstrip('/'), key
@@ -876,15 +895,24 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     skipped = [a['name'] for a in uploads if a['kind'] == 'image' and not vision_ok]
     system = _SYSTEM_PROMPT if system is None else system
     if provider == 'Fracs AI':
-        # Fracs подбирает модель под задачу автоматически: премиум-кодинг для генерации сайтов,
-        # дешёвая — для фраз/чата. Пользователю не нужно переключать модели в OpenRouter.
-        if task in _COHERE_TASKS:
-            # прокси и прямой Cohere знают id command-a-03-2025; прямой OpenRouter — cohere/command-a
-            model = _COHERE_MODEL if (via_proxy or direct_cohere) else _COHERE_OR_MODEL
-            temperature = min(float(temperature), 1.0)
-            max_tokens = min(int(max_tokens or 4096), 8000)
+        # Наружу (через прокси сайта) отправляем непрозрачные алиасы fracs-ai*,
+        # чтобы внутренние модели не светились даже в сетевых запросах.
+        if via_proxy:
+            if task in _COHERE_TASKS:
+                model = 'fracs-ai-edit'
+                temperature = min(float(temperature), 1.0)
+                max_tokens = min(int(max_tokens or 4096), 8000)
+            elif system is _SYSTEM_PROMPT or task == 'build':
+                model = 'fracs-ai'
+            else:
+                model = 'fracs-ai-fast'
         else:
-            model = _BEST_CODE_MODEL if system is _SYSTEM_PROMPT else _CHEAP_CHAT_MODEL
+            if task in _COHERE_TASKS:
+                model = _COHERE_MODEL if direct_cohere else _COHERE_OR_MODEL
+                temperature = min(float(temperature), 1.0)
+                max_tokens = min(int(max_tokens or 4096), 8000)
+            else:
+                model = _BEST_CODE_MODEL if system is _SYSTEM_PROMPT else _CHEAP_CHAT_MODEL
     if system is _SYSTEM_PROMPT:
         # типографика + готовые блоки + ОДИН стилевой рецепт под рубрику бизнеса
         style_key = style if style in STYLE_PROMPTS else _pick_style(prompt)
@@ -1401,13 +1429,8 @@ def fetch_models(provider: str, api_key: str, base_url: str = '') -> dict:
         models_url = base + '/models'
         key = (api_key or '').strip()
     elif provider == 'Fracs AI':
-        proxy = _fracs_proxy()
-        if proxy:
-            models_url = proxy[0] + '/api/app/ai/models'
-            key = proxy[1]
-        else:
-            models_url = cfg['models_url']
-            key = _FRACS_AI_KEY
+        # Модели Fracs AI скрыты — маршрутизацией управляет сервер Fracs.
+        return {'ok': True, 'models': ['fracs-ai'], 'auto': True}
     else:
         models_url = cfg.get('models_url') or ''
         key = (api_key or '').strip()
@@ -1518,7 +1541,7 @@ class AiJob:
             'files': files,
             'uploads': [{'name': a['name'], 'kind': a['kind'], 'size': a['size']}
                         for a in self.uploads],
-            'model': self.model, 'provider': self.provider,
+            'model': 'fracs-ai' if self.provider == 'Fracs AI' else self.model, 'provider': self.provider,
             'error': self.error,
             'error_code': self.error_code,
             'buy_url': self.buy_url,
@@ -1641,7 +1664,8 @@ class AiAgentManager:
             return {'ok': False, 'error': 'AI-агент со своим провайдером доступен '
                     'на тарифах PRO и Ultra.', 'pro_required': True}
         job_id = secrets.token_urlsafe(12)
-        job = AiJob(job_id=job_id, prompt=prompt or '', model=model or '',
+        job_model = 'fracs-ai' if (provider or '') == 'Fracs AI' else (model or '')
+        job = AiJob(job_id=job_id, prompt=prompt or '', model=job_model,
                     provider=provider or 'Z.ai')
         uploads = self.pop_uploads(session_id)
         if prev_job:
@@ -1699,7 +1723,10 @@ class AiAgentManager:
         try:
             job.status = 'running'
             self._set_stage(job, 'thinking', 'Думаю')
-            self._log(job, f'Думаю над задачей… Модель: {job.model or "default"} ({job.provider}).')
+            if job.provider == 'Fracs AI':
+                self._log(job, 'Думаю над задачей… (Fracs AI).')
+            else:
+                self._log(job, f'Думаю над задачей… Модель: {job.model or "default"} ({job.provider}).')
             if style and style in STYLE_PROMPTS:
                 self._log(job, f'Выбран стиль: «{style}».')
             # бесплатные референсы с 21st.dev (metadata-поиск компонентов)
@@ -1833,7 +1860,8 @@ class AiAgentManager:
         if not job.review_path or not os.path.exists(job.review_path):
             return
         try:
-            site = (_LIC_MOD._site() or '') if _LIC_MOD else ''
+            lic = _lic_mod()
+            site = (lic._site() or '') if lic else ''
             key = _fracs_license_key()
             if not site or not key:
                 self._log(job, 'Публикация демо пропущена: нет лицензионного ключа Fracs.')
@@ -1946,15 +1974,11 @@ class AiAgentManager:
 
 def _plan_features() -> list:
     """Коды возможностей текущего тарифа (из лицензии; при ошибке — пусто)."""
-    global _LIC_MOD
     try:
-        if _LIC_MOD is None:
-            try:
-                from .. import license as _lic
-            except Exception:
-                from parser_2gis import license as _lic
-            _LIC_MOD = _lic
-        return [str(f).lower() for f in (_LIC_MOD.check().get('features') or [])]
+        lic = _lic_mod()
+        if not lic:
+            return []
+        return [str(f).lower() for f in (lic.check().get('features') or [])]
     except Exception:
         return []
 
@@ -1964,9 +1988,6 @@ def _has_feature(*codes: str) -> bool:
     return any(c in feats for c in codes)
 
 
-_LIC_MOD = None
-
-
 def _provider_feature(provider: str) -> str:
     """Код тарифа, необходимый для провайдера: Fracs AI — 'fracs_ai',
     любой свой провайдер — 'ai_provider'."""
@@ -1974,19 +1995,14 @@ def _provider_feature(provider: str) -> str:
 
 
 def fracs_ai_allowed() -> dict:
-    """Fracs AI доступен только на PRO (и Бизнес — это PRO на 90 дней).
-    Проверяем активную лицензию Fracs и её тариф/фичи."""
-    try:
-        from .. import license as fracs_license  # parser_2gis.license
-    except Exception:
-        try:
-            from parser_2gis import license as fracs_license
-        except Exception:
-            return {'allowed': False, 'reason': 'license_unavailable'}
+    """Fracs AI доступен только на Ultra. Проверяем активную лицензию Fracs и её тариф/фичи."""
+    fracs_license = _lic_mod()
+    if not fracs_license:
+        return {'allowed': False, 'reason': 'license_unavailable'}
     st = fracs_license.check()
     if not st.get('ok'):
         reason = 'offline' if st.get('offline') else (st.get('reason') or 'no_license')
-        return {'allowed': False, 'reason': 'Подписка Fracs не активна. Fracs AI доступен на тарифе PRO.' if reason != 'offline'
+        return {'allowed': False, 'reason': 'Подписка Fracs не активна. Fracs AI доступен на тарифе Ultra.' if reason != 'offline'
                 else 'Нет связи с сервером Fracs — Fracs AI временно недоступен.'}
     features = [str(f).lower() for f in (st.get('features') or [])]
     if ('fracs_ai' in features or 'ai' in features or 'business' in features
@@ -2061,7 +2077,7 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                 'reason': reason,
                 'configured': (not cfg.get('pro_only')) or _fracs_ai_ready(),
                 'key_env': '',
-                'models': list(cfg.get('default_models') or []),
+                'models': ['fracs-ai'] if cfg.get('pro_only') else list(cfg.get('default_models') or []),
             })
         return {'ok': True, 'features': _plan_features(), 'providers': items}
 

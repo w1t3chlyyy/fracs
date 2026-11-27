@@ -242,10 +242,13 @@ export async function extendSubscription(userId: string, days: number, planId?: 
 
 /* ── админ: поиск пользователей и ручное управление подпиской ── */
 
-/** Ищет по числовому Telegram ID или по @username (без учёта регистра). */
+/** Ищет по UUID, числовому Telegram ID, email или @username (без учёта регистра). */
 export async function findUser(q: string): Promise<User | null> {
   const s = q.trim().replace(/^@/, '');
   if (!s) return null;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) {
+    return await getUser(s);
+  }
   const byId = /^\d+$/.test(s);
   const byEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.toLowerCase());
   if (useSupabase) {

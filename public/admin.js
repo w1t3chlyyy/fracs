@@ -119,6 +119,18 @@
 
   /* ── пользователи ── */
   var USERS = [];
+  var TOKEN_PACKS = [];
+  async function loadTokenPacks() {
+    var data = await api('/token-packs');
+    TOKEN_PACKS = (data && data.packs) || [];
+    var sel = document.getElementById('tk-pack');
+    var amt = document.getElementById('tk-amount');
+    if (!sel) return;
+    sel.innerHTML = TOKEN_PACKS.map(function (p) {
+      return '<option value="' + esc(p.id) + '">' + esc(p.title) + ' — ' + Number(p.priceRub || 0).toLocaleString('ru-RU') + ' ₽</option>';
+    }).join('') + '<option value="custom">Своё количество…</option>';
+    if (TOKEN_PACKS.length && amt) amt.value = String(TOKEN_PACKS[0].tokens);
+  }
   async function loadUsers() {
     var data = await api('/users');
     USERS = data.users;
@@ -139,15 +151,22 @@
       var ident = isEmail
         ? '<span class="sub"><span class="pill">почта</span> ' + esc(u.email || '—') + '</span>'
         : '<span class="sub">@' + esc(u.username || '—') + ' <span class="pill">id ' + u.tgId + '</span></span>';
+      var aiBal = Number(u.tokenBalance || 0).toLocaleString('ru-RU');
       return '<div class="card" data-uid="' + esc(u.id) + '">' +
         '<div class="uhead"><span class="name">' + esc(u.firstName || 'без имени') + '</span>' + ident + '</div>' +
         '<div class="ustatus ' + (on ? 'on' : 'off') + '">' +
-        (on ? IC.ok + '<span>Подписка до ' + fmt(u.subscriptionUntil) + (u.planId ? ' · ' + esc(u.planId) : '') + '</span>' : IC.none + '<span>нет подписки</span>') + '</div>' +
+        (on ? IC.ok + '<span>Подписка до ' + fmt(u.subscriptionUntil) + (u.planId ? ' · ' + esc(u.planId) : '') + '</span>' : IC.none + '<span>нет подписки</span>') +
+        '<span class="pill">AI: ' + esc(aiBal) + ' ток.</span></div>' +
         '<div class="grid2">' +
         '<button class="btn primary sm" data-act="g" data-plan="start" data-days="30">Start 30д</button>' +
         '<button class="btn primary sm" data-act="g" data-plan="pro" data-days="30">PRO 30д</button>' +
         '<button class="btn primary sm" data-act="g" data-plan="ultra" data-days="30">Ultra 30д</button>' +
         '<button class="btn danger sm" data-act="r">Снять</button>' +
+        '</div>' +
+        '<div class="grid2" style="margin-top:6px">' +
+        '<button class="btn sm" data-act="gt" data-tokens="100000">+100к ток.</button>' +
+        '<button class="btn sm" data-act="gt" data-tokens="500000">+500к ток.</button>' +
+        '<button class="btn sm" data-act="gt" data-tokens="1000000">+1М ток.</button>' +
         '</div></div>';
     }).join('');
   }
@@ -165,6 +184,12 @@
         if (idx >= 0) USERS[idx] = data.user;
         renderUsers();
         toast('Выдано ' + b.dataset.plan.toUpperCase() + ' ' + b.dataset.days + ' дн.');
+      } else if (b.dataset.act === 'gt') {
+        var addTokens = Number(b.dataset.tokens || 0);
+        var dt = await api('/tokens/grant', { id: uid, tokens: addTokens });
+        if (idx >= 0) USERS[idx] = dt.user;
+        renderUsers();
+        toast('Начислено ' + addTokens.toLocaleString('ru-RU') + ' токенов (баланс: ' + Number(dt.tokenBalance || 0).toLocaleString('ru-RU') + ')');
       } else if (b.dataset.act === 'r') {
         if (!confirm('Снять подписку у этого пользователя?')) return;
         var d2 = await api('/revoke', { id: uid });
@@ -196,6 +221,43 @@
     } catch (err) { toast(err.message, true); }
     finally { b.disabled = false; }
   });
+
+  // Выдача токенов Fracs AI по Telegram ID или email (после оплаты по реквизитам)
+  var tkPackEl = document.getElementById('tk-pack');
+  var tkAmtEl = document.getElementById('tk-amount');
+  if (tkPackEl && tkAmtEl) {
+    tkPackEl.addEventListener('change', function () {
+      var val = tkPackEl.value;
+      if (val === 'custom') { tkAmtEl.focus(); return; }
+      var p = TOKEN_PACKS.find(function (x) { return x.id === val; });
+      if (p) tkAmtEl.value = String(p.tokens);
+    });
+  }
+  var tkGoEl = document.getElementById('tk-go');
+  if (tkGoEl) {
+    tkGoEl.addEventListener('click', async function () {
+      var who = (document.getElementById('tk-who').value || '').trim();
+      var amount = Math.floor(Number((tkAmtEl && tkAmtEl.value) || 0));
+      var packVal = tkPackEl ? tkPackEl.value : 'custom';
+      var isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(who.toLowerCase());
+      var isTg = /^\d+$/.test(who) && Number(who) > 0;
+      if (!isEmail && !isTg) { toast('Введите числовой Telegram ID или адрес эл. почты', true); return; }
+      if (!(amount >= 1 && amount <= 50000000)) { toast('Токенов: 1–50 000 000', true); return; }
+      var b = this; b.disabled = true;
+      try {
+        var body = isEmail ? { email: who.toLowerCase() } : { tgId: Number(who) };
+        var selPack = TOKEN_PACKS.find(function (x) { return x.id === packVal; });
+        if (selPack && selPack.tokens === amount) body.packId = selPack.id;
+        else body.tokens = amount;
+        var data = await api('/tokens/grant', body);
+        var idx = USERS.findIndex(function (u) { return u.id === data.user.id; });
+        if (idx >= 0) USERS[idx] = data.user; else await loadUsers();
+        renderUsers();
+        toast('Выдано ' + Number(data.addedTokens || amount).toLocaleString('ru-RU') + ' токенов (баланс: ' + Number(data.tokenBalance || 0).toLocaleString('ru-RU') + ')');
+      } catch (err) { toast(err.message, true); }
+      finally { b.disabled = false; }
+    });
+  }
 
   /* ── обучение ── */
   var LESSONS = [];
@@ -389,13 +451,14 @@
       active: true,
       note: document.getElementById('pr-note').value,
     };
-    if (PR_EDIT_ID) body.id = PR_EDIT_ID;
+    var wasEdit = Boolean(PR_EDIT_ID);
+    if (wasEdit) body.id = PR_EDIT_ID;
     var b = this; b.disabled = true;
     try {
       await api('/promocodes/save', body);
       prResetForm();
       await loadPromocodes();
-      toast(PR_EDIT_ID ? 'Промокод обновлён' : 'Промокод создан');
+      toast(wasEdit ? 'Промокод обновлён' : 'Промокод создан');
     } catch (err) { toast(err.message, true); }
     finally { b.disabled = false; }
   });
@@ -429,7 +492,7 @@
     }
     try {
       await api('/me');
-      await Promise.all([loadPlans(), loadUsers(), loadTraining(), loadChannels(), loadPromocodes()]);
+      await Promise.all([loadPlans(), loadTokenPacks(), loadUsers(), loadTraining(), loadChannels(), loadPromocodes()]);
     } catch (err) {
       toast(err.message, true);
     }

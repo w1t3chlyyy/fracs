@@ -294,6 +294,7 @@ api.post('/search/maps/trial/start', requireAuth, h(async (req, res) => {
   const niche = cleanText(parsed[0].niche, 80) || 'Поиск 2ГИС';
   const cityLabel = [...new Set(parsed.map((search) => search.city))].join(', ');
   const seed = crypto.createHash('sha256').update([...uniqueUrls].sort().join('\n')).digest('hex');
+  const labelsMap = req.body?.labels && typeof req.body.labels === 'object' && !Array.isArray(req.body.labels) ? req.body.labels : null;
   try {
     const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs`, {
       method: 'POST',
@@ -303,7 +304,10 @@ api.post('/search/maps/trial/start', requireAuth, h(async (req, res) => {
         urls: uniqueUrls,
         max_records: Math.min(60, Math.max(1, Number(req.body?.maxRecords) || 20)),
         clean: true,
-        directions: uniqueUrls.map((url) => ({ url, label: String(req.body?.labels?.[url] || '') })),
+        directions: uniqueUrls.map((url) => ({
+          url,
+          label: labelsMap && Object.hasOwn(labelsMap, url) ? String(labelsMap[url] || '') : '',
+        })),
       }),
       signal: AbortSignal.timeout(10_000),
     });
@@ -363,6 +367,7 @@ api.post('/search/maps/trial/status', requireAuth, h(async (req, res) => {
       const phoneValue = contacts.phone || record.phone;
       const ratingValue = record.rating == null || record.rating === '' ? null : Number(record.rating);
       const reviewsValue = record.review_count == null || record.review_count === '' ? null : Number(record.review_count);
+      const rawUrl = typeof record.url === 'string' ? record.url.trim() : '';
       return {
         id: String(record.id || `${ticket.jobId}-${index}`),
         name: cleanText(record.name, 200) || 'Без названия',
@@ -371,7 +376,7 @@ api.post('/search/maps/trial/status', requireAuth, h(async (req, res) => {
         phone: typeof phoneValue === 'string' && phoneValue ? cleanText(phoneValue, 80) : null,
         rating: ratingValue !== null && Number.isFinite(ratingValue) ? ratingValue : null,
         reviews: reviewsValue !== null && Number.isFinite(reviewsValue) ? reviewsValue : null,
-        url: typeof record.url === 'string' ? record.url : null,
+        url: /^https?:\/\//i.test(rawUrl) ? rawUrl : null,
       };
     });
     if (!rows.length) {
@@ -509,7 +514,7 @@ api.post('/payments/request', requireAuth, h(async (req, res) => {
     await notify(
       config.adminTgId,
       pack
-        ? `🧾 Заявка на токены Fracs AI (реквизиты)\n${whoLabel}\nПакет: ${pack.title}, ${pack.priceRub} ₽`
+        ? `🧾 Заявка на токены Fracs AI (реквизиты)\n${whoLabel}\nПакет: ${pack.title}, ${pack.priceRub} ₽\n\nВыдать: /granttokens ${targetGrant} ${pack.tokens}`
         : `🧾 Заявка на подписку (реквизиты)\n${whoLabel}\nТариф: ${plan!.title}, ${plan!.priceRub} ₽\n\nВыдать: /grant ${targetGrant} ${plan!.days} ${plan!.id}`,
     );
   }

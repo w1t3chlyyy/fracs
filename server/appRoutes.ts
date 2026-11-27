@@ -218,22 +218,36 @@ async function fracsAiGate(req: any): Promise<{ user: any } | { error: [number, 
 // Все пороги меняются переменными окружения (значения по умолчанию — ниже).
 const envNum = (k: string, d: number) => { const n = Number(process.env[k]); return Number.isFinite(n) && n > 0 ? n : d; };
 const AI_LIMITS = {
-  perMinute: envNum('AI_USER_PER_MIN', 20),             // всплеск: не больше N запросов в минуту
-  perHour: envNum('AI_USER_PER_HOUR', 120),             // …в час (щедро для чата и генератора фраз)
-  dailyComplexity: envNum('AI_DAILY_COMPLEXITY', 60),   // бюджет сложности сайтов/чата на окно
-  dailyPhrases: envNum('AI_DAILY_PHRASES', 150),        // отдельный щедрый лимит для генерации фраз Telegram
+  perMinute: envNum('AI_USER_PER_MIN', 40),             // всплеск: не больше N запросов в минуту
+  perHour: envNum('AI_USER_PER_HOUR', 300),             // …в час (щедро для чата и генератора фраз)
+  dailyComplexity: envNum('AI_DAILY_COMPLEXITY', 250),  // бюджет сложности сайтов/чата на окно
+  dailyPhrases: envNum('AI_DAILY_PHRASES', 500),        // отдельный щедрый лимит для генерации фраз Telegram
   perDayWindowMs: envNum('AI_USER_DAY_WINDOW_MS', 10 * 3_600_000), // окно сброса — 10 часов
-  dailyTokens: envNum('AI_DAILY_TOKENS', 600_000),      // увеличенная включённая дневная квота токенов
-  userDailyUsd: envNum('AI_USER_DAILY_USD', 5),         // потолок расходов на одного пользователя в сутки
-  globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 80),    // аварийный предохранитель: общий бюджет в сутки
+  dailyTokens: envNum('AI_DAILY_TOKENS', 2_500_000),    // увеличенная включённая дневная квота токенов
+  userDailyUsd: envNum('AI_USER_DAILY_USD', 20),        // потолок расходов на бесплатной дневной квоте
+  globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 250),   // аварийный предохранитель: общий бюджет в сутки
   maxTokens: envNum('AI_MAX_TOKENS', 12000),            // потолок ответа модели
   maxInputChars: envNum('AI_MAX_INPUT_CHARS', 60000),   // правка макета шлёт страницу целиком (до 34К знаков) + промт
   maxImages: 3,
 };
 // Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
 const DESIGN_MARKER = 'DESIGN_SYSTEM_VERSION:';
-// Белый список моделей Fracs AI. Премиум-кодинг (для генерации сайтов) + бюджетные (для фраз/чата).
-// ID и цены сверены с openrouter.ai/api/v1/models (2026-11). Расширять через env AI_ALLOWED_MODELS.
+// Публичные псевдонимы Fracs AI → внутренние модели (чтобы клиент не знал и не показывал базовые модели).
+const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || 'anthropic/claude-sonnet-5.5').trim();
+const FRACS_FAST_MODEL = (process.env.FRACS_AI_FAST_MODEL || 'deepseek/deepseek-v4.1-flash-1017').trim();
+const COHERE_MODEL = 'command-a-03-2025';
+const FRACS_MODEL_ALIASES: Record<string, string> = {
+  'fracs-ai': FRACS_BUILD_MODEL,
+  'fracs-ai-build': FRACS_BUILD_MODEL,
+  'fracs-ai-pro': FRACS_BUILD_MODEL,
+  auto: FRACS_BUILD_MODEL,
+  'fracs-ai-fast': FRACS_FAST_MODEL,
+  'fracs-ai-chat': FRACS_FAST_MODEL,
+  'fracs-ai-edit': COHERE_MODEL,
+  'fracs-ai-copy': COHERE_MODEL,
+};
+// Белый список моделей Fracs AI (оставлен и для обратной совместимости со старыми версиями программы).
+// Расширять через env AI_ALLOWED_MODELS.
 const AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS ||
   'anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,command-a-03-2025')
   .split(',').map((s) => s.trim()).filter(Boolean));
@@ -255,7 +269,6 @@ const AI_PRICE: Record<string, [number, number]> = {
 // Command A пишет тексты/арт-дирекшн и вычитывает готовый сайт (задачи copy / critique),
 // вёрстку собирает модель OpenRouter. Прямой ключ Cohere — приоритет; нет ключа или Cohere
 // лёг → тот же Command A идёт через OpenRouter (cohere/command-a).
-const COHERE_MODEL = 'command-a-03-2025';
 const COHERE_VIA_OR = 'cohere/command-a';
 const COHERE_MAX_OUT = 8000;
 type Upstream = { url: string; key: string; body: any; via: 'cohere' | 'openrouter' };
@@ -321,7 +334,7 @@ function assessAiComplexity(maxTokens: number, inChars: number, imageCount: numb
   }
   if ((inChars < 4500 && maxTokens <= 5000 && imageCount === 0) || (!isSiteBuild && imageCount === 0)) {
     return {
-      points: 3,
+      points: 2,
       tier: 'medium',
       label: 'Средняя',
       reserveOutputTokens: Math.min(maxTokens, 5500),
@@ -329,18 +342,19 @@ function assessAiComplexity(maxTokens: number, inChars: number, imageCount: numb
   }
   const extraSize = inChars > 14000 ? 1 : 0;
   return {
-    points: Math.min(14, 6 + imageCount * 2 + extraSize),
+    points: Math.min(10, 4 + imageCount * 2 + extraSize),
     tier: 'heavy',
     label: 'Сложная',
     reserveOutputTokens: maxTokens,
   };
 }
 
-/** Чистим тело запроса: только модель из белого списка, без stream/tools/plugins, потолок токенов. */
+/** Чистим тело запроса: только модель из белого списка (или псевдоним Fracs AI), без stream/tools/plugins. */
 function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: number; task: string } | { err: [number, any] } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { err: aiErr(400, 'bad_request', 'Ожидается тело chat/completions.') };
-  const model = String(raw.model || '');
-  if (!AI_MODELS.has(model)) return { err: aiErr(400, 'model_not_allowed', 'Эта модель недоступна во встроенном Fracs AI. Выберите модель из списка или подключите свой API-ключ.') };
+  const rawModel = String(raw.model || '').trim() || 'fracs-ai';
+  const model = FRACS_MODEL_ALIASES[rawModel] || rawModel;
+  if (!FRACS_MODEL_ALIASES[rawModel] && !AI_MODELS.has(model)) return { err: aiErr(400, 'model_not_allowed', 'Эта модель недоступна во встроенном Fracs AI. Используйте встроенный режим Fracs AI или подключите свой API-ключ.') };
   const msgs = raw.messages;
   if (!Array.isArray(msgs) || msgs.length < 1 || msgs.length > 6) return { err: aiErr(400, 'bad_request', 'Некорректный список сообщений.') };
   let chars = 0, images = 0;
@@ -483,7 +497,7 @@ appRouter.post('/ai', h(async (req, res) => {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     return void res.status(503).json({ ok: false, error: 'daily_budget', message: 'Общий лимит Fracs AI на сегодня исчерпан — он обновится завтра. Со своим API-ключом можно работать без ограничений.' });
   }
-  if (usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
+  if (balance <= 0 && usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const nextUtcMidnight = new Date();
     nextUtcMidnight.setUTCHours(24, 0, 0, 0);
@@ -511,20 +525,34 @@ appRouter.post('/ai', h(async (req, res) => {
       upstream = await callUpstream(resolveUpstream(body, true)!);
     }
     const text = await upstream.text();
+    let safeBody = text;
     if (upstream.ok) {
       // фактический расход: cost от OpenRouter, иначе по токенам и таблице цен
       try {
-        const u = JSON.parse(text)?.usage || {};
+        const parsed = JSON.parse(text);
+        const u = parsed?.usage || {};
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
         const cost = Number(u.cost) > 0 ? Number(u.cost)
           : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
-        // Списание с купленного баланса: только то, что сверх включённой дневной квоты.
-        const over = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
+        // Списание с купленного баланса: только дельта, на которую текущий запрос вышел за дневную квоту.
+        const prevOver = Math.max(0, usage.userTokens - AI_LIMITS.dailyTokens);
+        const nextOver = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
+        const over = Math.max(0, nextOver - prevOver);
         if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error('[ai] tokens spend failed:', e));
+        // Скрываем имя реальной модели в ответе прокси
+        if (parsed && typeof parsed === 'object') {
+          parsed.model = 'fracs-ai';
+          if ('provider' in parsed) delete parsed.provider;
+          if ('system_fingerprint' in parsed) delete parsed.system_fingerprint;
+          safeBody = JSON.stringify(parsed);
+        }
       } catch (e) { console.error('[ai] usage write failed:', e); }
-    } else if (cxConsumed && upstream.status >= 500) {
-      await refundBudgetWindow(cxKey, cxCost);
+    } else {
+      if (cxConsumed && upstream.status >= 500) {
+        await refundBudgetWindow(cxKey, cxCost);
+      }
+      safeBody = JSON.stringify({ ok: false, error: 'upstream', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
     }
     res.setHeader('X-Fracs-Complexity-Tier', complexity.tier);
     res.setHeader('X-Fracs-Complexity-Cost', String(cxCost));
@@ -534,7 +562,7 @@ appRouter.post('/ai', h(async (req, res) => {
     if (cxResetAt > 0) {
       res.setHeader('X-Fracs-Reset-At', String(cxResetAt));
     }
-    res.status(upstream.status).type('application/json').send(text);
+    res.status(upstream.status).type('application/json').send(safeBody);
   } catch (e: any) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     res.status(502).json({ ok: false, error: 'upstream', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
@@ -547,33 +575,15 @@ appRouter.get('/ai/models', h(async (req, res) => {
   }
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
-  if (!config.openrouterApiKey) {
+  if (!config.openrouterApiKey && !config.cohereApiKey) {
     return void res.status(503).json({ ok: false, error: 'not_configured' });
   }
-  // отдаём только разрешённые модели — программа не покажет (и не попросит) дорогие
-  const onlyAllowed = (d: any) => {
-    const data = (Array.isArray(d?.data) ? d.data : []).filter((m: any) => AI_MODELS.has(String(m?.id)));
-    // у OpenRouter Command A называется cohere/command-a — отдаём под нашим id, чтобы список был полным
-    if (AI_MODELS.has(COHERE_MODEL) && !data.some((m: any) => m?.id === COHERE_MODEL)) {
-      data.push({ id: COHERE_MODEL, name: 'Cohere: Command A', context_length: 256000 });
-    }
-    return { ...d, data };
-  };
-  if (orModelsCache.list.length && Date.now() - orModelsCache.at < OR_MODELS_TTL) {
-    return void res.json(onlyAllowed(orModelsCache.list));
-  }
-  try {
-    const upstream = await fetch(config.openrouterUrl + '/models', {
-      headers: { Authorization: `Bearer ${config.openrouterApiKey}` },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!upstream.ok) return void res.status(502).json({ ok: false, error: 'upstream' });
-    const data = await upstream.json();
-    orModelsCache = { at: Date.now(), list: data };
-    res.json(onlyAllowed(data));
-  } catch (e: any) {
-    res.status(502).json({ ok: false, error: 'upstream' });
-  }
+  // Не раскрываем внутренние модели OpenRouter/Anthropic/Cohere — отдаём единый брендированный профиль Fracs AI.
+  res.json({
+    data: [
+      { id: 'fracs-ai', name: 'Fracs AI', context_length: 256000 },
+    ],
+  });
 }));
 
 /** Остаток токенов Fracs AI: включённая дневная квота + купленный баланс + пакеты к покупке.
@@ -645,10 +655,11 @@ appRouter.post('/ai/buy', h(async (req, res) => {
     const whoLabel = user.tgId != null
       ? `${user.username ? '@' + user.username : user.firstName} (id ${user.tgId})`
       : `${user.email || user.firstName} (почта)`;
+    const targetGrant = user.tgId != null ? String(user.tgId) : (user.email || user.id);
     if (config.adminTgId > 0) {
       await notify(
         config.adminTgId,
-        `🧾 Заявка на токены Fracs AI из программы (реквизиты)\n${whoLabel}\nПакет: ${pack.title}, ${pack.priceRub} ₽`,
+        `🧾 Заявка на токены Fracs AI из программы (реквизиты)\n${whoLabel}\nПакет: ${pack.title}, ${pack.priceRub} ₽\n\nВыдать: /granttokens ${targetGrant} ${pack.tokens}`,
       ).catch(() => {});
     }
     const text = `Здравствуйте! Хочу докупить токены Fracs AI из программы: ${pack.title} (${pack.priceRub} ₽).`;
@@ -709,6 +720,9 @@ appRouter.post('/demo', h(async (req, res) => {
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, reason: 'invalid' });
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: 'expired' });
+  if (!(await checkChannelSubs(user.tgId))) {
+    return void res.status(403).json({ ok: false, error: 'channels_required', message: 'Подпишитесь на обязательные каналы в боте Fracs.' });
+  }
   const feats = await getActiveFeatures(user);
   if (!feats.some((f) => ['ai', 'ai_provider', 'fracs_ai'].includes(f))) {
     return void res.status(402).json({ ok: false, error: 'plan', message: 'Публикация демо доступна с AI-агентом (PRO / Ultra).' });

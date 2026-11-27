@@ -1,8 +1,9 @@
 import type { Request, Response } from 'express';
-import { config } from './config.ts';
+import { config, loadTokenPacks } from './config.ts';
 import {
   bindLoginToken, createLoginToken, upsertTgUser, findUser, getUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
-  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson, getRequiredChannels, type User,
+  getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson, getRequiredChannels,
+  aiTokensGet, aiTokensAdd, refundBudgetWindow, type User,
 } from './db.ts';
 import { randomToken, safeEqual, sleep } from './util.ts';
 
@@ -192,6 +193,7 @@ const ADMIN_HELP = `Админ-панель Fracs
 
 Пользователи:
 /grant <@username|id> [дней] [тариф] — выдать или продлить подписку (по умолчанию 30 дней, тариф month)
+/granttokens <@username|id|email> <токены|packId> — выдать лимиты Fracs AI (напр. 500000, 500k, tokens_500k)
 /revoke <@username|id> — снять подписку
 /user <@username|id> — статус пользователя
 /users — последние 10 пользователей
@@ -218,12 +220,13 @@ const ADMIN_HELP = `Админ-панель Fracs
 Примеры:
 /setprice pro 2700
 /grant 123456789 30 pro
+/granttokens 123456789 500000
 /addlesson Как найти клиентов
 
 Откройте нишу, введите город…`;
 
 const ADMIN_CMDS = [
-  '/admin', '/grant', '/revoke', '/user', '/users',
+  '/admin', '/grant', '/granttokens', '/revoke', '/user', '/users',
   '/plans', '/setprice', '/setdesc', '/settitle', '/setbadge', '/setdays', '/resetplans',
   '/training', '/addlesson', '/setlesson', '/dellesson',
 ];
@@ -269,21 +272,28 @@ async function sendAdminMenu(chatId: number) {
   await notify(chatId, adminHomeText, { reply_markup: adminHomeKb() });
 }
 
-/** Карточка одного пользователя с быстрыми кнопками выдачи/снятия подписки. */
+/** Карточка одного пользователя с быстрыми кнопками выдачи/снятия подписки и токенов Fracs AI. */
 async function renderUserView(chatId: number, messageId: number, tgId: number) {
   const u = await findUser(String(tgId));
   if (!u) {
     await editMsg(chatId, messageId, 'Пользователь не найден — пусть сначала войдёт в кабинет через бота.', backKb('adm:users'));
     return;
   }
+  const bal = await aiTokensGet(u.id).catch(() => 0);
   const text =
     `👤 ${who(u)}\n` +
     `Подписка: ${isSubscribed(u) ? 'до ' + fmt(u.subscriptionUntil) : 'нет'}${u.planId ? ` (${u.planId})` : ''}\n` +
+    `Токены Fracs AI: ${bal.toLocaleString('ru-RU')}\n` +
     `Регистрация: ${fmt(u.createdAt)}`;
   const kb = {
     inline_keyboard: [
       [{ text: 'Ultra 30 дней', callback_data: `adm:g:${tgId}:ultra:30` }, { text: 'PRO 30 дней', callback_data: `adm:g:${tgId}:pro:30` }],
       [{ text: 'Start 30 дней', callback_data: `adm:g:${tgId}:start:30` }],
+      [
+        { text: '+100к ток.', callback_data: `adm:gt:${tgId}:100000` },
+        { text: '+500к ток.', callback_data: `adm:gt:${tgId}:500000` },
+        { text: '+1М ток.', callback_data: `adm:gt:${tgId}:1000000` },
+      ],
       [{ text: '✕ Снять подписку', callback_data: `adm:r:${tgId}` }],
       [{ text: '← К списку', callback_data: 'adm:users' }],
     ],
@@ -361,20 +371,50 @@ async function handleAdminCallback(cb: any): Promise<boolean> {
   if (mUid) {
     const u = await getUser(mUid[1]);
     if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
+    const bal = await aiTokensGet(u.id).catch(() => 0);
     const text =
       `👤 ${who(u)}\n` +
       `Подписка: ${isSubscribed(u) ? 'до ' + fmt(u.subscriptionUntil) : 'нет'}${u.planId ? ` (${u.planId})` : ''}\n` +
+      `Токены Fracs AI: ${bal.toLocaleString('ru-RU')}\n` +
       `Регистрация: ${fmt(u.createdAt)}`;
     const kb = {
       inline_keyboard: [
         [{ text: 'Ultra 30 дней', callback_data: `adm:g:${u.id}:ultra:30` }, { text: 'PRO 30 дней', callback_data: `adm:g:${u.id}:pro:30` }],
         [{ text: 'Start 30 дней', callback_data: `adm:g:${u.id}:start:30` }],
+        [
+          { text: '+100к ток.', callback_data: `adm:gt:${u.id}:100000` },
+          { text: '+500к ток.', callback_data: `adm:gt:${u.id}:500000` },
+          { text: '+1М ток.', callback_data: `adm:gt:${u.id}:1000000` },
+        ],
         [{ text: '✕ Снять подписку', callback_data: `adm:r:${u.id}` }],
         [{ text: '← К списку', callback_data: 'adm:users' }],
       ],
     };
     await editMsg(chatId, messageId, text, kb);
     await answerCb(cbId);
+    return true;
+  }
+
+  const gt = data.match(/^adm:gt:([^:]+):(\d+)$/);
+  if (gt) {
+    const target = gt[1];
+    const tokens = Number(gt[2]);
+    const u = /^\d+$/.test(target) ? await findUser(target) : await getUser(target);
+    if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
+    if (!(tokens > 0 && tokens <= 50_000_000)) return answerCb(cbId, 'Некорректное число токенов', true).then(() => true);
+    await aiTokensAdd(u.id, tokens);
+    await Promise.all([
+      refundBudgetWindow(`ai-cx-day:${u.id}`, 10_000),
+      refundBudgetWindow(`ai-phrase-day:${u.id}`, 10_000),
+    ]).catch(() => {});
+    const bal = await aiTokensGet(u.id).catch(() => tokens);
+    await answerCb(cbId, `⚡️ +${tokens.toLocaleString('ru-RU')} ток. (баланс: ${bal.toLocaleString('ru-RU')})`);
+    await notify(u.tgId, `⚡️ Лимиты Fracs AI пополнены: +${tokens.toLocaleString('ru-RU')} токенов (баланс: ${bal.toLocaleString('ru-RU')}). Кабинет: ${publicUrl()}/app`).catch(() => {});
+    if (u.tgId != null) {
+      await renderUserView(chatId, messageId, u.tgId);
+    } else {
+      await editMsg(chatId, messageId, `👤 ${who(u)}\nТокены Fracs AI: ${bal.toLocaleString('ru-RU')}`, backKb('adm:users'));
+    }
     return true;
   }
 
@@ -577,7 +617,8 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
   }
 
   if (cmd === '/user') {
-    await notify(chatId, `${who(user)}\nПодписка: ${isSubscribed(user) ? 'до ' + fmt(user.subscriptionUntil) : 'нет'}\nРегистрация: ${fmt(user.createdAt)}`);
+    const bal = await aiTokensGet(user.id).catch(() => 0);
+    await notify(chatId, `${who(user)}\nПодписка: ${isSubscribed(user) ? 'до ' + fmt(user.subscriptionUntil) : 'нет'}\nТокены Fracs AI: ${bal.toLocaleString('ru-RU')}\nРегистрация: ${fmt(user.createdAt)}`);
   } else if (cmd === '/grant') {
     const days = Math.round(Number(args[1] ?? 30));
     if (!(days > 0 && days <= 3650)) {
@@ -595,6 +636,32 @@ async function handleAdmin(chatId: number, text: string): Promise<boolean> {
     const u = await extendSubscription(user.id, days, planId);
     await notify(chatId, `✅ ${who(u)}: подписка до ${fmt(u.subscriptionUntil)}` + (u.planId ? ` (тариф ${u.planId})` : ''));
     await notify(u.tgId, `✅ Подписка Fracs активна до ${fmt(u.subscriptionUntil)}. Кабинет: ${config.appUrl}/app`);
+  } else if (cmd === '/granttokens') {
+    const arg = (args[1] || '').trim().toLowerCase();
+    const pack = loadTokenPacks().find((p) => p.id.toLowerCase() === arg);
+    let tokens = pack ? pack.tokens : 0;
+    if (!tokens && arg) {
+      const mShort = arg.match(/^(\d+(?:[.,]\d+)?)\s*([kmкм])$/i);
+      if (mShort) {
+        const mult = /[mм]/i.test(mShort[2]) ? 1_000_000 : 1_000;
+        tokens = Math.round(Number(mShort[1].replace(',', '.')) * mult);
+      } else {
+        tokens = Math.round(Number(arg.replace(/[\s_]/g, '')));
+      }
+    }
+    if (!Number.isFinite(tokens) || tokens < 1 || tokens > 50_000_000) {
+      const packList = loadTokenPacks().map((p) => `${p.id} (${p.tokens.toLocaleString('ru-RU')})`).join(', ');
+      await notify(chatId, `Использование: /granttokens <@username|id|email> <число|packId>\nПакеты: ${packList}\nПример: /granttokens ${args[0]} 500000`);
+      return true;
+    }
+    await aiTokensAdd(user.id, tokens);
+    await Promise.all([
+      refundBudgetWindow(`ai-cx-day:${user.id}`, 10_000),
+      refundBudgetWindow(`ai-phrase-day:${user.id}`, 10_000),
+    ]).catch(() => {});
+    const bal = await aiTokensGet(user.id).catch(() => tokens);
+    await notify(chatId, `⚡️ ${who(user)}: +${tokens.toLocaleString('ru-RU')} токенов Fracs AI (баланс: ${bal.toLocaleString('ru-RU')})`);
+    await notify(user.tgId, `⚡️ Лимиты Fracs AI пополнены: +${tokens.toLocaleString('ru-RU')} токенов (баланс: ${bal.toLocaleString('ru-RU')}). Кабинет: ${config.appUrl}/app`);
   } else if (cmd === '/revoke') {
     const u = await setSubscription(user.id, null);
     await notify(chatId, `🚫 ${who(u)}: подписка снята`);

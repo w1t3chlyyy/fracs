@@ -211,7 +211,7 @@
       gen_site:'Build websites from business cards', gen_qr:'Attach a QR code to the layout',
       style:'Layout style', h_adv:'Advanced settings', temp:'Temperature', maxtok:'Max tokens',
       key_needed:'Paste the API key of the selected network', key_not_needed:'Fracs AI works on a Fracs subscription — no key needed',
-      key_hint_prefix:'Paste the API key ', fracs_active:'Fracs AI is active — no key needed, models are managed by Fracs.',
+      key_hint_prefix:'Paste the API key ', fracs_active:'Fracs AI is active — no key needed.',
       fracs_down:'Fracs AI is temporarily unavailable. Try again later.',
       style_auto:'Auto — by business category'
     },
@@ -226,7 +226,7 @@
       gen_site:'Создавать сайты по карточкам бизнеса', gen_qr:'Выдавать QR-код на макет',
       style:'Стиль макета', h_adv:'Расширенные настройки', temp:'Температура', maxtok:'Макс. токенов',
       key_needed:'Вставьте API ключ выбранной нейросети', key_not_needed:'Fracs AI работает на подписке Fracs — ключ вводить не нужно',
-      key_hint_prefix:'Вставьте API ключ ', fracs_active:'Fracs AI активен — ключ вводить не нужно, моделями управляет Fracs.',
+      key_hint_prefix:'Вставьте API ключ ', fracs_active:'Fracs AI активен — ключ вводить не нужно.',
       fracs_down:'Fracs AI временно недоступен. Попробуйте позже.',
       style_auto:'Авто — по рубрике бизнеса'
     }
@@ -259,6 +259,7 @@
     return ($('aiKey')&&$('aiKey').value.trim())||'';
   }
   function currentModel(){
+    if(currentProvider==='Fracs AI')return 'fracs-ai';
     var man=$('aiModelManual');
     var model=(man&&man.checked&&$('aiModelManualInput')&&$('aiModelManualInput').value.trim())||($('aiModel')&&$('aiModel').value)||'';
     var info=providerInfo(currentProvider)||{};
@@ -322,10 +323,8 @@
     var sel=$('aiModel');if(!sel)return;
     var info=providerInfo(currentProvider)||{};
     if(info.pro_only){
-      var fm=(info.models&&info.models.length)?info.models:[];
-      sel.innerHTML=fm.map(function(m){return '<option value="'+esc(m)+'">'+esc(m)+'</option>';}).join('');
-      var sf=ls('fracsAiModel:'+currentProvider);
-      if(sf&&fm.indexOf(sf)>=0)sel.value=sf;
+      sel.innerHTML='<option value="fracs-ai">Fracs AI</option>';
+      sel.value='fracs-ai';
       return;
     }
     sel.innerHTML='<option>Загрузка моделей…</option>';

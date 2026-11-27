@@ -1762,41 +1762,45 @@
     var raw=$('tgPhrase').value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
     var phrase=raw[0]||'';
     if(phrase.length<3){$('tgMsg').textContent='Сначала введите исходную фразу в поле «Фразы» слева.';return;}
-    var cfg=window.aiGetConfig?window.aiGetConfig():null;
-    if(!cfg){$('tgMsg').textContent='Нет связи с настройками AI-Агента.';return;}
-    if(cfg.need_key&&!cfg.key){$('tgMsg').textContent='Вставьте API-ключ на вкладке AI-Агент — генератор фраз работает через вашу нейросеть.';return;}
-    if(!cfg.allowed){$('tgMsg').textContent='Fracs AI доступен только на тарифе Ultra. Оформите Ultra или используйте AI-агент со своим провайдером (PRO).';return;}
     var btn=this,orig=btn.textContent; btn.disabled=true;btn.textContent='Генерируем…';
-    $('tgMsg').textContent='FracsAI ('+cfg.provider+(cfg.model?(' · '+cfg.model):'')+') придумывает фразы…';
-    fetch('/api/ai/phrases',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({phrase:phrase,provider:cfg.provider,api_key:cfg.key,model:cfg.model,base_url:cfg.base_url})})
-      .then(function(r){return r.json()})
-      .then(function(d){
-        if(d&&d.ok){
-          genPhrases=d.phrases||[];
-          $('tgMsg').textContent='FracsAI предложил '+genPhrases.length+' фраз. Отмечайте нужные («+») или добавьте все — фразы встанут в поле слева, потом «Запустить».';
-          renderGenPhrases();
-          if(typeof window.refreshAiUsage==='function')window.refreshAiUsage();
-        }else{
-          if(d&&d.pro_required){$('tgMsg').textContent='Fracs AI доступен только на тарифе Ultra.';}
-          else if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет|фраз/i.test(d.error||''))){
-            var timerNote='';
-            if(d.reset_at){
-              var s=Math.max(0,Math.ceil((d.reset_at-Date.now())/1000));
-              var hh=Math.floor(s/3600),mm=Math.floor((s%3600)/60);
-              timerNote=' (обновление через '+hh+'ч '+mm+'м)';
-            }
-            $('tgMsg').innerHTML=esc(d.error||'Лимит исчерпан.')+esc(timerNote)+' <button type="button" class="dl-fmt" id="tgBuyLimitBtn" style="margin-left:8px;color:#ff9c58;border-color:rgba(242,101,34,.45)">Докупить лимиты</button>';
-            var bBtn=$('tgBuyLimitBtn');
-            if(bBtn&&typeof window.openAiBuyModal==='function')bBtn.onclick=function(){window.openAiBuyModal();};
-            if(typeof window.handleAiQuotaError==='function')window.handleAiQuotaError(d.error,d.reset_at||0,d.error_code||'');
+    var ready=(window.aiEnsureReady?window.aiEnsureReady(false):Promise.resolve());
+    ready.then(function(){
+      var cfg=window.aiGetConfig?window.aiGetConfig():null;
+      if(!cfg){$('tgMsg').textContent='Нет связи с настройками AI-Агента.';btn.disabled=false;btn.textContent=orig;return;}
+      if(cfg.need_key&&!cfg.key){$('tgMsg').textContent='Вставьте API-ключ на вкладке AI-Агент — генератор фраз работает через вашу нейросеть.';btn.disabled=false;btn.textContent=orig;return;}
+      if(!cfg.allowed){$('tgMsg').textContent='Fracs AI доступен только на тарифе Ultra. Оформите Ultra или используйте AI-агент со своим провайдером (PRO).';btn.disabled=false;btn.textContent=orig;return;}
+      var provLabel=(cfg.provider==='Fracs AI')?'Fracs AI':('FracsAI ('+cfg.provider+(cfg.model?(' · '+cfg.model):'')+')');
+      $('tgMsg').textContent=provLabel+' придумывает фразы…';
+      fetch('/api/ai/phrases',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({phrase:phrase,provider:cfg.provider,api_key:cfg.key,model:cfg.model,base_url:cfg.base_url})})
+        .then(function(r){return r.json()})
+        .then(function(d){
+          if(d&&d.ok){
+            genPhrases=d.phrases||[];
+            $('tgMsg').textContent='FracsAI предложил '+genPhrases.length+' фраз. Отмечайте нужные («+») или добавьте все — фразы встанут в поле слева, потом «Запустить».';
+            renderGenPhrases();
+            if(typeof window.refreshAiUsage==='function')window.refreshAiUsage();
           }else{
-            $('tgMsg').textContent=(d&&d.error)||'Не удалось сгенерировать фразы.';
+            if(d&&d.pro_required){$('tgMsg').textContent='Fracs AI доступен только на тарифе Ultra.';}
+            else if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет|фраз/i.test(d.error||''))){
+              var timerNote='';
+              if(d.reset_at){
+                var s=Math.max(0,Math.ceil((d.reset_at-Date.now())/1000));
+                var hh=Math.floor(s/3600),mm=Math.floor((s%3600)/60);
+                timerNote=' (обновление через '+hh+'ч '+mm+'м)';
+              }
+              $('tgMsg').innerHTML=esc(d.error||'Лимит исчерпан.')+esc(timerNote)+' <button type="button" class="dl-fmt" id="tgBuyLimitBtn" style="margin-left:8px;color:#ff9c58;border-color:rgba(242,101,34,.45)">Докупить лимиты</button>';
+              var bBtn=$('tgBuyLimitBtn');
+              if(bBtn&&typeof window.openAiBuyModal==='function')bBtn.onclick=function(){window.openAiBuyModal();};
+              if(typeof window.handleAiQuotaError==='function')window.handleAiQuotaError(d.error,d.reset_at||0,d.error_code||'');
+            }else{
+              $('tgMsg').textContent=(d&&d.error)||'Не удалось сгенерировать фразы.';
+            }
           }
-        }
-      })
-      .catch(function(){$('tgMsg').textContent='Нет связи с программой.';})
-      .then(function(){btn.disabled=false;btn.textContent=orig;});
+        })
+        .catch(function(){$('tgMsg').textContent='Нет связи с программой.';})
+        .then(function(){btn.disabled=false;btn.textContent=orig;});
+    });
   });
   $('tgCsv').addEventListener('click',function(){
     var cell=function(v){var s=v==null?'':String(v);if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
@@ -1994,7 +1998,7 @@
   }
 
   /* ── провайдеры, модели, квота, таймер и докупка лимитов ── */
-  var providers=[],currentProvider='',lastUsage=null,quotaResetAt=0,quotaTimerId=null;
+  var providers=[],providersPromise=null,providersInFlight=null,currentProvider='',lastUsage=null,quotaResetAt=0,quotaTimerId=null;
   var selectedPackId='',selectedPayMethod='cryptobot',buyPollId=null;
 
   function fmtCountdown(ms){
@@ -2069,7 +2073,7 @@
         var on=p.id===selectedPackId;
         var price=p.priceRub?p.priceRub.toLocaleString('ru-RU')+' ₽':'—';
         return '<button type="button" class="buy-pack'+(on?' on':'')+'" data-pack="'+esc(p.id)+'">'+
-          '<div><div class="buy-pack-t">'+esc(p.title)+'</div><div class="buy-pack-d">'+esc(p.description||'')+'</div></div>'+
+          '<div><div class="buy-pack-t">'+esc(p.title)+'</div><div class="buy-pack-d">'+esc(p.description||p.badge||'')+'</div></div>'+
           '<div class="buy-pack-p">'+esc(price)+'</div></button>';
       }).join('');
       [].forEach.call(packsEl.querySelectorAll('[data-pack]'),function(btn){
@@ -2179,9 +2183,13 @@
   function updateAgentMeta(){
     var lbl=$('aiAgentLabel'),buyBtn=$('aiBuyBtn');
     if(lbl){
-      var m=currentModel();
-      var shortModel=m?(m.split('/').pop()):'';
-      lbl.textContent=(currentProvider||'AI-агент')+(shortModel?(' · '+shortModel):'');
+      if(currentProvider==='Fracs AI'){
+        lbl.textContent='Fracs AI';
+      }else{
+        var m=currentModel();
+        var shortModel=m?(m.split('/').pop()):'';
+        lbl.textContent=(currentProvider||'AI-агент')+(shortModel?(' · '+shortModel):'');
+      }
     }
     if(buyBtn)buyBtn.style.display=(currentProvider==='Fracs AI')?'':'none';
     refreshAiUsage();
@@ -2223,22 +2231,47 @@
 
   function loadProviders(){
     var saved=ls('fracsAiProvider');
-    fetch('/api/ai/providers').then(function(r){return r.json()}).then(function(d){
+    providersInFlight=fetch('/api/ai/providers').then(function(r){return r.json()}).then(function(d){
       providers=(d&&d.providers)||[];
       var usable=providers.filter(function(p){return p.allowed!==false;});
       currentProvider=usable.some(function(p){return p.id===saved;})?saved:(usable[0]?usable[0].id:'Z.ai');
       updateAgentMeta();
+      return providers;
     }).catch(function(){
       currentProvider=saved||'Z.ai';
       updateAgentMeta();
+      return providers;
+    }).then(function(res){
+      providersInFlight=null;
+      return res;
+    });
+    providersPromise=providersInFlight;
+    return providersInFlight;
+  }
+  function ensureProviders(force){
+    if(!force && providers.length) return Promise.resolve(providers);
+    if(!force && providersInFlight) return providersInFlight;
+    return loadProviders();
+  }
+  function resolveReadyProvider(force){
+    return ensureProviders(force).then(function(){
+      var info=providerInfo(currentProvider)||{};
+      if(!force && (!info.id || (info.pro_only && (!info.allowed || info.configured===false)))){
+        return ensureProviders(true).then(function(){
+          return providerInfo(currentProvider)||{};
+        });
+      }
+      return info;
     });
   }
+  window.aiEnsureReady=resolveReadyProvider;
   function providerInfo(id){for(var i=0;i<providers.length;i++){if(providers[i].id===id)return providers[i];}return null;}
   function activeKey(){
     if(currentProvider==='Fracs AI')return '';
     return ls('fracsAiKey:'+currentProvider);
   }
   function currentModel(){
+    if(currentProvider==='Fracs AI')return 'fracs-ai';
     var info=providerInfo(currentProvider)||{};
     var m=ls('fracsAiModel:'+currentProvider);
     if(!m&&info.models&&info.models.length)m=info.models[0];
@@ -2370,100 +2403,104 @@
   }
 
   function startAgent(prompt,silent){
-    var key=activeKey();
-    var info=providerInfo(currentProvider)||{};
-    if(info.pro_only&&!info.allowed){
-      addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
-      return;
-    }
-    var needKey=!info.pro_only&&info.needs_key!==false;
-    if(needKey&&!key){addMsg('sys','Введите API-ключ в настройках агента («Настроить →») и сохраните его.');return;}
-    if(info.pro_only&&info.configured===false){addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
-    var model=currentModel();
-    var extra=ls('fracsAiExtra');
-    var style=ls('fracsAiStyle');
-    var body={prompt:prompt||'',api_key:key,model:model,provider:currentProvider,extra:extra,
-      session_id:sessionId,prev_job:currentJob||'',style:style,
-      key21st:ls('fracsAiKey21st'),
-      base_url:ls('fracsAiBaseUrl'),
-      temperature:parseFloat(ls('fracsAiTemp'))||0.7,
-      max_tokens:parseInt(ls('fracsAiMaxTok'))||12000};
     if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
     setAiStage('thinking','Думаю над задачей…');
-    fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-      .then(function(r){return r.json()}).then(function(d){
-        if(!d.ok){
-          setAiStage(null);
-          addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе Ultra.':(d.error||'Не удалось запустить агент.')));
-          handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
-          if(d.pro_required){loadProviders();}
-          return;}
-        currentJob=d.job_id;approvingJob='';
-        seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
-        setAiStage('thinking','Запускаю сборку…');
-        var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
-        var ap=$('aiApprove');if(ap){ap.style.display='none';ap.disabled=false;}
-        var op=$('aiOpenPreview');if(op)op.style.display='none';
-        var eb=$('aiEditLayout');if(eb)eb.style.display='none';
-        var ex=$('aiExport');if(ex)ex.style.display='none';
-        syncComposerExtras();
-        if(poller)clearInterval(poller);poller=setInterval(poll,1100);poll();
-      }).catch(function(e){setAiStage(null);addMsg('sys','Нет связи с бэкендом: '+e);});
+    resolveReadyProvider(false).then(function(info){
+      var key=activeKey();
+      if(info.pro_only&&!info.allowed){
+        setAiStage(null);
+        addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
+        return;
+      }
+      var needKey=!info.pro_only&&info.needs_key!==false;
+      if(needKey&&!key){setAiStage(null);addMsg('sys','Введите API-ключ в настройках агента («Настроить →») и сохраните его.');return;}
+      if(info.pro_only&&info.configured===false){setAiStage(null);addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
+      var model=currentModel();
+      var extra=ls('fracsAiExtra');
+      var style=ls('fracsAiStyle');
+      var body={prompt:prompt||'',api_key:key,model:model,provider:currentProvider,extra:extra,
+        session_id:sessionId,prev_job:currentJob||'',style:style,
+        key21st:ls('fracsAiKey21st'),
+        base_url:ls('fracsAiBaseUrl'),
+        temperature:parseFloat(ls('fracsAiTemp'))||0.7,
+        max_tokens:parseInt(ls('fracsAiMaxTok'))||12000};
+      fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(function(r){return r.json()}).then(function(d){
+          if(!d.ok){
+            setAiStage(null);
+            addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе Ultra.':(d.error||'Не удалось запустить агент.')));
+            handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
+            if(d.pro_required){loadProviders();}
+            return;}
+          currentJob=d.job_id;approvingJob='';
+          seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
+          setAiStage('thinking','Запускаю сборку…');
+          var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
+          var ap=$('aiApprove');if(ap){ap.style.display='none';ap.disabled=false;}
+          var op=$('aiOpenPreview');if(op)op.style.display='none';
+          var eb=$('aiEditLayout');if(eb)eb.style.display='none';
+          var ex=$('aiExport');if(ex)ex.style.display='none';
+          syncComposerExtras();
+          if(poller)clearInterval(poller);poller=setInterval(poll,1100);poll();
+        }).catch(function(e){setAiStage(null);addMsg('sys','Нет связи с бэкендом: '+e);});
+    });
   }
 
   /* Отправка из чата: модель отвечает, а при маркере [BUILD] запускает сборку с контекстом диалога. */
   function aiChatSend(v){
-    var info=providerInfo(currentProvider)||{};
-    if(info.pro_only&&!info.allowed){
-      addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
-      return;
-    }
-    var key=activeKey();
-    if(info.pro_only&&info.configured===false){addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
-    var model=currentModel();
     setAiStage('thinking','Думаю над ответом…');
-    fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:v,api_key:key,model:model,provider:currentProvider,
-        base_url:ls('fracsAiBaseUrl'),history:chatHistory.slice(-8)})})
-      .then(function(r){return r.json()})
-      .then(function(d){
-        refreshAiUsage();
-        if(d&&d.ok){
-          var reply=d.reply||'…';
-          addMsg('bot',reply,{who:(currentProvider||'Fracs AI'),trace:d.build?'Думаю → Собираю':'Думаю'});
-          var fullBrief=buildPromptFromThread(v);
-          chatHistory.push({role:'user',content:v});
-          chatHistory.push({role:'assistant',content:reply});
-          if(d.build){
-            startAgent(fullBrief,true);
-          }else{
-            setAiStage(null);
+    resolveReadyProvider(false).then(function(info){
+      if(info.pro_only&&!info.allowed){
+        setAiStage(null);
+        addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
+        return;
+      }
+      var key=activeKey();
+      if(info.pro_only&&info.configured===false){setAiStage(null);addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
+      var model=currentModel();
+      fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({message:v,api_key:key,model:model,provider:currentProvider,
+          base_url:ls('fracsAiBaseUrl'),history:chatHistory.slice(-8)})})
+        .then(function(r){return r.json()})
+        .then(function(d){
+          refreshAiUsage();
+          if(d&&d.ok){
+            var reply=d.reply||'…';
+            addMsg('bot',reply,{who:(currentProvider||'Fracs AI'),trace:d.build?'Думаю → Собираю':'Думаю'});
+            var fullBrief=buildPromptFromThread(v);
+            chatHistory.push({role:'user',content:v});
+            chatHistory.push({role:'assistant',content:reply});
+            if(d.build){
+              startAgent(fullBrief,true);
+            }else{
+              setAiStage(null);
+            }
+            return;
           }
-          return;
-        }
-        setAiStage(null);
-        if(d&&d.error==='no_api_key'){addMsg('sys','API-ключ не задан — откройте «Настроить →», вставьте ключ и сохраните.');return;}
-        /* если модель отклонила запрос из-за квоты — честно показываем ошибку и включаем таймер/докупку */
-        if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет/i.test(d.error||''))){
-          addMsg('sys',d.error||'Лимит исчерпан.');
-          handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
-          return;
-        }
-        /* модель недоступна → фолбэк: по ключевым словам решаем, строить или ответить */
-        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
-          startAgent(buildPromptFromThread(v),true);
-          return;
-        }
-        addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни в Москве» — и я соберу демо.',{who:(currentProvider||'Fracs AI')});
-      })
-      .catch(function(e){
-        setAiStage(null);
-        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
-          startAgent(buildPromptFromThread(v),true);
-          return;
-        }
-        addMsg('sys','Нет связи с бэкендом: '+e);
-      });
+          setAiStage(null);
+          if(d&&d.error==='no_api_key'){addMsg('sys','API-ключ не задан — откройте «Настроить →», вставьте ключ и сохраните.');return;}
+          /* если модель отклонила запрос из-за квоты — честно показываем ошибку и включаем таймер/докупку */
+          if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет/i.test(d.error||''))){
+            addMsg('sys',d.error||'Лимит исчерпан.');
+            handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
+            return;
+          }
+          /* модель недоступна → фолбэк: по ключевым словам решаем, строить или ответить */
+          if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
+            startAgent(buildPromptFromThread(v),true);
+            return;
+          }
+          addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни в Москве» — и я соберу демо.',{who:(currentProvider||'Fracs AI')});
+        })
+        .catch(function(e){
+          setAiStage(null);
+          if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
+            startAgent(buildPromptFromThread(v),true);
+            return;
+          }
+          addMsg('sys','Нет связи с бэкендом: '+e);
+        });
+    });
   }
 
   function autoResizePrompt(){
@@ -2541,13 +2578,15 @@
       if(ow.name)lines.push('Владелец/директор: '+[ow.name,ow.phone,ow.email].filter(Boolean).join(', '));
       lines.push('Собери сайт по этим данным, веди его живым конкретным языком. Чего в данных нет (цены, сроки, часы работы, отзывы) — не выдумывай и не оставляй скобочных заглушек: просто не делай такой блок или предложи позвонить.');
       var prompt=lines.join('\n');
-      var cfg=window.aiGetConfig();
-      if(cfg.need_key&&!cfg.key){
-        var ta=$('aiPrompt'); if(ta){ta.value=prompt;autoResizePrompt();}
-        addMsg('sys','Карточка «'+(rec.name||'')+'» прочитана. Откройте «Настроить →», вставьте API-ключ и вернитесь — отправьте сообщение, и макет соберётся по данным карточки.');
-        return;
-      }
-      startAgent(prompt);
+      ensureProviders(false).then(function(){
+        var cfg=window.aiGetConfig();
+        if(cfg.need_key&&!cfg.key){
+          var ta=$('aiPrompt'); if(ta){ta.value=prompt;autoResizePrompt();}
+          addMsg('sys','Карточка «'+(rec.name||'')+'» прочитана. Откройте «Настроить →», вставьте API-ключ и вернитесь — отправьте сообщение, и макет соберётся по данным карточки.');
+          return;
+        }
+        startAgent(prompt);
+      });
     }catch(e){addMsg('sys','Не удалось передать карточку агенту: '+e);}
   };
 
@@ -2562,6 +2601,7 @@
 </script>
 <script>
 (function(){
+  var esc=window.esc||function(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
   var box=document.getElementById('lic'),err=document.getElementById('lic-err'),txt=document.getElementById('lic-text');
   var MSG={no_key:'',invalid:'Ключ не подошёл. Скопируйте его из кабинета на сайте.',expired:'Подписка закончилась. Оформите продление на сайте Fracs.',
     offline:'Нет связи с сервером Fracs. Проверьте подключение.',not_configured:'Сайт Fracs не настроен (обратитесь к разработчику).'};
@@ -2573,10 +2613,10 @@
       var isCurrent=current&&current.plan===p.id;
       var price=p.priceRub?p.priceRub.toLocaleString('ru-RU')+' ₽':'—';
       var days=p.days?(' / '+p.days+' дн.'):'';
-      return '<div class="plan'+(isCurrent?' active-plan':'')+'" data-plan="'+p.id+'">'+
-        '<div><div class="pn">'+p.title+(p.badge?(' · '+p.badge):'')+'</div>'+
-        '<div class="pd">'+(p.description||'')+'</div></div>'+
-        '<div class="pp">'+price+'<small>'+days+'</small></div></div>';
+      return '<div class="plan'+(isCurrent?' active-plan':'')+'" data-plan="'+esc(p.id)+'">'+
+        '<div><div class="pn">'+esc(p.title)+(p.badge?(' · '+esc(p.badge)):'')+'</div>'+
+        '<div class="pd">'+esc(p.description||'')+'</div></div>'+
+        '<div class="pp">'+esc(price)+'<small>'+esc(days)+'</small></div></div>';
     }).join('');
     [].forEach.call(grid.querySelectorAll('.plan'),function(el){
       el.addEventListener('click',function(){

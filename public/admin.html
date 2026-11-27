@@ -105,6 +105,16 @@
         <p style="font-size:12px;color:var(--muted);margin:8px 0 0">ID — в карточке пользователя ниже или через @userinfobot. Почта — та, с которой пользователь входил кодом. У email-аккаунтов уведомление в Telegram не отправляется.</p>
       </div>
       <div class="card">
+        <h3>Выдать лимиты Fracs AI (по реквизитам)</h3>
+        <div class="row">
+          <input id="tk-who" type="text" placeholder="Telegram ID (число) или эл. почта">
+          <select id="tk-pack"></select>
+          <input id="tk-amount" type="number" inputmode="numeric" value="100000" min="1" max="50000000" placeholder="Токенов">
+          <button class="btn primary" id="tk-go">Выдать лимиты</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Выберите пакет или введите точное количество токенов. Дневные лимиты (сложность и фразы) также сбросятся. При оплате через CryptoBot или xRocket токены начисляются автоматически.</p>
+      </div>
+      <div class="card">
         <h3>Пользователи</h3>
         <input id="u-search" placeholder="Поиск по имени, @username, ID или эл. почте…" style="margin-bottom:10px">
         <div id="u-list"></div>

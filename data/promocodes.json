@@ -1,0 +1,13 @@
+[
+  {
+    "id": "97bdd2a9-dfe0-4a8a-8a37-f8557c332626",
+    "code": "SAVE25",
+    "discountPercent": 25,
+    "maxUses": 10,
+    "usedCount": 0,
+    "validUntil": null,
+    "active": true,
+    "note": "",
+    "createdAt": "2026-11-27T19:53:03.277Z"
+  }
+]
