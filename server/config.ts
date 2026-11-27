@@ -7,44 +7,46 @@ const port = Number(env.PORT || 3000);
 const rawVercelHost = env.VERCEL_PROJECT_PRODUCTION_URL || env.VERCEL_URL || '';
 const vercelUrl = rawVercelHost ? `https://${rawVercelHost.replace(/^https?:\/\//, '')}` : '';
 
+const cleanToken = (v?: string) => (v || '').trim().replace(/^["']|["']$/g, '');
+
 export const config = {
   isProd,
   port,
-  appUrl: (env.APP_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ''),
+  appUrl: (cleanToken(env.APP_URL) || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ''),
   sessionSecret: env.SESSION_SECRET || (isProd ? crypto.randomBytes(32).toString('hex') : 'dev-secret-change-me'),
 
-  supabaseUrl: (env.SUPABASE_URL || '').replace(/\/$/, ''),
-  supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '',
-  cronSecret: env.CRON_SECRET || '',
+  supabaseUrl: cleanToken(env.SUPABASE_URL).replace(/\/$/, ''),
+  supabaseKey: cleanToken(env.SUPABASE_SERVICE_ROLE_KEY),
+  cronSecret: cleanToken(env.CRON_SECRET),
   searchRetentionDays: Number(env.SEARCH_RETENTION_DAYS || 30),
 
   // Почта для OTP-кодов (Resend API, опционально)
-  resendApiKey: env.RESEND_API_KEY || '',
+  resendApiKey: cleanToken(env.RESEND_API_KEY),
   resendFrom: env.RESEND_FROM || 'Fracs <onboarding@resend.dev>',
 
   // Ключ OpenRouter для прокси Fracs AI (/api/app/ai): хранится ТОЛЬКО на сервере,
   // в сборку программы не попадает. Пользовательский запрос идёт с ключом лицензии.
-  openrouterApiKey: env.OPENROUTER_API_KEY || '',
+  openrouterApiKey: cleanToken(env.OPENROUTER_API_KEY),
   openrouterUrl: 'https://openrouter.ai/api/v1',
 
-  botToken: env.TELEGRAM_BOT_TOKEN || '',
-  botUsername: (env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, ''),
+  botToken: cleanToken(env.TELEGRAM_BOT_TOKEN),
+  botUsername: cleanToken(env.TELEGRAM_BOT_USERNAME).replace(/^@/, ''),
   // На Vercel работает только webhook. polling — для локальной разработки.
   botMode: (env.TELEGRAM_BOT_MODE === 'webhook' ? 'webhook' : 'polling') as 'polling' | 'webhook',
-  webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || '',
+  webhookSecret: cleanToken(env.TELEGRAM_WEBHOOK_SECRET),
 
   mapsProvider: (env.MAPS_PROVIDER || 'mock') as 'mock' | '2gis',
-  gisKey: env.GIS_API_KEY || '',
-  mapsWorkerUrl: (env.MAPS_WORKER_URL || '').replace(/\/$/, ''),
-  mapsWorkerToken: env.MAPS_WORKER_TOKEN || '',
+  gisKey: cleanToken(env.GIS_API_KEY),
+  mapsWorkerUrl: cleanToken(env.MAPS_WORKER_URL).replace(/\/$/, ''),
+  mapsWorkerToken: cleanToken(env.MAPS_WORKER_TOKEN),
   tgProvider: (env.TG_PROVIDER || 'mock') as 'mock' | 'http',
-  tgParserUrl: (env.TG_PARSER_URL || '').replace(/\/$/, ''),
-  tgParserKey: env.TG_PARSER_KEY || '',
+  tgParserUrl: cleanToken(env.TG_PARSER_URL).replace(/\/$/, ''),
+  tgParserKey: cleanToken(env.TG_PARSER_KEY),
 
   paymentProvider: (env.PAYMENT_PROVIDER === 'xrocket' ? 'xrocket' : 'cryptobot') as 'cryptobot' | 'xrocket',
-  cryptobotToken: env.CRYPTOBOT_API_TOKEN || '',
-  xrocketKey: env.XROCKET_API_KEY || '',
-  xrocketWebhookToken: env.XROCKET_WEBHOOK_TOKEN || '',
+  cryptobotToken: cleanToken(env.CRYPTOBOT_API_TOKEN),
+  xrocketKey: cleanToken(env.XROCKET_API_KEY),
+  xrocketWebhookToken: cleanToken(env.XROCKET_WEBHOOK_TOKEN),
   usdtRubRate: Number(env.USDT_RUB_RATE || 95),
   supportUsername: (env.SUPPORT_TG_USERNAME || 'HelpManage').replace(/^@/, ''),
 

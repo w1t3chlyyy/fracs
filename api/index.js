@@ -13,38 +13,39 @@ var isProd = env.NODE_ENV === "production";
 var port = Number(env.PORT || 3e3);
 var rawVercelHost = env.VERCEL_PROJECT_PRODUCTION_URL || env.VERCEL_URL || "";
 var vercelUrl = rawVercelHost ? `https://${rawVercelHost.replace(/^https?:\/\//, "")}` : "";
+var cleanToken = (v) => (v || "").trim().replace(/^["']|["']$/g, "");
 var config = {
   isProd,
   port,
-  appUrl: (env.APP_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ""),
+  appUrl: (cleanToken(env.APP_URL) || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ""),
   sessionSecret: env.SESSION_SECRET || (isProd ? crypto.randomBytes(32).toString("hex") : "dev-secret-change-me"),
-  supabaseUrl: (env.SUPABASE_URL || "").replace(/\/$/, ""),
-  supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
-  cronSecret: env.CRON_SECRET || "",
+  supabaseUrl: cleanToken(env.SUPABASE_URL).replace(/\/$/, ""),
+  supabaseKey: cleanToken(env.SUPABASE_SERVICE_ROLE_KEY),
+  cronSecret: cleanToken(env.CRON_SECRET),
   searchRetentionDays: Number(env.SEARCH_RETENTION_DAYS || 30),
   // Почта для OTP-кодов (Resend API, опционально)
-  resendApiKey: env.RESEND_API_KEY || "",
+  resendApiKey: cleanToken(env.RESEND_API_KEY),
   resendFrom: env.RESEND_FROM || "Fracs <onboarding@resend.dev>",
   // Ключ OpenRouter для прокси Fracs AI (/api/app/ai): хранится ТОЛЬКО на сервере,
   // в сборку программы не попадает. Пользовательский запрос идёт с ключом лицензии.
-  openrouterApiKey: env.OPENROUTER_API_KEY || "",
+  openrouterApiKey: cleanToken(env.OPENROUTER_API_KEY),
   openrouterUrl: "https://openrouter.ai/api/v1",
-  botToken: env.TELEGRAM_BOT_TOKEN || "",
-  botUsername: (env.TELEGRAM_BOT_USERNAME || "").replace(/^@/, ""),
+  botToken: cleanToken(env.TELEGRAM_BOT_TOKEN),
+  botUsername: cleanToken(env.TELEGRAM_BOT_USERNAME).replace(/^@/, ""),
   // На Vercel работает только webhook. polling — для локальной разработки.
   botMode: env.TELEGRAM_BOT_MODE === "webhook" ? "webhook" : "polling",
-  webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || "",
+  webhookSecret: cleanToken(env.TELEGRAM_WEBHOOK_SECRET),
   mapsProvider: env.MAPS_PROVIDER || "mock",
-  gisKey: env.GIS_API_KEY || "",
-  mapsWorkerUrl: (env.MAPS_WORKER_URL || "").replace(/\/$/, ""),
-  mapsWorkerToken: env.MAPS_WORKER_TOKEN || "",
+  gisKey: cleanToken(env.GIS_API_KEY),
+  mapsWorkerUrl: cleanToken(env.MAPS_WORKER_URL).replace(/\/$/, ""),
+  mapsWorkerToken: cleanToken(env.MAPS_WORKER_TOKEN),
   tgProvider: env.TG_PROVIDER || "mock",
-  tgParserUrl: (env.TG_PARSER_URL || "").replace(/\/$/, ""),
-  tgParserKey: env.TG_PARSER_KEY || "",
+  tgParserUrl: cleanToken(env.TG_PARSER_URL).replace(/\/$/, ""),
+  tgParserKey: cleanToken(env.TG_PARSER_KEY),
   paymentProvider: env.PAYMENT_PROVIDER === "xrocket" ? "xrocket" : "cryptobot",
-  cryptobotToken: env.CRYPTOBOT_API_TOKEN || "",
-  xrocketKey: env.XROCKET_API_KEY || "",
-  xrocketWebhookToken: env.XROCKET_WEBHOOK_TOKEN || "",
+  cryptobotToken: cleanToken(env.CRYPTOBOT_API_TOKEN),
+  xrocketKey: cleanToken(env.XROCKET_API_KEY),
+  xrocketWebhookToken: cleanToken(env.XROCKET_WEBHOOK_TOKEN),
   usdtRubRate: Number(env.USDT_RUB_RATE || 95),
   supportUsername: (env.SUPPORT_TG_USERNAME || "HelpManage").replace(/^@/, ""),
   dailySearchLimit: Number(env.DAILY_SEARCH_LIMIT || 40),
@@ -2528,7 +2529,13 @@ async function createPayment(user, planId, method) {
     });
     const json2 = await resp2.json().catch(() => ({}));
     if (!resp2.ok || !json2?.ok || !json2?.result) {
-      throw new Error(`CryptoBot: ${json2?.error?.name || resp2.status}`);
+      const msg = String(json2?.error?.name || resp2.status);
+      throw Object.assign(
+        new Error(
+          resp2.status === 401 || /UNAUTHORIZED/i.test(msg) ? "CryptoBot \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u0442\u043E\u043A\u0435\u043D (\u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 CRYPTOBOT_API_TOKEN \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435)." : `\u041E\u0448\u0438\u0431\u043A\u0430 CryptoBot: ${msg}`
+        ),
+        { status: 502 }
+      );
     }
     await setPaymentProviderId(rec.id, String(json2.result.invoice_id));
     const confirmationUrl = json2.result.bot_invoice_url || json2.result.web_app_invoice_url || json2.result.mini_app_invoice_url;
@@ -2558,8 +2565,13 @@ async function createPayment(user, planId, method) {
   });
   const json = await resp.json().catch(() => ({}));
   if (!resp.ok || !json?.success || !json?.data?.link) {
-    const errMsg = Array.isArray(json?.message) ? json.message.join("; ") : json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status);
-    throw new Error(`xRocket: ${errMsg}`);
+    const errMsg = Array.isArray(json?.message) ? json.message.join("; ") : String(json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+    throw Object.assign(
+      new Error(
+        resp.status === 401 || resp.status === 403 || /Unknown API Key|Unauthorized/i.test(errMsg) ? "xRocket \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B API-\u043A\u043B\u044E\u0447: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 XROCKET_API_KEY \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 (\u043D\u0443\u0436\u0435\u043D API Token \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0438\u0437 @xRocket, \u043D\u0435 Webhook Token)." : `\u041E\u0448\u0438\u0431\u043A\u0430 xRocket (${resp.status}): ${errMsg}`
+      ),
+      { status: 502 }
+    );
   }
   await setPaymentProviderId(rec.id, String(json.data.id));
   return { paymentId: rec.id, confirmationUrl: String(json.data.link) };

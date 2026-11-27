@@ -109,7 +109,15 @@ export async function createPayment(
     });
     const json: any = await resp.json().catch(() => ({}));
     if (!resp.ok || !json?.ok || !json?.result) {
-      throw new Error(`CryptoBot: ${json?.error?.name || resp.status}`);
+      const msg = String(json?.error?.name || resp.status);
+      throw Object.assign(
+        new Error(
+          resp.status === 401 || /UNAUTHORIZED/i.test(msg)
+            ? 'CryptoBot отклонил токен (проверьте CRYPTOBOT_API_TOKEN на сервере).'
+            : `Ошибка CryptoBot: ${msg}`,
+        ),
+        { status: 502 },
+      );
     }
     await setPaymentProviderId(rec.id, String(json.result.invoice_id));
     const confirmationUrl = json.result.bot_invoice_url || json.result.web_app_invoice_url || json.result.mini_app_invoice_url;
@@ -142,8 +150,15 @@ export async function createPayment(
   if (!resp.ok || !json?.success || !json?.data?.link) {
     const errMsg = Array.isArray(json?.message)
       ? json.message.join('; ')
-      : (json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
-    throw new Error(`xRocket: ${errMsg}`);
+      : String(json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+    throw Object.assign(
+      new Error(
+        resp.status === 401 || resp.status === 403 || /Unknown API Key|Unauthorized/i.test(errMsg)
+          ? 'xRocket отклонил API-ключ: проверьте XROCKET_API_KEY на сервере (нужен API Token приложения из @xRocket, не Webhook Token).'
+          : `Ошибка xRocket (${resp.status}): ${errMsg}`,
+      ),
+      { status: 502 },
+    );
   }
   await setPaymentProviderId(rec.id, String(json.data.id));
   return { paymentId: rec.id, confirmationUrl: String(json.data.link) };

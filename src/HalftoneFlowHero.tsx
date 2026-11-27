@@ -150,7 +150,8 @@ const CSS =
   ".hfh-av:first-child{margin-left:0}" +
   ".hfh-av:nth-child(2){background:#ff8a4c}.hfh-av:nth-child(3){background:var(--hfh-flow);color:var(--hfh-text)}" +
   "@keyframes hfh-blink{50%{opacity:0}}" +
-  "@media (max-width:560px){.hfh-inner{padding:24px 12px}.hfh-form{padding:6px 6px 6px 14px;gap:6px}.hfh-spark{width:16px;height:16px}.hfh-go span{display:none}.hfh-go{padding:0 15px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}.hfh-ph{white-space:normal;font-size:13px;line-height:1.25;-webkit-mask-image:none;mask-image:none;overflow:visible}.hfh-input{font-size:16px}}" +
+  "@media (max-width:680px){.hfh-ph{white-space:normal;font-size:13.5px;line-height:1.22;-webkit-mask-image:none;mask-image:none;overflow:visible}}" +
+  "@media (max-width:560px){.hfh-inner{padding:24px 12px}.hfh-form{padding:6px 6px 6px 14px;gap:6px}.hfh-spark{width:16px;height:16px}.hfh-go span{display:none}.hfh-go{padding:0 15px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}.hfh-ph{font-size:12.5px;line-height:1.22}.hfh-input{font-size:16px}}" +
   "@media (prefers-reduced-motion:reduce){.hfh-caret{animation:none}.hfh-card,.hfh-w,.hfh-fade,.hfh-go,.hfh-go svg{transition:none}}"
 
 function compile(gl: WebGLRenderingContext, type: number, src: string) {
