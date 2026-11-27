@@ -10,7 +10,7 @@ import { safeEqual } from './util.ts';
 export type PaymentMethod = 'cryptobot' | 'xrocket';
 
 const CRYPTOBOT_API = 'https://pay.crypt.bot/api';
-const XROCKET_API = 'https://pay.ton-rocket.com';
+const XROCKET_API = 'https://pay.xrocket.tg';
 
 async function activate(p: PaymentRecord) {
   const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
@@ -128,7 +128,6 @@ export async function createPayment(
     },
     body: JSON.stringify({
       amount: usdtAmount,
-      minPayment: usdtAmount,
       numPayments: 1,
       currency: 'USDT',
       description: `${title} (${amountRub} ₽)`,
@@ -139,7 +138,10 @@ export async function createPayment(
   });
   const json: any = await resp.json().catch(() => ({}));
   if (!resp.ok || !json?.success || !json?.data?.link) {
-    throw new Error(`xRocket: ${json?.message || resp.status}`);
+    const errMsg = Array.isArray(json?.message)
+      ? json.message.join('; ')
+      : (json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+    throw new Error(`xRocket: ${errMsg}`);
   }
   await setPaymentProviderId(rec.id, String(json.data.id));
   return { paymentId: rec.id, confirmationUrl: String(json.data.link) };
