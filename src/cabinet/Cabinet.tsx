@@ -163,21 +163,24 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                   <p className="text-[14px] text-[#888888]">
                     Код отправлен на <span className="text-[#ffffff]">{email}</span>
                   </p>
+                  <p className="mt-1 text-[12px] text-[#666666]">
+                    Письмо не пришло? Проверьте папку «Спам» и «Промоакции».
+                  </p>
                   <input
                     ref={codeRef}
                     type="text"
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    maxLength={6}
+                    maxLength={8}
                     value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && code.length === 6) verify(); }}
-                    placeholder="000000"
-                    className="mt-4 w-full h-14 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[20px] tracking-[0.45em] text-[#ffffff] placeholder:text-[#444444] transition-colors"
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && code.length >= 6) verify(); }}
+                    placeholder="00000000"
+                    className="mt-4 w-full h-14 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[20px] tracking-[0.35em] text-[#ffffff] placeholder:text-[#444444] transition-colors"
                   />
                   <button
                     onClick={verify}
-                    disabled={busy || code.length !== 6}
+                    disabled={busy || code.length < 6}
                     className="mt-4 flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[16px] font-semibold transition-colors cursor-pointer"
                   >
                     {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Подтвердить'}

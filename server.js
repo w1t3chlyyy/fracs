@@ -1791,7 +1791,7 @@ authRouter.post("/logout", (req, res) => {
   res.json({ ok: true });
 });
 var EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
-var CODE_RE = /^\d{6}$/;
+var CODE_RE = /^\d{6,8}$/;
 var normalizeEmail = (raw) => raw.trim().toLowerCase();
 var emailAuthReady = () => Boolean(config.supabaseUrl && config.supabaseKey);
 function supabaseAuthHeaders() {
@@ -1841,7 +1841,7 @@ authRouter.post("/email/verify", h(async (req, res) => {
   const email = normalizeEmail(String(req.body?.email || ""));
   const code = String(req.body?.code || "").replace(/\D/g, "");
   if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: "bad_email", message: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 \u044D\u043B. \u043F\u043E\u0447\u0442\u044B" });
-  if (!CODE_RE.test(code)) return void res.status(400).json({ error: "bad_code", message: "\u041A\u043E\u0434 \u2014 6 \u0446\u0438\u0444\u0440 \u0438\u0437 \u043F\u0438\u0441\u044C\u043C\u0430" });
+  if (!CODE_RE.test(code)) return void res.status(400).json({ error: "bad_code", message: "\u041A\u043E\u0434 \u2014 6\u20138 \u0446\u0438\u0444\u0440 \u0438\u0437 \u043F\u0438\u0441\u044C\u043C\u0430" });
   if (!await rateLimit(`auth-email-verify:${req.ip}:${email}`, 8, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u043F\u043E\u043F\u044B\u0442\u043E\u043A. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 10 \u043C\u0438\u043D\u0443\u0442." });
   let ok = false;
   try {

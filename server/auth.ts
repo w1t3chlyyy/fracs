@@ -161,7 +161,7 @@ authRouter.post('/logout', (req, res) => {
  */
 
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
-const CODE_RE = /^\d{6}$/;
+const CODE_RE = /^\d{6,8}$/; // Supabase шлёт 6- или 8-значный OTP в зависимости от настроек проекта
 const normalizeEmail = (raw: string) => raw.trim().toLowerCase();
 
 /** true, если Supabase настроен (без него email-вход недоступен). */
@@ -226,7 +226,7 @@ authRouter.post('/email/verify', h(async (req, res) => {
   const email = normalizeEmail(String(req.body?.email || ''));
   const code = String(req.body?.code || '').replace(/\D/g, '');
   if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: 'bad_email', message: 'Введите корректный адрес эл. почты' });
-  if (!CODE_RE.test(code)) return void res.status(400).json({ error: 'bad_code', message: 'Код — 6 цифр из письма' });
+  if (!CODE_RE.test(code)) return void res.status(400).json({ error: 'bad_code', message: 'Код — 6–8 цифр из письма' });
 
   // Перебор кода делаем дорогим: 8 попыток за 10 минут на пару «IP+email».
   if (!(await rateLimit(`auth-email-verify:${req.ip}:${email}`, 8, 10 * 60_000, true))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком много попыток. Подождите 10 минут.' });
