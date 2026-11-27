@@ -29,6 +29,12 @@ export const config = {
   openrouterApiKey: cleanToken(env.OPENROUTER_API_KEY),
   openrouterUrl: 'https://openrouter.ai/api/v1',
 
+  // Cohere (Command A) работает ВМЕСТЕ с OpenRouter внутри Fracs AI: пишет тексты/арт-дирекшн и
+  // вычитывает готовый сайт, а вёрстку собирает модель OpenRouter. Ключ — только на сервере.
+  // Нет ключа → тот же Command A уходит через OpenRouter (cohere/command-a), ничего не ломается.
+  cohereApiKey: cleanToken(env.COHERE_API_KEY),
+  cohereUrl: 'https://api.cohere.ai/compatibility/v1',
+
   botToken: cleanToken(env.TELEGRAM_BOT_TOKEN),
   botUsername: cleanToken(env.TELEGRAM_BOT_USERNAME).replace(/^@/, ''),
   // На Vercel работает только webhook. polling — для локальной разработки.

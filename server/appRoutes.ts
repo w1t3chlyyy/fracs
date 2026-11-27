@@ -227,7 +227,7 @@ const AI_LIMITS = {
   userDailyUsd: envNum('AI_USER_DAILY_USD', 5),         // потолок расходов на одного пользователя в сутки
   globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 80),    // аварийный предохранитель: общий бюджет в сутки
   maxTokens: envNum('AI_MAX_TOKENS', 12000),            // потолок ответа модели
-  maxInputChars: envNum('AI_MAX_INPUT_CHARS', 45000),
+  maxInputChars: envNum('AI_MAX_INPUT_CHARS', 60000),   // правка макета шлёт страницу целиком (до 34К знаков) + промт
   maxImages: 3,
 };
 // Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
@@ -235,7 +235,7 @@ const DESIGN_MARKER = 'DESIGN_SYSTEM_VERSION:';
 // Белый список моделей Fracs AI. Премиум-кодинг (для генерации сайтов) + бюджетные (для фраз/чата).
 // ID и цены сверены с openrouter.ai/api/v1/models (2026-11). Расширять через env AI_ALLOWED_MODELS.
 const AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS ||
-  'anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct')
+  'anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,command-a-03-2025')
   .split(',').map((s) => s.trim()).filter(Boolean));
 // $ за 1M токенов (вход, выход) — ПРИБЛИЗИТЕЛЬНО, нужно только для оценки «до запроса»
 // и если OpenRouter не вернул фактическую стоимость. Сверяйте с openrouter.ai/models.
@@ -247,7 +247,32 @@ const AI_PRICE: Record<string, [number, number]> = {
   'openai/gpt-4o-mini': [0.15, 0.6], 'anthropic/claude-3.5-haiku': [0.8, 4],
   'google/gemini-2.0-flash-001': [0.1, 0.4], 'meta-llama/llama-3.3-70b-instruct': [0.12, 0.3],
   'deepseek/deepseek-chat': [0.3, 0.9], 'qwen/qwen-2.5-72b-instruct': [0.12, 0.39],
+  // Cohere Command A: $2.5 / $10 за 1M токенов, контекст 256K, но не больше 8000 токенов ответа
+  'command-a-03-2025': [2.5, 10],
 };
+
+// ── Cohere работает ВМЕСТЕ с OpenRouter ──────────────────────────────────────
+// Command A пишет тексты/арт-дирекшн и вычитывает готовый сайт (задачи copy / critique),
+// вёрстку собирает модель OpenRouter. Прямой ключ Cohere — приоритет; нет ключа или Cohere
+// лёг → тот же Command A идёт через OpenRouter (cohere/command-a).
+const COHERE_MODEL = 'command-a-03-2025';
+const COHERE_VIA_OR = 'cohere/command-a';
+const COHERE_MAX_OUT = 8000;
+type Upstream = { url: string; key: string; body: any; via: 'cohere' | 'openrouter' };
+function resolveUpstream(body: any, forceOpenRouter = false): Upstream | null {
+  if (body.model === COHERE_MODEL) {
+    if (config.cohereApiKey && !forceOpenRouter) {
+      const direct = { ...body };
+      delete direct.usage; // usage:{include} — расширение OpenRouter, Cohere его не знает
+      return { url: config.cohereUrl + '/chat/completions', key: config.cohereApiKey, body: direct, via: 'cohere' };
+    }
+    if (!config.openrouterApiKey) return null;
+    return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: { ...body, model: COHERE_VIA_OR }, via: 'openrouter' };
+  }
+  if (!config.openrouterApiKey) return null;
+  return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body, via: 'openrouter' };
+}
+const FRACS_TASKS = new Set(['copy', 'critique', 'build']);
 const priceOf = (model: string): [number, number] => AI_PRICE[model] || [1, 4];
 const aiErr = (status: number, error: string, message: string, extra: object = {}): [number, any] => [status, { ok: false, error, message, ...extra }];
 
@@ -312,7 +337,7 @@ function assessAiComplexity(maxTokens: number, inChars: number, imageCount: numb
 }
 
 /** Чистим тело запроса: только модель из белого списка, без stream/tools/plugins, потолок токенов. */
-function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: number } | { err: [number, any] } {
+function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: number; task: string } | { err: [number, any] } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { err: aiErr(400, 'bad_request', 'Ожидается тело chat/completions.') };
   const model = String(raw.model || '');
   if (!AI_MODELS.has(model)) return { err: aiErr(400, 'model_not_allowed', 'Эта модель недоступна во встроенном Fracs AI. Выберите модель из списка или подключите свой API-ключ.') };
@@ -338,14 +363,17 @@ function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: num
       messages.push({ role, content: parts });
     } else return { err: aiErr(400, 'bad_request', 'Пустое сообщение.') };
   }
+  if (model === COHERE_MODEL && images > 0) return { err: aiErr(400, 'no_vision', 'Эта модель работает только с текстом.') };
   if (chars > AI_LIMITS.maxInputChars) return { err: aiErr(413, 'input_too_long', `Запрос слишком длинный (лимит ${AI_LIMITS.maxInputChars} символов). Сократите промт или вложения.`) };
   const reqTok = Number(raw.max_tokens);
-  const maxTokens = Math.min(AI_LIMITS.maxTokens, Number.isFinite(reqTok) && reqTok > 0 ? Math.floor(reqTok) : AI_LIMITS.maxTokens);
+  const capTokens = model === COHERE_MODEL ? Math.min(AI_LIMITS.maxTokens, COHERE_MAX_OUT) : AI_LIMITS.maxTokens;
+  const maxTokens = Math.min(capTokens, Number.isFinite(reqTok) && reqTok > 0 ? Math.floor(reqTok) : capTokens);
   const temp = Number(raw.temperature);
   return {
     inChars: chars,
     imageCount: images,
-    body: { model, messages, max_tokens: maxTokens, temperature: Number.isFinite(temp) ? Math.min(1.2, Math.max(0, temp)) : 0.7, stream: false, usage: { include: true } },
+    body: { model, messages, max_tokens: maxTokens, temperature: Number.isFinite(temp) ? Math.min(model === COHERE_MODEL ? 1 : 1.2, Math.max(0, temp)) : 0.7, stream: false, usage: { include: true } },
+    task: FRACS_TASKS.has(String(raw.fracs_task)) ? String(raw.fracs_task) : '',
   };
 }
 
@@ -355,16 +383,24 @@ appRouter.post('/ai', h(async (req, res) => {
   }
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
-  if (!config.openrouterApiKey) {
+  if (!config.openrouterApiKey && !config.cohereApiKey) {
     return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
   const uid = String(gate.user.id);
   const clean = sanitizeAiBody(req.body?.body ?? req.body);
   if ('err' in clean) return void res.status(clean.err[0]).json(clean.err[1]);
   const { body, inChars, imageCount } = clean;
-  const isSiteBuild = detectSiteBuild(body.messages, body.max_tokens, imageCount);
+  if (!resolveUpstream(body)) {
+    return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
+  }
+  // copy/critique — дешёвые текстовые задачи Cohere (тексты и вычитка). Верим метке ТОЛЬКО для
+  // Command A: клиенту нельзя доверять, а у этой модели потолок 8000 токенов, без картинок.
+  const cheapTask = (clean.task === 'copy' || clean.task === 'critique') && body.model === COHERE_MODEL;
+  const isSiteBuild = cheapTask ? false : detectSiteBuild(body.messages, body.max_tokens, imageCount);
   const isPhraseGen = detectPhraseGen(body.messages, body.max_tokens, inChars, isSiteBuild);
-  const complexity = assessAiComplexity(body.max_tokens, inChars, imageCount, isSiteBuild, isPhraseGen);
+  const complexity: AiComplexity = cheapTask
+    ? { points: 1, tier: 'light', label: clean.task === 'copy' ? 'Тексты и концепция' : 'Вычитка', reserveOutputTokens: Math.min(body.max_tokens, 4500) }
+    : assessAiComplexity(body.max_tokens, inChars, imageCount, isSiteBuild, isPhraseGen);
 
   // 0) Дизайн-система против «нейрослопа»: подмешиваем только при генерации/правке сайта,
   //    чтобы обычный диалог в чате, тест связи и генератор фраз не тратили лишние токены.
@@ -455,12 +491,25 @@ appRouter.post('/ai', h(async (req, res) => {
   }
 
   try {
-    const upstream = await fetch(config.openrouterUrl + '/chat/completions', {
+    const callUpstream = (u: Upstream) => fetch(u.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.openrouterApiKey}` },
-      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u.key}` },
+      body: JSON.stringify(u.body),
       signal: AbortSignal.timeout(170_000),
     });
+    const route = resolveUpstream(body)!;
+    let upstream: Awaited<ReturnType<typeof fetch>>;
+    try {
+      upstream = await callUpstream(route);
+      if (route.via === 'cohere' && (upstream.status >= 500 || upstream.status === 429) && config.openrouterApiKey) {
+        console.warn('[ai] Cohere', upstream.status, '→ фолбэк через OpenRouter');
+        upstream = await callUpstream(resolveUpstream(body, true)!);
+      }
+    } catch (e) {
+      if (route.via !== 'cohere' || !config.openrouterApiKey) throw e;
+      console.warn('[ai] Cohere недоступен → фолбэк через OpenRouter');
+      upstream = await callUpstream(resolveUpstream(body, true)!);
+    }
     const text = await upstream.text();
     if (upstream.ok) {
       // фактический расход: cost от OpenRouter, иначе по токенам и таблице цен
@@ -502,7 +551,14 @@ appRouter.get('/ai/models', h(async (req, res) => {
     return void res.status(503).json({ ok: false, error: 'not_configured' });
   }
   // отдаём только разрешённые модели — программа не покажет (и не попросит) дорогие
-  const onlyAllowed = (d: any) => ({ ...d, data: (Array.isArray(d?.data) ? d.data : []).filter((m: any) => AI_MODELS.has(String(m?.id))) });
+  const onlyAllowed = (d: any) => {
+    const data = (Array.isArray(d?.data) ? d.data : []).filter((m: any) => AI_MODELS.has(String(m?.id)));
+    // у OpenRouter Command A называется cohere/command-a — отдаём под нашим id, чтобы список был полным
+    if (AI_MODELS.has(COHERE_MODEL) && !data.some((m: any) => m?.id === COHERE_MODEL)) {
+      data.push({ id: COHERE_MODEL, name: 'Cohere: Command A', context_length: 256000 });
+    }
+    return { ...d, data };
+  };
   if (orModelsCache.list.length && Date.now() - orModelsCache.at < OR_MODELS_TTL) {
     return void res.json(onlyAllowed(orModelsCache.list));
   }

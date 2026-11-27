@@ -2387,7 +2387,7 @@
       key21st:ls('fracsAiKey21st'),
       base_url:ls('fracsAiBaseUrl'),
       temperature:parseFloat(ls('fracsAiTemp'))||0.7,
-      max_tokens:parseInt(ls('fracsAiMaxTok'))||4096};
+      max_tokens:parseInt(ls('fracsAiMaxTok'))||12000};
     if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
     setAiStage('thinking','Думаю над задачей…');
     fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
@@ -2539,7 +2539,7 @@
       if(conn.length)lines.push('Контакты: '+conn.join(', '));
       if(rec.rating)lines.push('Рейтинг на картах: '+(rec.rating+(rec.review_count?(' ('+rec.review_count+' отзывов)'):'')));
       if(ow.name)lines.push('Владелец/директор: '+[ow.name,ow.phone,ow.email].filter(Boolean).join(', '));
-      lines.push('Собери сайт по этим данным, веди его живым конкретным языком. Чего не хватает — пометь [УТОЧНИТЬ], не выдумывай.');
+      lines.push('Собери сайт по этим данным, веди его живым конкретным языком. Чего в данных нет (цены, сроки, часы работы, отзывы) — не выдумывай и не оставляй скобочных заглушек: просто не делай такой блок или предложи позвонить.');
       var prompt=lines.join('\n');
       var cfg=window.aiGetConfig();
       if(cfg.need_key&&!cfg.key){
