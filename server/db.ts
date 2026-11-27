@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { config, PLANS, ALL_FEATURES, type Plan } from './config.ts';
+import { config, PLANS, ALL_FEATURES, type Plan, type PromoCode } from './config.ts';
 
 export interface User {
   id: string;
@@ -1107,4 +1107,162 @@ export async function setRequiredChannels(input: string[]): Promise<string[]> {
   }
   _channelsCache = { at: Date.now(), list: clean };
   return clean;
+}
+
+/* ── промокоды (скидки на тариф при оплате; хранятся в app_settings
+   (key 'promocodes'), редактируются из админ-панели) ── */
+
+const clonePromocodes = (list: PromoCode[]): PromoCode[] => list.map((p) => ({ ...p }));
+const PROMOCODES_FILE = path.join(process.cwd(), 'data', 'promocodes.json');
+let memPromocodes: PromoCode[] | null = null;
+
+function loadLocalPromocodes(): PromoCode[] {
+  if (memPromocodes) return clonePromocodes(memPromocodes);
+  try {
+    if (fs.existsSync(PROMOCODES_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(PROMOCODES_FILE, 'utf-8'));
+      if (Array.isArray(parsed)) {
+        memPromocodes = parsed;
+        return clonePromocodes(parsed);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  memPromocodes = [];
+  return clonePromocodes(memPromocodes);
+}
+
+function saveLocalPromocodes(list: PromoCode[]) {
+  memPromocodes = clonePromocodes(list);
+  try {
+    fs.mkdirSync(path.dirname(PROMOCODES_FILE), { recursive: true });
+    fs.writeFileSync(PROMOCODES_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch {
+    /* read-only fs (serverless) — остаётся в памяти */
+  }
+}
+
+export async function getPromocodes(): Promise<PromoCode[]> {
+  if (useSupabase) {
+    try {
+      const r = await sb().from('app_settings').select('value').eq('key', 'promocodes').maybeSingle();
+      if (!r.error && Array.isArray(r.data?.value)) {
+        memPromocodes = clonePromocodes(r.data.value as PromoCode[]);
+        return clonePromocodes(memPromocodes);
+      }
+    } catch {
+      /* таблицы/ключа может не быть — fallback к локальному кэшу */
+    }
+  }
+  return loadLocalPromocodes();
+}
+
+export async function savePromocodes(list: PromoCode[]): Promise<void> {
+  saveLocalPromocodes(list);
+  if (useSupabase) {
+    try {
+      const r = await sb()
+        .from('app_settings')
+        .upsert({ key: 'promocodes', value: list, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (r.error) console.warn('[db] savePromocodes supabase:', r.error.message);
+    } catch (e: any) {
+      console.warn('[db] savePromocodes:', e?.message || e);
+    }
+  }
+}
+
+/** Нормализует код: uppercase, без пробелов, латиница/цифры/дефис. */
+function normalizeCode(raw: string): string {
+  return String(raw || '').trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9\-]/g, '');
+}
+
+/** Создать или обновить промокод. Если id задан — обновляем существующий. */
+export async function savePromoCode(input: {
+  id?: string;
+  code: string;
+  discountPercent: number;
+  maxUses: number;
+  validUntil: string | null;
+  active: boolean;
+  note: string;
+}): Promise<PromoCode> {
+  const list = await getPromocodes();
+  const code = normalizeCode(input.code);
+  if (!code) throw Object.assign(new Error('Пустой код промокода'), { status: 400 });
+  const discount = Math.round(Number(input.discountPercent));
+  if (!(discount >= 1 && discount <= 100)) throw Object.assign(new Error('Скидка: 1–100 %'), { status: 400 });
+  const maxUses = Math.max(0, Math.round(Number(input.maxUses) || 0));
+  let validUntil: string | null = null;
+  if (input.validUntil && !/^\s*$/.test(String(input.validUntil))) {
+    const d = new Date(String(input.validUntil));
+    if (!isNaN(d.getTime())) validUntil = d.toISOString();
+  }
+  const id = input.id || newId();
+  const existing = list.find((p) => p.id === id);
+  const dup = list.find((p) => p.code.toUpperCase() === code && p.id !== id);
+  if (dup) throw Object.assign(new Error(`Код ${code} уже существует`), { status: 409 });
+  const promo: PromoCode = {
+    id,
+    code,
+    discountPercent: discount,
+    maxUses,
+    usedCount: existing?.usedCount ?? 0,
+    validUntil,
+    active: Boolean(input.active),
+    note: String(input.note || '').slice(0, 200),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+  };
+  const next = existing ? list.map((p) => (p.id === id ? promo : p)) : [...list, promo];
+  await savePromocodes(next);
+  return promo;
+}
+
+export async function deletePromoCode(id: string): Promise<boolean> {
+  const list = await getPromocodes();
+  const next = list.filter((p) => p.id !== id);
+  if (next.length === list.length) return false;
+  await savePromocodes(next);
+  return true;
+}
+
+export async function togglePromoCode(id: string): Promise<PromoCode | null> {
+  const list = await getPromocodes();
+  const target = list.find((p) => p.id === id);
+  if (!target) return null;
+  target.active = !target.active;
+  await savePromocodes(list);
+  return target;
+}
+
+/** Найти активный, не истёкший, с неисчерпанным лимитом промокод по коду. */
+export async function findActivePromoCode(rawCode: string): Promise<PromoCode | null> {
+  const code = normalizeCode(rawCode);
+  if (!code) return null;
+  const list = await getPromocodes();
+  const now = Date.now();
+  const promo = list.find((p) => p.code === code);
+  if (!promo || !promo.active) return null;
+  if (promo.validUntil && Date.parse(promo.validUntil) < now) return null;
+  if (promo.maxUses > 0 && promo.usedCount >= promo.maxUses) return null;
+  return promo;
+}
+
+/** Увеличить usedCount промокода на 1. Молча игнорирует, если не найден. */
+export async function incrementPromoUse(id: string): Promise<void> {
+  const list = await getPromocodes();
+  const target = list.find((p) => p.id === id);
+  if (!target) return;
+  target.usedCount += 1;
+  await savePromocodes(list);
+}
+
+/**
+ * Публичная валидация промокода для кабинета: возвращает скидку или null.
+ * Не инкрементирует usedCount — это делает createPayment после успешного создания счёта.
+ */
+export async function validatePromoCode(rawCode: string): Promise<{ discountPercent: number; code: string } | null> {
+  const promo = await findActivePromoCode(rawCode);
+  if (!promo) return null;
+  return { discountPercent: promo.discountPercent, code: promo.code };
 }

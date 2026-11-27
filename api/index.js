@@ -46,6 +46,8 @@ var config = {
   cryptobotToken: cleanToken(env.CRYPTOBOT_API_TOKEN),
   xrocketKey: cleanToken(env.XROCKET_API_KEY),
   xrocketWebhookToken: cleanToken(env.XROCKET_WEBHOOK_TOKEN),
+  // 'legacy' (pay.xrocket.tg + Rocket-Pay-Key), 'pay' (pay.api.xrocket.exchange + Bearer) или 'auto' (по виду ключа).
+  xrocketApi: ["legacy", "pay"].includes(cleanToken(env.XROCKET_API_VERSION)) ? cleanToken(env.XROCKET_API_VERSION) : "auto",
   usdtRubRate: Number(env.USDT_RUB_RATE || 95),
   supportUsername: (env.SUPPORT_TG_USERNAME || "HelpManage").replace(/^@/, ""),
   dailySearchLimit: Number(env.DAILY_SEARCH_LIMIT || 40),
@@ -956,6 +958,128 @@ async function setRequiredChannels(input) {
   }
   _channelsCache = { at: Date.now(), list: clean };
   return clean;
+}
+var clonePromocodes = (list) => list.map((p) => ({ ...p }));
+var PROMOCODES_FILE = path.join(process.cwd(), "data", "promocodes.json");
+var memPromocodes = null;
+function loadLocalPromocodes() {
+  if (memPromocodes) return clonePromocodes(memPromocodes);
+  try {
+    if (fs.existsSync(PROMOCODES_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(PROMOCODES_FILE, "utf-8"));
+      if (Array.isArray(parsed)) {
+        memPromocodes = parsed;
+        return clonePromocodes(parsed);
+      }
+    }
+  } catch {
+  }
+  memPromocodes = [];
+  return clonePromocodes(memPromocodes);
+}
+function saveLocalPromocodes(list) {
+  memPromocodes = clonePromocodes(list);
+  try {
+    fs.mkdirSync(path.dirname(PROMOCODES_FILE), { recursive: true });
+    fs.writeFileSync(PROMOCODES_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch {
+  }
+}
+async function getPromocodes() {
+  if (useSupabase) {
+    try {
+      const r = await sb().from("app_settings").select("value").eq("key", "promocodes").maybeSingle();
+      if (!r.error && Array.isArray(r.data?.value)) {
+        memPromocodes = clonePromocodes(r.data.value);
+        return clonePromocodes(memPromocodes);
+      }
+    } catch {
+    }
+  }
+  return loadLocalPromocodes();
+}
+async function savePromocodes(list) {
+  saveLocalPromocodes(list);
+  if (useSupabase) {
+    try {
+      const r = await sb().from("app_settings").upsert({ key: "promocodes", value: list, updated_at: (/* @__PURE__ */ new Date()).toISOString() }, { onConflict: "key" });
+      if (r.error) console.warn("[db] savePromocodes supabase:", r.error.message);
+    } catch (e) {
+      console.warn("[db] savePromocodes:", e?.message || e);
+    }
+  }
+}
+function normalizeCode(raw) {
+  return String(raw || "").trim().toUpperCase().replace(/\s+/g, "").replace(/[^A-Z0-9\-]/g, "");
+}
+async function savePromoCode(input) {
+  const list = await getPromocodes();
+  const code = normalizeCode(input.code);
+  if (!code) throw Object.assign(new Error("\u041F\u0443\u0441\u0442\u043E\u0439 \u043A\u043E\u0434 \u043F\u0440\u043E\u043C\u043E\u043A\u043E\u0434\u0430"), { status: 400 });
+  const discount = Math.round(Number(input.discountPercent));
+  if (!(discount >= 1 && discount <= 100)) throw Object.assign(new Error("\u0421\u043A\u0438\u0434\u043A\u0430: 1\u2013100 %"), { status: 400 });
+  const maxUses = Math.max(0, Math.round(Number(input.maxUses) || 0));
+  let validUntil = null;
+  if (input.validUntil && !/^\s*$/.test(String(input.validUntil))) {
+    const d = new Date(String(input.validUntil));
+    if (!isNaN(d.getTime())) validUntil = d.toISOString();
+  }
+  const id = input.id || newId();
+  const existing = list.find((p) => p.id === id);
+  const dup = list.find((p) => p.code.toUpperCase() === code && p.id !== id);
+  if (dup) throw Object.assign(new Error(`\u041A\u043E\u0434 ${code} \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442`), { status: 409 });
+  const promo = {
+    id,
+    code,
+    discountPercent: discount,
+    maxUses,
+    usedCount: existing?.usedCount ?? 0,
+    validUntil,
+    active: Boolean(input.active),
+    note: String(input.note || "").slice(0, 200),
+    createdAt: existing?.createdAt ?? (/* @__PURE__ */ new Date()).toISOString()
+  };
+  const next = existing ? list.map((p) => p.id === id ? promo : p) : [...list, promo];
+  await savePromocodes(next);
+  return promo;
+}
+async function deletePromoCode(id) {
+  const list = await getPromocodes();
+  const next = list.filter((p) => p.id !== id);
+  if (next.length === list.length) return false;
+  await savePromocodes(next);
+  return true;
+}
+async function togglePromoCode(id) {
+  const list = await getPromocodes();
+  const target = list.find((p) => p.id === id);
+  if (!target) return null;
+  target.active = !target.active;
+  await savePromocodes(list);
+  return target;
+}
+async function findActivePromoCode(rawCode) {
+  const code = normalizeCode(rawCode);
+  if (!code) return null;
+  const list = await getPromocodes();
+  const now = Date.now();
+  const promo = list.find((p) => p.code === code);
+  if (!promo || !promo.active) return null;
+  if (promo.validUntil && Date.parse(promo.validUntil) < now) return null;
+  if (promo.maxUses > 0 && promo.usedCount >= promo.maxUses) return null;
+  return promo;
+}
+async function incrementPromoUse(id) {
+  const list = await getPromocodes();
+  const target = list.find((p) => p.id === id);
+  if (!target) return;
+  target.usedCount += 1;
+  await savePromocodes(list);
+}
+async function validatePromoCode(rawCode) {
+  const promo = await findActivePromoCode(rawCode);
+  if (!promo) return null;
+  return { discountPercent: promo.discountPercent, code: promo.code };
 }
 
 // server/util.ts
@@ -2445,6 +2569,22 @@ var headRows = (rec) => rec.demo ? getRows(rec, 0, 3) : rec.head ?? [];
 import crypto5 from "node:crypto";
 var CRYPTOBOT_API = "https://pay.crypt.bot/api";
 var XROCKET_API = "https://pay.xrocket.tg";
+var XROCKET_PAY_API = "https://pay.api.xrocket.exchange";
+function xrocketMode() {
+  if (config.xrocketApi !== "auto") return config.xrocketApi;
+  return config.xrocketKey.startsWith("eyJ") ? "pay" : "legacy";
+}
+function keyInfo() {
+  const k = process.env.XROCKET_API_KEY || "";
+  return {
+    mode: xrocketMode(),
+    len: config.xrocketKey.length,
+    looksJwt: config.xrocketKey.startsWith("eyJ"),
+    rawHadQuotesOrSpaces: k !== config.xrocketKey,
+    hasInnerWhitespace: /\s/.test(config.xrocketKey),
+    hasBearerPrefix: /^bearer\s/i.test(config.xrocketKey)
+  };
+}
 async function activate(p) {
   const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
   const pack = loadTokenPacks().find((t) => t.id === p.planId);
@@ -2485,13 +2625,19 @@ async function getUsdtRubRate() {
   }
   return Number.isFinite(config.usdtRubRate) && config.usdtRubRate > 0 ? config.usdtRubRate : 95;
 }
-async function createPayment(user, planId, method) {
+async function createPayment(user, planId, method, promoCode) {
   const pack = loadTokenPacks().find((t) => t.id === planId);
   const plans = pack ? [] : await getPlans();
   const plan = pack ? void 0 : plans.find((p) => p.id === planId);
   if (!pack && !plan) throw Object.assign(new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444"), { status: 400 });
   const chosen = method === "cryptobot" || method === "xrocket" ? method : config.paymentProvider;
-  const amountRub = pack ? pack.priceRub : plan.priceRub;
+  let amountRub = pack ? pack.priceRub : plan.priceRub;
+  let promo = null;
+  if (promoCode) {
+    promo = await findActivePromoCode(promoCode);
+    if (!promo) throw Object.assign(new Error("\u041F\u0440\u043E\u043C\u043E\u043A\u043E\u0434 \u043D\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D \u0438\u043B\u0438 \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D"), { status: 400 });
+    amountRub = Math.max(1, Math.round(amountRub * (1 - promo.discountPercent / 100)));
+  }
   const title = pack ? `\u0422\u043E\u043A\u0435\u043D\u044B Fracs AI: ${pack.title}` : `\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs: ${plan.title}`;
   const rec = {
     id: newId(),
@@ -2505,6 +2651,7 @@ async function createPayment(user, planId, method) {
     paidAt: null
   };
   await insertPayment(rec);
+  if (promo) await incrementPromoUse(promo.id);
   const returnUrl = config.appUrl.startsWith("https://") ? `${config.appUrl}/app?paid=1` : void 0;
   if (chosen === "cryptobot") {
     if (!config.cryptobotToken) {
@@ -2546,35 +2693,67 @@ async function createPayment(user, planId, method) {
   }
   const rate = await getUsdtRubRate();
   const usdtAmount = Math.max(0.1, Math.round(amountRub / rate * 100) / 100);
-  const resp = await fetch(`${XROCKET_API}/tg-invoices`, {
+  const description = `${title} (${amountRub} \u20BD)`;
+  const mode = xrocketMode();
+  const resp = mode === "pay" ? await fetch(`${XROCKET_PAY_API}/api/v1/invoices`, {
     method: "POST",
     headers: {
-      "Rocket-Pay-Key": config.xrocketKey,
-      "Content-Type": "application/json"
+      Authorization: `Bearer ${config.xrocketKey.replace(/^bearer\s+/i, "")}`,
+      "Content-Type": "application/json",
+      Accept: "application/json"
     },
+    // Pay API: суммы — строки, ответ без обёртки success/data.
+    body: JSON.stringify({
+      priceAmount: usdtAmount.toFixed(2),
+      priceCurrency: "USDT",
+      clientInvoiceId: rec.id,
+      description,
+      callback: { payload: { paymentId: rec.id } },
+      ...returnUrl ? { url: { successUrl: returnUrl } } : {}
+    }),
+    signal: AbortSignal.timeout(15e3)
+  }) : await fetch(`${XROCKET_API}/tg-invoices`, {
+    method: "POST",
+    headers: { "Rocket-Pay-Key": config.xrocketKey, "Content-Type": "application/json" },
     body: JSON.stringify({
       amount: usdtAmount,
       numPayments: 1,
       currency: "USDT",
-      description: `${title} (${amountRub} \u20BD)`,
+      description,
       commentsEnabled: false,
       ...returnUrl ? { callbackUrl: returnUrl } : {},
       payload: rec.id
     }),
     signal: AbortSignal.timeout(15e3)
   });
-  const json = await resp.json().catch(() => ({}));
-  if (!resp.ok || !json?.success || !json?.data?.link) {
-    const errMsg = Array.isArray(json?.message) ? json.message.join("; ") : String(json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+  const rawText = await resp.text().catch(() => "");
+  let json = {};
+  try {
+    json = JSON.parse(rawText);
+  } catch {
+  }
+  const link = mode === "pay" ? json?.links?.telegramBotLink || json?.links?.webLink || json?.links?.telegramMiniAppLink : json?.success ? json?.data?.link : void 0;
+  const invoiceId = mode === "pay" ? json?.id : json?.data?.id;
+  if (!resp.ok || !link || invoiceId == null) {
+    console.error("[pay][xrocket] create failed", {
+      status: resp.status,
+      contentType: resp.headers.get("content-type"),
+      cfRay: resp.headers.get("cf-ray"),
+      body: rawText.slice(0, 500),
+      key: keyInfo()
+    });
+    const errMsg = mode === "pay" ? String(json?.detail || json?.title || json?.type || resp.status) : Array.isArray(json?.message) ? json.message.join("; ") : String(json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+    const isJson = Boolean(rawText) && Object.keys(json).length > 0;
+    const hint = mode === "pay" ? "\u043D\u0443\u0436\u0435\u043D Bearer-\u0442\u043E\u043A\u0435\u043D Pay API (@xRocket \u2192 Pay API \u2192 \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u2192 Settings \u2192 API Token), \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u0435 \u0434\u043E\u043B\u0436\u043D\u043E \u0431\u044B\u0442\u044C \u043D\u0430 API Version \xABCurrent\xBB" : "\u043D\u0443\u0436\u0435\u043D \u043A\u043B\u044E\u0447 Legacy API; \u0442\u043E\u043A\u0435\u043D \u043D\u043E\u0432\u043E\u0433\u043E Pay API (\u043D\u0430\u0447\u0438\u043D\u0430\u0435\u0442\u0441\u044F \u0441 eyJ) \u0441\u044E\u0434\u0430 \u043D\u0435 \u043F\u043E\u0434\u0445\u043E\u0434\u0438\u0442 \u2014 \u0437\u0430\u0434\u0430\u0439\u0442\u0435 XROCKET_API_VERSION=pay";
     throw Object.assign(
       new Error(
-        resp.status === 401 || resp.status === 403 || /Unknown API Key|Unauthorized/i.test(errMsg) ? "xRocket \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B API-\u043A\u043B\u044E\u0447: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 XROCKET_API_KEY \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 (\u043D\u0443\u0436\u0435\u043D API Token \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F \u0438\u0437 @xRocket, \u043D\u0435 Webhook Token)." : `\u041E\u0448\u0438\u0431\u043A\u0430 xRocket (${resp.status}): ${errMsg}`
+        resp.status === 401 ? `xRocket \u043E\u0442\u043A\u043B\u043E\u043D\u0438\u043B \u043A\u043B\u044E\u0447 (401, \u0440\u0435\u0436\u0438\u043C ${mode}): ${hint}.` : resp.status === 403 && !isJson ? `xRocket \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 (403, \u043E\u0442\u0432\u0435\u0442 \u043D\u0435 JSON \u2014 \u043F\u043E\u0445\u043E\u0436\u0435 \u043D\u0430 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u043A\u0443 WAF/IP), \u0441\u043C. \u043B\u043E\u0433\u0438 Vercel.` : `\u041E\u0448\u0438\u0431\u043A\u0430 xRocket (${resp.status}, \u0440\u0435\u0436\u0438\u043C ${mode}): ${errMsg}`
       ),
       { status: 502 }
     );
   }
-  await setPaymentProviderId(rec.id, String(json.data.id));
-  return { paymentId: rec.id, confirmationUrl: String(json.data.link) };
+  await setPaymentProviderId(rec.id, String(invoiceId));
+  return { paymentId: rec.id, confirmationUrl: String(link) };
 }
 function verifyCryptoBotSig(rawBody, signature) {
   if (!config.cryptobotToken || !rawBody || !signature) return false;
@@ -2631,10 +2810,21 @@ function verifyXRocketSig(rawBody, headers) {
 async function handleXRocketWebhook(body, rawBody, headers = {}) {
   if (!config.xrocketKey) return;
   if (!verifyXRocketSig(rawBody, headers)) return;
-  const invoiceId = body?.data?.id ?? body?.invoice?.id ?? body?.invoice_id ?? body?.id;
+  const isPayApi = body?.type === "invoice" && body?.data?.invoice;
+  const invoiceId = isPayApi ? body.data.invoice.id : body?.data?.id ?? body?.invoice?.id ?? body?.invoice_id ?? body?.id;
   if (invoiceId == null) return;
   const rec = await findPaymentByProviderId(String(invoiceId));
   if (!rec || rec.status !== "pending") return;
+  if (isPayApi) {
+    const chk = await fetch(`${XROCKET_PAY_API}/api/v1/invoice?invoiceId=${encodeURIComponent(String(invoiceId))}`, {
+      headers: { Authorization: `Bearer ${config.xrocketKey.replace(/^bearer\s+/i, "")}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(15e3)
+    });
+    if (!chk.ok) return void console.error("[xrocket] invoice check failed", chk.status);
+    const inv = await chk.json().catch(() => ({}));
+    if (inv?.status === "paid" && String(inv?.clientInvoiceId || "") === rec.id) await activate(rec);
+    return;
+  }
   const checkResp = await fetch(`${XROCKET_API}/tg-invoices/${encodeURIComponent(String(invoiceId))}`, {
     headers: { "Rocket-Pay-Key": config.xrocketKey },
     signal: AbortSignal.timeout(15e3)
@@ -3489,6 +3679,51 @@ adminRouter.post("/channels/check", h3(async (req, res) => {
   const info = await resolveChannel(id);
   res.json(info);
 }));
+var publicPromoCode = (p) => ({
+  id: p.id,
+  code: p.code,
+  discountPercent: p.discountPercent,
+  maxUses: p.maxUses,
+  usedCount: p.usedCount,
+  validUntil: p.validUntil,
+  active: p.active,
+  note: p.note,
+  createdAt: p.createdAt
+});
+adminRouter.get("/promocodes", h3(async (_req, res) => {
+  const list = await getPromocodes();
+  res.json({ promocodes: list.map(publicPromoCode) });
+}));
+adminRouter.post("/promocodes/save", h3(async (req, res) => {
+  const b = req.body || {};
+  try {
+    const promo = await savePromoCode({
+      id: typeof b.id === "string" ? b.id : void 0,
+      code: String(b.code || ""),
+      discountPercent: Number(b.discountPercent),
+      maxUses: Number(b.maxUses),
+      validUntil: b.validUntil && String(b.validUntil).trim() ? String(b.validUntil) : null,
+      active: Boolean(b.active),
+      note: String(b.note || "")
+    });
+    res.json({ promo: publicPromoCode(promo) });
+  } catch (e) {
+    res.status(e?.status || 400).json({ error: "bad_promo", message: e?.message || "\u041E\u0448\u0438\u0431\u043A\u0430 \u043F\u0440\u043E\u043C\u043E\u043A\u043E\u0434\u0430" });
+  }
+}));
+adminRouter.post("/promocodes/delete", h3(async (req, res) => {
+  const id = String(req.body?.id || "");
+  if (!id) return void res.status(400).json({ error: "bad_id" });
+  const ok = await deletePromoCode(id);
+  res.json({ ok });
+}));
+adminRouter.post("/promocodes/toggle", h3(async (req, res) => {
+  const id = String(req.body?.id || "");
+  if (!id) return void res.status(400).json({ error: "bad_id" });
+  const promo = await togglePromoCode(id);
+  if (!promo) return void res.status(404).json({ error: "promo_not_found" });
+  res.json({ promo: publicPromoCode(promo) });
+}));
 
 // server/routes.ts
 import crypto8 from "node:crypto";
@@ -3959,6 +4194,13 @@ api.get("/search/:id/export.csv", requireAuth, h4(async (req, res) => {
   res.setHeader("Content-Disposition", `attachment; filename="fracs-${rec.kind}-${rec.id.slice(0, 8)}.csv"`);
   res.send(csv);
 }));
+api.post("/promo/validate", requireAuth, h4(async (req, res) => {
+  if (!await rateLimit(`promo:${req.user.id}`, 20, 6e4)) return void res.status(429).json({ error: "rate_limited" });
+  const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+  if (!code) return void res.json({ ok: false, discountPercent: 0 });
+  const result = await validatePromoCode(code);
+  res.json({ ok: Boolean(result), discountPercent: result?.discountPercent ?? 0, code: result?.code ?? null });
+}));
 api.post("/payments/request", requireAuth, h4(async (req, res) => {
   if (!await rateLimit(`payreq:${req.user.id}`, 5, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E." });
   const pack = loadTokenPacks().find((t) => t.id === String(req.body?.planId || ""));
@@ -3987,7 +4229,8 @@ api.post("/payments/create", requireAuth, h4(async (req, res) => {
   const rawMethod = req.body?.method;
   const method = rawMethod === "cryptobot" || rawMethod === "xrocket" ? rawMethod : void 0;
   try {
-    res.json(await createPayment(req.user, String(req.body?.planId || ""), method));
+    const promoCode = typeof req.body?.promoCode === "string" ? req.body.promoCode.trim() : "";
+    res.json(await createPayment(req.user, String(req.body?.planId || ""), method, promoCode || void 0));
   } catch (e) {
     console.error("[pay]", e);
     res.status(e.status || 502).json({ error: "payment", message: e.status ? e.message : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u043F\u043B\u0430\u0442\u0451\u0436. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });

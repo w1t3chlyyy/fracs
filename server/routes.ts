@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config, loadTokenPacks } from './config.ts';
 import {
-  claimTrial, countSearchesSince, getActiveFeatures, getPlans, getSearch, getTraining, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
+  claimTrial, countSearchesSince, getActiveFeatures, getPlans, getSearch, getTraining, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches, validatePromoCode,
   type SearchRecord, type User,
 } from './db.ts';
 import { authRouter, requireAuth } from './auth.ts';
@@ -484,6 +484,15 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
   res.send(csv);
 }));
 
+/** Валидация промокода для кабинета: возвращает скидку (%) или null. Лимит запросов — 20 в минуту. */
+api.post('/promo/validate', requireAuth, h(async (req, res) => {
+  if (!(await rateLimit(`promo:${req.user!.id}`, 20, 60_000))) return void res.status(429).json({ error: 'rate_limited' });
+  const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+  if (!code) return void res.json({ ok: false, discountPercent: 0 });
+  const result = await validatePromoCode(code);
+  res.json({ ok: Boolean(result), discountPercent: result?.discountPercent ?? 0, code: result?.code ?? null });
+}));
+
 /** Заявка на подписку или пакет токенов по реквизитам: уведомляем админа в Telegram, клиент переходит в @HelpManage. */
 api.post('/payments/request', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`payreq:${req.user!.id}`, 5, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
@@ -513,7 +522,8 @@ api.post('/payments/create', requireAuth, h(async (req, res) => {
   const method: PaymentMethod | undefined =
     rawMethod === 'cryptobot' || rawMethod === 'xrocket' ? rawMethod : undefined;
   try {
-    res.json(await createPayment(req.user!, String(req.body?.planId || ''), method));
+    const promoCode = typeof req.body?.promoCode === 'string' ? req.body.promoCode.trim() : '';
+    res.json(await createPayment(req.user!, String(req.body?.planId || ''), method, promoCode || undefined));
   } catch (e: any) {
     console.error('[pay]', e);
     res.status(e.status || 502).json({ error: 'payment', message: e.status ? e.message : 'Не удалось создать платёж. Попробуйте позже.' });

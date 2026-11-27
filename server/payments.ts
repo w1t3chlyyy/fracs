@@ -1,16 +1,37 @@
 import crypto from 'node:crypto';
 import { config, loadTokenPacks } from './config.ts';
 import {
-  claimPayment, extendSubscription, findPaymentByProviderId, getPlans, getUser, insertPayment,
+  claimPayment, extendSubscription, findActivePromoCode, findPaymentByProviderId, getPlans, getUser, incrementPromoUse, insertPayment,
   newId, aiTokensAdd, revertPayment, setPaymentProviderId, type PaymentRecord, type User,
 } from './db.ts';
+import { type PromoCode } from './config.ts';
 import { notify } from './bot.ts';
 import { safeEqual } from './util.ts';
 
 export type PaymentMethod = 'cryptobot' | 'xrocket';
 
 const CRYPTOBOT_API = 'https://pay.crypt.bot/api';
-const XROCKET_API = 'https://pay.xrocket.tg';
+const XROCKET_API = 'https://pay.xrocket.tg'; // Legacy API (Rocket-Pay-Key)
+const XROCKET_PAY_API = 'https://pay.api.xrocket.exchange'; // Pay API (Authorization: Bearer)
+
+/** Какой API использовать: ключ Pay API — это JWT (eyJ…), ключ Legacy — короткая строка. */
+function xrocketMode(): 'legacy' | 'pay' {
+  if (config.xrocketApi !== 'auto') return config.xrocketApi;
+  return config.xrocketKey.startsWith('eyJ') ? 'pay' : 'legacy';
+}
+
+/** Безопасная диагностика ключа для логов (сам ключ не пишем). */
+function keyInfo() {
+  const k = process.env.XROCKET_API_KEY || '';
+  return {
+    mode: xrocketMode(),
+    len: config.xrocketKey.length,
+    looksJwt: config.xrocketKey.startsWith('eyJ'),
+    rawHadQuotesOrSpaces: k !== config.xrocketKey,
+    hasInnerWhitespace: /\s/.test(config.xrocketKey),
+    hasBearerPrefix: /^bearer\s/i.test(config.xrocketKey),
+  };
+}
 
 async function activate(p: PaymentRecord) {
   const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
@@ -60,6 +81,7 @@ export async function createPayment(
   user: User,
   planId: string,
   method?: PaymentMethod,
+  promoCode?: string,
 ): Promise<{ paymentId: string; confirmationUrl?: string; activated?: boolean }> {
   const pack = loadTokenPacks().find((t) => t.id === planId);
   const plans = pack ? [] : await getPlans();
@@ -68,7 +90,14 @@ export async function createPayment(
 
   const chosen: PaymentMethod =
     method === 'cryptobot' || method === 'xrocket' ? method : config.paymentProvider;
-  const amountRub = pack ? pack.priceRub : plan!.priceRub;
+  let amountRub = pack ? pack.priceRub : plan!.priceRub;
+  // Промокод: валидируем и применяем скидку до создания счёта.
+  let promo: PromoCode | null = null;
+  if (promoCode) {
+    promo = await findActivePromoCode(promoCode);
+    if (!promo) throw Object.assign(new Error('Промокод не действителен или исчерпан'), { status: 400 });
+    amountRub = Math.max(1, Math.round(amountRub * (1 - promo.discountPercent / 100)));
+  }
   const title = pack ? `Токены Fracs AI: ${pack.title}` : `Подписка Fracs: ${plan!.title}`;
 
   const rec: PaymentRecord = {
@@ -83,6 +112,8 @@ export async function createPayment(
     paidAt: null,
   };
   await insertPayment(rec);
+  // Счёт создан — фиксируем использование промокода (лимит использований).
+  if (promo) await incrementPromoUse(promo.id);
 
   const returnUrl = config.appUrl.startsWith('https://') ? `${config.appUrl}/app?paid=1` : undefined;
 
@@ -129,39 +160,83 @@ export async function createPayment(
   }
   const rate = await getUsdtRubRate();
   const usdtAmount = Math.max(0.1, Math.round((amountRub / rate) * 100) / 100);
-  const resp = await fetch(`${XROCKET_API}/tg-invoices`, {
-    method: 'POST',
-    headers: {
-      'Rocket-Pay-Key': config.xrocketKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      amount: usdtAmount,
-      numPayments: 1,
-      currency: 'USDT',
-      description: `${title} (${amountRub} ₽)`,
-      commentsEnabled: false,
-      ...(returnUrl ? { callbackUrl: returnUrl } : {}),
-      payload: rec.id,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const json: any = await resp.json().catch(() => ({}));
-  if (!resp.ok || !json?.success || !json?.data?.link) {
-    const errMsg = Array.isArray(json?.message)
-      ? json.message.join('; ')
-      : String(json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+  const description = `${title} (${amountRub} ₽)`;
+  const mode = xrocketMode();
+
+  const resp = mode === 'pay'
+    ? await fetch(`${XROCKET_PAY_API}/api/v1/invoices`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.xrocketKey.replace(/^bearer\s+/i, '')}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        // Pay API: суммы — строки, ответ без обёртки success/data.
+        body: JSON.stringify({
+          priceAmount: usdtAmount.toFixed(2),
+          priceCurrency: 'USDT',
+          clientInvoiceId: rec.id,
+          description,
+          callback: { payload: { paymentId: rec.id } },
+          ...(returnUrl ? { url: { successUrl: returnUrl } } : {}),
+        }),
+        signal: AbortSignal.timeout(15_000),
+      })
+    : await fetch(`${XROCKET_API}/tg-invoices`, {
+        method: 'POST',
+        headers: { 'Rocket-Pay-Key': config.xrocketKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: usdtAmount,
+          numPayments: 1,
+          currency: 'USDT',
+          description,
+          commentsEnabled: false,
+          ...(returnUrl ? { callbackUrl: returnUrl } : {}),
+          payload: rec.id,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+
+  const rawText = await resp.text().catch(() => '');
+  let json: any = {};
+  try { json = JSON.parse(rawText); } catch { /* не JSON (например, страница WAF) */ }
+
+  const link: string | undefined = mode === 'pay'
+    ? json?.links?.telegramBotLink || json?.links?.webLink || json?.links?.telegramMiniAppLink
+    : json?.success ? json?.data?.link : undefined;
+  const invoiceId = mode === 'pay' ? json?.id : json?.data?.id;
+
+  if (!resp.ok || !link || invoiceId == null) {
+    // Настоящая причина — в лог (Vercel Logs), пользователю — понятное сообщение.
+    console.error('[pay][xrocket] create failed', {
+      status: resp.status,
+      contentType: resp.headers.get('content-type'),
+      cfRay: resp.headers.get('cf-ray'),
+      body: rawText.slice(0, 500),
+      key: keyInfo(),
+    });
+    const errMsg = mode === 'pay'
+      ? String(json?.detail || json?.title || json?.type || resp.status)
+      : Array.isArray(json?.message)
+        ? json.message.join('; ')
+        : String(json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status));
+    const isJson = Boolean(rawText) && Object.keys(json).length > 0;
+    const hint = mode === 'pay'
+      ? 'нужен Bearer-токен Pay API (@xRocket → Pay API → приложение → Settings → API Token), приложение должно быть на API Version «Current»'
+      : 'нужен ключ Legacy API; токен нового Pay API (начинается с eyJ) сюда не подходит — задайте XROCKET_API_VERSION=pay';
     throw Object.assign(
       new Error(
-        resp.status === 401 || resp.status === 403 || /Unknown API Key|Unauthorized/i.test(errMsg)
-          ? 'xRocket отклонил API-ключ: проверьте XROCKET_API_KEY на сервере (нужен API Token приложения из @xRocket, не Webhook Token).'
-          : `Ошибка xRocket (${resp.status}): ${errMsg}`,
+        resp.status === 401
+          ? `xRocket отклонил ключ (401, режим ${mode}): ${hint}.`
+          : resp.status === 403 && !isJson
+            ? `xRocket недоступен с сервера (403, ответ не JSON — похоже на блокировку WAF/IP), см. логи Vercel.`
+            : `Ошибка xRocket (${resp.status}, режим ${mode}): ${errMsg}`,
       ),
       { status: 502 },
     );
   }
-  await setPaymentProviderId(rec.id, String(json.data.id));
-  return { paymentId: rec.id, confirmationUrl: String(json.data.link) };
+  await setPaymentProviderId(rec.id, String(invoiceId));
+  return { paymentId: rec.id, confirmationUrl: String(link) };
 }
 
 /** Проверка подписи CryptoBot webhook: HMAC-SHA256(SHA256(token), rawBody). */
@@ -241,11 +316,27 @@ export async function handleXRocketWebhook(
   if (!config.xrocketKey) return;
   if (!verifyXRocketSig(rawBody, headers)) return;
 
-  const invoiceId = body?.data?.id ?? body?.invoice?.id ?? body?.invoice_id ?? body?.id;
+  // Pay API: {id: <eventId>, type: 'invoice', data: {event, invoice: {id, clientInvoiceId, status}}}
+  const isPayApi = body?.type === 'invoice' && body?.data?.invoice;
+  const invoiceId = isPayApi
+    ? body.data.invoice.id
+    : body?.data?.id ?? body?.invoice?.id ?? body?.invoice_id ?? body?.id;
   if (invoiceId == null) return;
 
   const rec = await findPaymentByProviderId(String(invoiceId));
   if (!rec || rec.status !== 'pending') return;
+
+  if (isPayApi) {
+    // Не доверяем телу вебхука: перепроверяем счёт через API.
+    const chk = await fetch(`${XROCKET_PAY_API}/api/v1/invoice?invoiceId=${encodeURIComponent(String(invoiceId))}`, {
+      headers: { Authorization: `Bearer ${config.xrocketKey.replace(/^bearer\s+/i, '')}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!chk.ok) return void console.error('[xrocket] invoice check failed', chk.status);
+    const inv: any = await chk.json().catch(() => ({}));
+    if (inv?.status === 'paid' && String(inv?.clientInvoiceId || '') === rec.id) await activate(rec);
+    return;
+  }
 
   const checkResp = await fetch(`${XROCKET_API}/tg-invoices/${encodeURIComponent(String(invoiceId))}`, {
     headers: { 'Rocket-Pay-Key': config.xrocketKey },

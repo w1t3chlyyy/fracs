@@ -116,7 +116,22 @@ _JS_CARD = r'''
 })()
 '''
 
-_FIO = r'([А-ЯЁ][а-яё]{1,30}(?:-[А-ЯЁ][а-яё]{1,30})?\s+[А-ЯЁ][а-яё]{1,30}\s+[А-ЯЁ][а-яё]{1,30})'
+_FIO = (r'([А-ЯЁ][а-яё]{1,30}(?:-[А-ЯЁ][а-яё]{1,30})?\s+[А-ЯЁ][а-яё]{1,30}\s+'
+        r'[А-ЯЁ][а-яё]{1,30}(?:-[А-ЯЁ][а-яё]{1,30})?(?:\s+(?:оглы|кызы|улы|уулу))?)')
+# ФИО заглавными (ИП ПЕТРОВ ПЁТР ПЕТРОВИЧ): в реестрах так пишут часть карточек.
+_FIO_CAPS = (r'([А-ЯЁ]{2,30}(?:-[А-ЯЁ]{2,30})?\s+[А-ЯЁ]{2,30}\s+'
+             r'[А-ЯЁ]{2,30}(?:-[А-ЯЁ]{2,30})?(?:\s+(?:ОГЛЫ|КЫЗЫ|УЛЫ|УУЛУ))?)')
+_CAPS_STOP = {'ООО', 'ОАО', 'ЗАО', 'ПАО', 'АО', 'ИП', 'ОГРН', 'ОГРНИП', 'ИНН', 'КПП'}
+
+
+def _caps_fio(text: str) -> str:
+    """Первое ФИО заглавными буквами → «Иванов Иван Иванович»."""
+    text = re.sub(r'\b(?:' + '|'.join(_CAPS_STOP) + r')\b', ' ', text or '')
+    for m in re.finditer(_FIO_CAPS, text):
+        words = m.group(1).split()
+        out = ' '.join('-'.join(p.capitalize() for p in w.split('-')) for w in words)
+        return re.sub(r'\b(Оглы|Кызы|Улы|Уулу)\b', lambda x: x.group(1).lower(), out)
+    return ''
 _ROLES = (r'(?:Генеральный\s+директор|Гендиректор|Исполнительный\s+директор|'
           r'Директор|Руководитель|Президент|Управляющий(?:\s+ИП)?|Председатель|Глава|Командир)')
 _PHONE = re.compile(r'(?:\+7|8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-]*\d{2}[\s\-]*\d{2}')
@@ -329,11 +344,16 @@ def parse_card(data: dict) -> dict:
         f = re.search(_FIO, h1) or re.search(_FIO, title) or re.search(_FIO, body[:800])
         if f:
             out['name'], out['role'] = f.group(1), 'ИП'
+        else:
+            caps = _caps_fio(h1) or _caps_fio(title) or _caps_fio(body[:800])
+            if caps:
+                out['name'], out['role'] = caps, 'ИП'
     else:
         # 1. «Генеральный директор: ФИО» / «Генеральный директор\nФИО» (до 24 символов между ролью и ФИО)
-        f = re.search(r'(' + _ROLES + r')[^А-ЯЁ\n]{0,12}\n?' + _FIO, body)
+        f = re.search(r'((?i:' + _ROLES + r'))[^А-ЯЁа-яё\n]{0,12}\n?' + _FIO, body)
         if f:
-            out['name'], out['role'] = f.group(2), re.sub(r'\s+', ' ', f.group(1)).strip()
+            role = re.sub(r'\s+', ' ', f.group(1)).strip()
+            out['name'], out['role'] = f.group(2), (role.capitalize() if role.isupper() else role)
         else:
             # 2. Роль и ФИО на соседних строках (формат checko/companium, в т.ч. между ролью и ФИО бывает пояснение)
             for mr in re.finditer(r'^\s*(' + _ROLES + r'[^\n]{0,60})$', body, re.M):
@@ -341,6 +361,13 @@ def parse_card(data: dict) -> dict:
                 if nxt:
                     out['name'], out['role'] = nxt.group(1), mr.group(1).strip()
                     break
+        # 2б. ФИО руководителя заглавными буквами.
+        if not out['name']:
+            fc = re.search(r'((?i:' + _ROLES + r'))[^А-ЯЁа-яё\n]{0,12}\n?' + _FIO_CAPS, body)
+            if fc:
+                cap = _caps_fio(fc.group(2))
+                if cap:
+                    out['name'], out['role'] = cap, re.sub(r'\s+', ' ', fc.group(1)).strip().capitalize()
         # 3. Если руководителя не указано — берём учредителя физлицо.
         if not out['name']:
             for mf in re.finditer(r'^\s*Учредител[ьи]\b[^\n]{0,40}$', body, re.M):
@@ -693,7 +720,7 @@ class Owners:
 
     def enrich(self, docs: list[Any], only_missing: bool, stop: Callable[[], bool],
                headless: bool) -> dict:
-        stats = {'total': 0, 'checked': 0, 'found': 0, 'not_found': 0}
+        stats = {'total': 0, 'checked': 0, 'found': 0, 'with_name': 0, 'not_found': 0}
         targets = [(i, d) for i, d in enumerate(docs)
                    if not (only_missing and (d.get('_fracs') or {}).get('owner', {}).get('name'))]
         stats['total'] = len(targets)
@@ -734,6 +761,7 @@ class Owners:
                     doc.setdefault('_fracs', {})['owner'] = owner
                     stats['found'] += 1
                     if owner.get('name'):
+                        stats['with_name'] += 1
                         logger.info('Владельцы [%d/%d] %s — %s %s (%s)', n, len(targets),
                                     rec['name'], owner['name'], owner['phone'] or owner['inn'], owner['source'])
                     else:

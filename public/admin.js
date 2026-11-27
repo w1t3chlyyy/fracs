@@ -142,9 +142,9 @@
         '<div class="ustatus ' + (on ? 'on' : 'off') + '">' +
         (on ? IC.ok + '<span>Подписка до ' + fmt(u.subscriptionUntil) + (u.planId ? ' · ' + esc(u.planId) : '') + '</span>' : IC.none + '<span>нет подписки</span>') + '</div>' +
         '<div class="grid2">' +
+        '<button class="btn primary sm" data-act="g" data-plan="start" data-days="30">Start 30д</button>' +
         '<button class="btn primary sm" data-act="g" data-plan="pro" data-days="30">PRO 30д</button>' +
-        '<button class="btn primary sm" data-act="g" data-plan="month" data-days="30">База 30д</button>' +
-        '<button class="btn primary sm" data-act="g" data-plan="pro" data-days="90">PRO 90д</button>' +
+        '<button class="btn primary sm" data-act="g" data-plan="ultra" data-days="30">Ultra 30д</button>' +
         '<button class="btn danger sm" data-act="r">Снять</button>' +
         '</div></div>';
     }).join('');
@@ -324,6 +324,99 @@
     finally { b.disabled = false; }
   });
 
+  /* ── промокоды ── */
+  var PROMOS = [];
+  var PR_EDIT_ID = null;
+  async function loadPromocodes() {
+    var data = await api('/promocodes');
+    PROMOS = (data.promocodes || []).slice();
+    renderPromocodes();
+  }
+  function fmtDate(s) { return s ? new Date(s).toLocaleDateString('ru-RU') : '—'; }
+  function renderPromocodes() {
+    var box = document.getElementById('pr-list');
+    if (!PROMOS.length) {
+      box.innerHTML = '<div class="card" style="text-align:center;color:var(--muted)">Промокодов пока нет. Создайте первый выше.</div>';
+      return;
+    }
+    box.innerHTML = PROMOS.map(function (p) {
+      var expired = p.validUntil && Date.parse(p.validUntil) < Date.now();
+      var exhausted = p.maxUses > 0 && p.usedCount >= p.maxUses;
+      var status = (!p.active ? 'выключен' : expired ? 'истёк' : exhausted ? 'исчерпан' : 'активен');
+      var statusColor = (p.active && !expired && !exhausted) ? 'var(--accent)' : 'var(--muted)';
+      return '<div class="card" data-id="' + esc(p.id) + '">' +
+        '<div class="uhead"><span class="name">' + esc(p.code) + '</span>' +
+        '<span class="sub"><span class="pill">−' + p.discountPercent + '%</span> ' + (p.maxUses > 0 ? p.usedCount + '/' + p.maxUses : p.usedCount + ' раз') + '</span></div>' +
+        '<div class="ustatus" style="color:' + statusColor + '">● ' + status + ' · до ' + fmtDate(p.validUntil) + '</div>' +
+        (p.note ? '<div style="font-size:12px;color:var(--muted);margin:4px 0">' + esc(p.note) + '</div>' : '') +
+        '<div class="grid2" style="margin-top:8px">' +
+        '<button class="btn sm" data-act="edit">Изменить</button>' +
+        '<button class="btn sm" data-act="toggle">' + (p.active ? 'Выключить' : 'Включить') + '</button>' +
+        '<button class="btn danger sm" data-act="del">Удалить</button>' +
+        '</div></div>';
+    }).join('');
+  }
+  function prResetForm() {
+    PR_EDIT_ID = null;
+    document.getElementById('pr-form-title').textContent = 'Новый промокод';
+    document.getElementById('pr-save').textContent = 'Создать промокод';
+    document.getElementById('pr-cancel').style.display = 'none';
+    document.getElementById('pr-code').value = '';
+    document.getElementById('pr-discount').value = '20';
+    document.getElementById('pr-maxuses').value = '0';
+    document.getElementById('pr-validuntil').value = '';
+    document.getElementById('pr-note').value = '';
+  }
+  function prFillForm(p) {
+    PR_EDIT_ID = p.id;
+    document.getElementById('pr-form-title').textContent = 'Изменить промокод «' + p.code + '»';
+    document.getElementById('pr-save').textContent = 'Сохранить';
+    document.getElementById('pr-cancel').style.display = '';
+    document.getElementById('pr-code').value = p.code;
+    document.getElementById('pr-discount').value = p.discountPercent;
+    document.getElementById('pr-maxuses').value = p.maxUses;
+    document.getElementById('pr-validuntil').value = p.validUntil ? p.validUntil.slice(0, 10) : '';
+    document.getElementById('pr-note').value = p.note || '';
+  }
+  document.getElementById('pr-save').addEventListener('click', async function () {
+    var body = {
+      code: document.getElementById('pr-code').value,
+      discountPercent: Number(document.getElementById('pr-discount').value),
+      maxUses: Number(document.getElementById('pr-maxuses').value),
+      validUntil: document.getElementById('pr-validuntil').value || null,
+      active: true,
+      note: document.getElementById('pr-note').value,
+    };
+    if (PR_EDIT_ID) body.id = PR_EDIT_ID;
+    var b = this; b.disabled = true;
+    try {
+      await api('/promocodes/save', body);
+      prResetForm();
+      await loadPromocodes();
+      toast(PR_EDIT_ID ? 'Промокод обновлён' : 'Промокод создан');
+    } catch (err) { toast(err.message, true); }
+    finally { b.disabled = false; }
+  });
+  document.getElementById('pr-cancel').addEventListener('click', prResetForm);
+  document.getElementById('pr-list').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var card = b.closest('[data-id]'); if (!card) return;
+    var id = card.getAttribute('data-id');
+    var p = PROMOS.find(function (x) { return x.id === id; });
+    if (b.dataset.act === 'edit' && p) { prFillForm(p); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (b.dataset.act === 'del') {
+      if (!confirm('Удалить промокод «' + (p ? p.code : id) + '»?')) return;
+      try { await api('/promocodes/delete', { id: id }); await loadPromocodes(); toast('Промокод удалён'); }
+      catch (err) { toast(err.message, true); }
+      return;
+    }
+    if (b.dataset.act === 'toggle') {
+      try { await api('/promocodes/toggle', { id: id }); await loadPromocodes(); }
+      catch (err) { toast(err.message, true); }
+      return;
+    }
+  });
+
   /* ── старт ── */
   (async function init() {
     if (!initData) {
@@ -334,7 +427,7 @@
     }
     try {
       await api('/me');
-      await Promise.all([loadPlans(), loadUsers(), loadTraining(), loadChannels()]);
+      await Promise.all([loadPlans(), loadUsers(), loadTraining(), loadChannels(), loadPromocodes()]);
     } catch (err) {
       toast(err.message, true);
     }

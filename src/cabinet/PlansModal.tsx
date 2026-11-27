@@ -14,6 +14,32 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
   const [invoiceUrl, setInvoiceUrl] = useState('');
   const [invoiceProvider, setInvoiceProvider] = useState('');
   const [error, setError] = useState('');
+  // Промокод: promoInput — что ввёл пользователь; promoCode/promoDiscount — валидированный.
+  const [promoInput, setPromoInput] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoMsg, setPromoMsg] = useState('');
+
+  const applyPromo = async () => {
+    const code = promoInput.trim();
+    if (!code) { setPromoMsg('Введите код'); return; }
+    setPromoBusy(true); setPromoMsg('');
+    try {
+      const r = await api.validatePromo(code);
+      if (r.ok && r.discountPercent > 0) {
+        setPromoCode(r.code || code.toUpperCase());
+        setPromoDiscount(r.discountPercent);
+        setPromoMsg(`−${r.discountPercent}% применено`);
+      } else {
+        setPromoCode(''); setPromoDiscount(0);
+        setPromoMsg('Промокод не действителен или исчерпан');
+      }
+    } catch (e: any) {
+      setPromoCode(''); setPromoDiscount(0);
+      setPromoMsg(e.message || 'Ошибка проверки промокода');
+    } finally { setPromoBusy(false); }
+  };
 
   const selectedPlan = config.plans.find((p) => p.id === selectedPlanId) || null;
   const supportUser = (config.supportUsername || 'HelpManage').replace(/^@/, '');
@@ -42,7 +68,7 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
     setBusy(method);
     setError('');
     try {
-      const r = await api.pay(selectedPlan.id, method);
+      const r = await api.pay(selectedPlan.id, method, promoCode || undefined);
       if (r.confirmationUrl) {
         setInvoiceUrl(r.confirmationUrl);
         setInvoiceProvider(method === 'cryptobot' ? 'CryptoBot' : 'xRocket');
@@ -130,8 +156,43 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
                 <h3 className="font-heading text-xl font-medium text-[#ffffff]">Оплата тарифа «{selectedPlan.title}»</h3>
                 <p className="text-[13px] text-[#888888] mt-1">Доступ на {selectedPlan.days} дн. · выберите удобный способ оплаты</p>
               </div>
-              <span className="font-heading text-2xl font-semibold text-[#F26522]">{selectedPlan.priceRub.toLocaleString('ru-RU')} ₽</span>
+              <span className="font-heading text-2xl font-semibold text-[#F26522]">
+                {promoDiscount > 0 ? (
+                  <>
+                    <span className="line-through text-[#888888] text-base font-normal mr-2">{selectedPlan.priceRub.toLocaleString('ru-RU')} ₽</span>
+                    {Math.max(1, Math.round(selectedPlan.priceRub * (1 - promoDiscount / 100))).toLocaleString('ru-RU')} ₽
+                  </>
+                ) : (selectedPlan.priceRub.toLocaleString('ru-RU') + ' ₽')}
+              </span>
             </div>
+
+            {/* Промокод */}
+            {!invoiceUrl && (
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[180px]">
+                  <label className="block text-[12px] text-[#888888] mb-1">Промокод (скидка)</label>
+                  <input
+                    type="text"
+                    value={promoInput}
+                    onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoMsg(''); }}
+                    placeholder="Например: PROMO2026"
+                    disabled={promoBusy}
+                    className="w-full px-3 py-2 rounded-xl bg-[rgba(255,255,255,0.04)] border border-[rgba(255,255,255,0.14)] text-[14px] text-[#ffffff] placeholder:text-[#666666] focus:border-[#F26522] outline-none uppercase tracking-wide"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={applyPromo}
+                  disabled={promoBusy || !promoInput.trim()}
+                  className="px-4 py-2 rounded-xl bg-[rgba(255,255,255,0.06)] hover:bg-[rgba(255,255,255,0.12)] text-[14px] text-[#cccccc] border border-[rgba(255,255,255,0.14)] transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {promoBusy ? 'Проверка…' : promoDiscount > 0 ? 'Изменить' : 'Применить'}
+                </button>
+                {promoMsg && (
+                  <span className={`text-[12px] ${promoDiscount > 0 ? 'text-emerald-400' : 'text-[#F26522]'}`}>{promoMsg}</span>
+                )}
+              </div>
+            )}
 
             {invoiceUrl ? (
               <div className="rounded-2xl border border-[rgba(242,101,34,0.4)] bg-[rgba(242,101,34,0.08)] p-5 space-y-4">

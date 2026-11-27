@@ -45,8 +45,11 @@ export const api = {
   history: (kind: 'maps' | 'tg') => req<{ items: SearchView[] }>(`/searches?kind=${kind}`),
   search: (id: string) => req<SearchView>(`/search/${id}`),
   rows: <T,>(id: string, offset: number, limit = 50) => req<{ rows: T[]; total: number }>(`/search/${id}/rows?offset=${offset}&limit=${limit}`),
-  pay: (planId: string, method?: 'cryptobot' | 'xrocket') =>
-    post<{ paymentId?: string; confirmationUrl?: string }>('/payments/create', { planId, method }),
+  pay: (planId: string, method?: 'cryptobot' | 'xrocket', promoCode?: string) =>
+    post<{ paymentId?: string; confirmationUrl?: string }>('/payments/create', { planId, method, promoCode }),
+  /** Валидация промокода: возвращает скидку (%) или 0, если код не действителен. */
+  validatePromo: (code: string) =>
+    post<{ ok: boolean; discountPercent: number; code?: string }>('/promo/validate', { code }),
   /** Заявка на подписку: админ получает уведомление в Telegram */
   requestPlan: (planId: string) => post<{ ok: boolean }>('/payments/request', { planId }),
 };

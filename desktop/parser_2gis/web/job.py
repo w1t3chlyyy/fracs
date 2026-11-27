@@ -259,8 +259,8 @@ class ParseJob:
                 self.error, self.status = 'Подписка закончилась. Работа программы остановлена.', 'error'
                 return
             self.status = 'stopped' if self._cancelled else 'done'
-            logger.info('Владельцы: проверено %d из %d, найдено %d, не найдено %d.',
-                        st['checked'], st['total'], st['found'], st['not_found'])
+            logger.info('Владельцы: проверено %d из %d, найдено %d (из них с ФИО: %d), не найдено %d.',
+                        st['checked'], st['total'], st['found'], st.get('with_name', 0), st['not_found'])
         except OwnersCaptcha as e:
             self.status = 'done'
             logger.error('%s', e)

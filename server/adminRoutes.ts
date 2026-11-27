@@ -1,9 +1,10 @@
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { config, type Plan } from './config.ts';
+import { config, type Plan, type PromoCode } from './config.ts';
 import { isAdminInitData } from './webapp.ts';
 import { notify, resolveChannel } from './bot.ts';
 import {
-  extendSubscription, findUser, getUser, getPlans, getTraining, addLesson, updateLesson, deleteLesson,
+  extendSubscription, findUser, getUser, getPlans, getPromocodes, savePromoCode, deletePromoCode, togglePromoCode,
+  getTraining, addLesson, updateLesson, deleteLesson,
   listRecentUsers, resetPlans, setSubscription, updatePlan, getRequiredChannels, setRequiredChannels, type User,
 } from './db.ts';
 
@@ -160,4 +161,56 @@ adminRouter.post('/channels/check', h(async (req, res) => {
   if (!id) return void res.status(400).json({ error: 'bad_id', message: 'Укажите @username или ID канала.' });
   const info = await resolveChannel(id);
   res.json(info);
+}));
+
+/* ── промокоды (скидки на тариф; CRUD из админ-панели) ── */
+
+const publicPromoCode = (p: PromoCode) => ({
+  id: p.id,
+  code: p.code,
+  discountPercent: p.discountPercent,
+  maxUses: p.maxUses,
+  usedCount: p.usedCount,
+  validUntil: p.validUntil,
+  active: p.active,
+  note: p.note,
+  createdAt: p.createdAt,
+});
+
+adminRouter.get('/promocodes', h(async (_req, res) => {
+  const list = await getPromocodes();
+  res.json({ promocodes: list.map(publicPromoCode) });
+}));
+
+adminRouter.post('/promocodes/save', h(async (req, res) => {
+  const b = req.body || {};
+  try {
+    const promo = await savePromoCode({
+      id: typeof b.id === 'string' ? b.id : undefined,
+      code: String(b.code || ''),
+      discountPercent: Number(b.discountPercent),
+      maxUses: Number(b.maxUses),
+      validUntil: b.validUntil && String(b.validUntil).trim() ? String(b.validUntil) : null,
+      active: Boolean(b.active),
+      note: String(b.note || ''),
+    });
+    res.json({ promo: publicPromoCode(promo) });
+  } catch (e: any) {
+    res.status(e?.status || 400).json({ error: 'bad_promo', message: e?.message || 'Ошибка промокода' });
+  }
+}));
+
+adminRouter.post('/promocodes/delete', h(async (req, res) => {
+  const id = String(req.body?.id || '');
+  if (!id) return void res.status(400).json({ error: 'bad_id' });
+  const ok = await deletePromoCode(id);
+  res.json({ ok });
+}));
+
+adminRouter.post('/promocodes/toggle', h(async (req, res) => {
+  const id = String(req.body?.id || '');
+  if (!id) return void res.status(400).json({ error: 'bad_id' });
+  const promo = await togglePromoCode(id);
+  if (!promo) return void res.status(404).json({ error: 'promo_not_found' });
+  res.json({ promo: publicPromoCode(promo) });
 }));

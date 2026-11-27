@@ -47,6 +47,8 @@ export const config = {
   cryptobotToken: cleanToken(env.CRYPTOBOT_API_TOKEN),
   xrocketKey: cleanToken(env.XROCKET_API_KEY),
   xrocketWebhookToken: cleanToken(env.XROCKET_WEBHOOK_TOKEN),
+  // 'legacy' (pay.xrocket.tg + Rocket-Pay-Key), 'pay' (pay.api.xrocket.exchange + Bearer) или 'auto' (по виду ключа).
+  xrocketApi: (['legacy', 'pay'].includes(cleanToken(env.XROCKET_API_VERSION)) ? cleanToken(env.XROCKET_API_VERSION) : 'auto') as 'auto' | 'legacy' | 'pay',
   usdtRubRate: Number(env.USDT_RUB_RATE || 95),
   supportUsername: (env.SUPPORT_TG_USERNAME || 'HelpManage').replace(/^@/, ''),
 
@@ -123,6 +125,23 @@ export const PLANS: Plan[] = [
  *  генерация сайта ≈ 30k вх + 12k исх ≈ $0.012), наценка умеренная. Меняются без кода: env AI_TOKEN_PACKS
  *  (JSON-массив) или таблица app_settings → key 'token_packs'. */
 export interface TokenPack { id: string; title: string; tokens: number; priceRub: number; badge?: string }
+
+/**
+ * Промокод: скидка на тариф при оплате. Хранится в app_settings (key 'promocodes'),
+ * редактируется из админ-панели. Скидка — процент от priceRub (1–100).
+ * maxUses = 0 → без лимита; validUntil = null → бессрочно.
+ */
+export interface PromoCode {
+  id: string;
+  code: string;
+  discountPercent: number;
+  maxUses: number;
+  usedCount: number;
+  validUntil: string | null;
+  active: boolean;
+  note: string;
+  createdAt: string;
+}
 
 export const TOKEN_PACKS: TokenPack[] = [
   { id: 'tokens_100k', title: '100 000 токенов', tokens: 100_000, priceRub: 149, badge: '≈ 3–4 генерации сайта' },
