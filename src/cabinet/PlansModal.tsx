@@ -43,12 +43,12 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div onClick={onClose} className="absolute inset-0 bg-black/70" />
-      <div role="dialog" aria-modal="true" aria-label="Подписка" className="relative z-10 ember-glass rounded-2xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-7 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-label="Подписка" className="relative z-10 ember-glass rounded-2xl w-full max-w-lg sm:max-w-2xl lg:max-w-5xl max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-7 shadow-2xl">
         <button onClick={onClose} aria-label="Закрыть" className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.16)] text-[#cccccc] flex items-center justify-center cursor-pointer">
           <X className="w-4 h-4" />
         </button>
         <h3 className="font-heading text-xl font-medium text-[#ffffff]">Подписка Fracs</h3>
-        <ul className="mt-3 space-y-1.5 text-[14px] text-[#cccccc]">
+        <ul className="mt-3 grid gap-1.5 text-[14px] text-[#cccccc] sm:grid-cols-3 sm:gap-x-6">
           {[
             'Программа Fracs Parser для Windows, macOS и Linux: реальный парсинг 2ГИС на вашем ПК',
             'Фильтры, шаблоны Telegram, выгрузка HTML / CSV / XLSX / JSON, Яндекс Карты',
@@ -58,11 +58,12 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
           ))}
         </ul>
 
-        <div className="mt-5 grid gap-3">
+        {/* На ПК — горизонтальная плашка: тарифы в один ряд, на мобильных — столбцом */}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {config.plans.map((p) => {
             const extras = (p.features ?? []).filter((f) => FEATURE_LABELS[f]);
             return (
-            <button key={p.id} onClick={() => pay(p.id)} disabled={!!busy} className="flex items-center justify-between gap-4 p-4 rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.02)] hover:border-[#F26522] text-left transition-colors cursor-pointer disabled:opacity-60">
+            <button key={p.id} onClick={() => pay(p.id)} disabled={!!busy} className="flex flex-col justify-between gap-3 p-4 rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.02)] hover:border-[#F26522] text-left transition-colors cursor-pointer disabled:opacity-60">
               <div>
                 <p className="font-medium text-[#ffffff]">{p.title}</p>
                 {p.badge && <p className="text-[12px] text-[#F26522] mt-0.5">{p.badge}</p>}
@@ -75,9 +76,11 @@ export default function PlansModal({ config, onClose, onActivated }: { config: A
                   </ul>
                 )}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center justify-between gap-2">
                 <span className="font-heading text-xl font-semibold text-[#ffffff]">{p.priceRub.toLocaleString('ru-RU')} ₽</span>
-                {busy === p.id && <Loader2 className="w-4 h-4 animate-spin text-[#888888]" />}
+                {busy === p.id
+                  ? <Loader2 className="w-4 h-4 animate-spin text-[#888888]" />
+                  : <span className="text-[12px] font-medium text-[#F26522]">Выбрать →</span>}
               </div>
             </button>
             );
