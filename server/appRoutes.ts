@@ -1,11 +1,13 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config, loadTokenPacks } from './config.ts';
-import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, aiUsageToday, aiUsageAdd, aiTokensGet, aiTokensSpend, demoCreate, demoGet, demoCounts } from './db.ts';
+import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, consumeBudgetWindow, getBudgetWindow, refundBudgetWindow, aiUsageToday, aiUsageAdd, aiTokensGet, aiTokensSpend, demoCreate, demoGet, demoCounts } from './db.ts';
 import { requireAuth } from './auth.ts';
 import { searchTg } from './providers.ts';
 import { cleanText } from './util.ts';
 import { checkChannelSubs } from './bot.ts';
+import { notify } from './bot.ts';
+import { createPayment, type PaymentMethod } from './payments.ts';
 import { DESIGN_VERSION, DESIGN_LIBRARIES, FRACS_DESIGN_SYSTEM } from './aiDesign.ts';
 
 /**
@@ -214,15 +216,16 @@ async function fracsAiGate(req: any): Promise<{ user: any } | { error: [number, 
 // Все пороги меняются переменными окружения (значения по умолчанию — ниже).
 const envNum = (k: string, d: number) => { const n = Number(process.env[k]); return Number.isFinite(n) && n > 0 ? n : d; };
 const AI_LIMITS = {
-  perMinute: envNum('AI_USER_PER_MIN', 4),          // всплеск: не больше N запросов в минуту
-  perHour: envNum('AI_USER_PER_HOUR', 12),          // …в час
-  perDay: envNum('AI_USER_PER_DAY', 3),             // …в сутки: хватает на 1 сайт (генерация + правка + фразы)
-  perDayWindowMs: envNum('AI_USER_DAY_WINDOW_MS', 10 * 3_600_000), // окно «суточного» лимита — 10 часов (обновится через 10 часов, не в полночь)
-  dailyTokens: envNum('AI_DAILY_TOKENS', 150_000),  // включённая дневная квота токенов (~7 генераций сайта)
-  userDailyUsd: envNum('AI_USER_DAILY_USD', 1.5),   // потолок расходов на одного пользователя в сутки
-  globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 40), // аварийный предохранитель: общий бюджет в сутки
-  maxTokens: envNum('AI_MAX_TOKENS', 12000),        // потолок ответа модели
-  maxInputChars: envNum('AI_MAX_INPUT_CHARS', 40000),
+  perMinute: envNum('AI_USER_PER_MIN', 20),             // всплеск: не больше N запросов в минуту
+  perHour: envNum('AI_USER_PER_HOUR', 120),             // …в час (щедро для чата и генератора фраз)
+  dailyComplexity: envNum('AI_DAILY_COMPLEXITY', 60),   // бюджет сложности сайтов/чата на окно
+  dailyPhrases: envNum('AI_DAILY_PHRASES', 150),        // отдельный щедрый лимит для генерации фраз Telegram
+  perDayWindowMs: envNum('AI_USER_DAY_WINDOW_MS', 10 * 3_600_000), // окно сброса — 10 часов
+  dailyTokens: envNum('AI_DAILY_TOKENS', 600_000),      // увеличенная включённая дневная квота токенов
+  userDailyUsd: envNum('AI_USER_DAILY_USD', 5),         // потолок расходов на одного пользователя в сутки
+  globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 80),    // аварийный предохранитель: общий бюджет в сутки
+  maxTokens: envNum('AI_MAX_TOKENS', 12000),            // потолок ответа модели
+  maxInputChars: envNum('AI_MAX_INPUT_CHARS', 45000),
   maxImages: 3,
 };
 // Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
@@ -241,8 +244,68 @@ const AI_PRICE: Record<string, [number, number]> = {
 const priceOf = (model: string): [number, number] => AI_PRICE[model] || [1, 4];
 const aiErr = (status: number, error: string, message: string, extra: object = {}): [number, any] => [status, { ok: false, error, message, ...extra }];
 
+interface AiComplexity {
+  points: number;
+  tier: 'phrase' | 'light' | 'medium' | 'heavy';
+  label: string;
+  reserveOutputTokens: number;
+}
+
+function detectSiteBuild(messages: any[], maxTokens: number, imageCount: number): boolean {
+  if (imageCount > 0 || maxTokens > 2200) return true;
+  for (const m of messages) {
+    const txt = typeof m?.content === 'string'
+      ? m.content
+      : Array.isArray(m?.content) ? m.content.map((p: any) => p?.text || '').join('\n') : '';
+    if (/DESIGN_SYSTEM_VERSION:|СТИЛЕВОЙ РЕЦЕПТ|ТИПОГРАФИКА|текущая-версия-сайта\.html|<!DOCTYPE|<html/i.test(txt)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function detectPhraseGen(messages: any[], maxTokens: number, inChars: number, isSiteBuild: boolean): boolean {
+  if (isSiteBuild || maxTokens > 2000 || inChars > 4000) return false;
+  const full = messages.map((m) => (typeof m?.content === 'string' ? m.content : '')).join('\n');
+  return /поисковую фразу|парсингу заявок в Telegram|Исходная фраза:/i.test(full);
+}
+
+function assessAiComplexity(maxTokens: number, inChars: number, imageCount: number, isSiteBuild: boolean, isPhraseGen: boolean): AiComplexity {
+  if (isPhraseGen && imageCount === 0) {
+    return {
+      points: 0,
+      tier: 'phrase',
+      label: 'Генерация фраз',
+      reserveOutputTokens: Math.min(maxTokens, 1200),
+    };
+  }
+  if (!isSiteBuild && imageCount === 0 && inChars < 5500 && maxTokens <= 2200) {
+    return {
+      points: 1,
+      tier: 'light',
+      label: 'Лёгкая',
+      reserveOutputTokens: Math.min(maxTokens, 1600),
+    };
+  }
+  if ((inChars < 4500 && maxTokens <= 5000 && imageCount === 0) || (!isSiteBuild && imageCount === 0)) {
+    return {
+      points: 3,
+      tier: 'medium',
+      label: 'Средняя',
+      reserveOutputTokens: Math.min(maxTokens, 5500),
+    };
+  }
+  const extraSize = inChars > 14000 ? 1 : 0;
+  return {
+    points: Math.min(14, 6 + imageCount * 2 + extraSize),
+    tier: 'heavy',
+    label: 'Сложная',
+    reserveOutputTokens: maxTokens,
+  };
+}
+
 /** Чистим тело запроса: только модель из белого списка, без stream/tools/plugins, потолок токенов. */
-function sanitizeAiBody(raw: any): { body: any; inChars: number } | { err: [number, any] } {
+function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: number } | { err: [number, any] } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { err: aiErr(400, 'bad_request', 'Ожидается тело chat/completions.') };
   const model = String(raw.model || '');
   if (!AI_MODELS.has(model)) return { err: aiErr(400, 'model_not_allowed', 'Эта модель недоступна во встроенном Fracs AI. Выберите модель из списка или подключите свой API-ключ.') };
@@ -274,12 +337,13 @@ function sanitizeAiBody(raw: any): { body: any; inChars: number } | { err: [numb
   const temp = Number(raw.temperature);
   return {
     inChars: chars,
+    imageCount: images,
     body: { model, messages, max_tokens: maxTokens, temperature: Number.isFinite(temp) ? Math.min(1.2, Math.max(0, temp)) : 0.7, stream: false, usage: { include: true } },
   };
 }
 
 appRouter.post('/ai', h(async (req, res) => {
-  if (!(await rateLimit(`app-ai:${req.ip}`, 240, 10 * 60_000, true))) {
+  if (!(await rateLimit(`app-ai:${req.ip}`, 360, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
   const gate = await fracsAiGate(req);
@@ -290,73 +354,97 @@ appRouter.post('/ai', h(async (req, res) => {
   const uid = String(gate.user.id);
   const clean = sanitizeAiBody(req.body?.body ?? req.body);
   if ('err' in clean) return void res.status(clean.err[0]).json(clean.err[1]);
-  const { body, inChars } = clean;
+  const { body, inChars, imageCount } = clean;
+  const isSiteBuild = detectSiteBuild(body.messages, body.max_tokens, imageCount);
+  const isPhraseGen = detectPhraseGen(body.messages, body.max_tokens, inChars, isSiteBuild);
+  const complexity = assessAiComplexity(body.max_tokens, inChars, imageCount, isSiteBuild, isPhraseGen);
 
-  // 0) Дизайн-система против «нейрослопа»: подмешиваем её в system сервером, чтобы
-  //    любой запрос Fracs AI шёл с актуальным промтом даже на старой версии программы.
-  //    Если программа сама прислала system с маркером DESIGN_SYSTEM_VERSION: — не дублируем.
+  // 0) Дизайн-система против «нейрослопа»: подмешиваем только при генерации/правке сайта,
+  //    чтобы обычный диалог в чате, тест связи и генератор фраз не тратили лишние токены.
   let designChars = 0;
   const hasDesign = body.messages.some((m: any) => m.role === 'system' && typeof m.content === 'string' && m.content.includes(DESIGN_MARKER));
-  if (!hasDesign) {
+  if (isSiteBuild && !hasDesign) {
     const sys = `DESIGN_SYSTEM_VERSION: ${DESIGN_VERSION}\n` + FRACS_DESIGN_SYSTEM;
     body.messages.unshift({ role: 'system', content: sys });
     designChars = sys.length;
   }
   const totalInChars = inChars + designChars;
 
-  // 1) частота: минута / час / сутки (failClosed — при сбое счётчика не пускаем)
+  // 1) Анти-флуд (минута / час) + лимит по сложности задач за окно
   if (!(await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 60_000, true))) {
-    return void res.status(429).json({ ok: false, error: 'quota_minute', message: 'Слишком часто. Подождите минуту и повторите.' });
+    return void res.status(429).json({ ok: false, error: 'quota_minute', resetAt: Date.now() + 60_000, message: 'Слишком частые запросы. Подождите минуту и повторите.' });
   }
   if (!(await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 3_600_000, true))) {
-    return void res.status(429).json({ ok: false, error: 'quota_hour', message: `Лимит Fracs AI: ${AI_LIMITS.perHour} запросов в час. Продолжите позже или подключите свой API-ключ — без лимитов.` });
-  }
-  if (!(await rateLimit(`ai-u-day:${uid}`, AI_LIMITS.perDay, AI_LIMITS.perDayWindowMs, true))) {
-    // «Можно продлить»: купленные токены снимают лимит запросов (расход всё равно списывается по факту).
-    let dayBalance = 0;
-    try {
-      dayBalance = await aiTokensGet(uid);
-    } catch {
-      dayBalance = 0;
-    }
-    if (dayBalance <= 0) {
-      const hours = Math.round(AI_LIMITS.perDayWindowMs / 3_600_000);
-      return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит Fracs AI исчерпан (${AI_LIMITS.perDay} запросов). Он обновится через ${hours} ч — или купите токены в кабинете, они снимают лимит: ${config.appUrl}/app`, buyUrl: `${config.appUrl}/app` });
-    }
+    return void res.status(429).json({ ok: false, error: 'quota_hour', resetAt: Date.now() + 3_600_000, message: `Лимит Fracs AI: ${AI_LIMITS.perHour} обращений в час. Продолжите позже или подключите свой API-ключ — без лимитов.` });
   }
 
-  // 2) лимит по токенам: включённая дневная квота + купленные пакеты (пакеты не истекают).
-  //    Худший случай этого запроса считаем заранее: вход (≈3.5 символа на токен) + потолок ответа.
-  const worstTokens = Math.round(totalInChars / 3.5) + body.max_tokens;
-  let usage;
   let balance = 0;
+  let usage;
   try {
-    usage = await aiUsageToday(uid);
-    balance = await aiTokensGet(uid);
+    [usage, balance] = await Promise.all([aiUsageToday(uid), aiTokensGet(uid)]);
   } catch (e) {
     console.error('[ai] usage/tokens read failed — запрос отклонён (предохранитель):', e);
     return void res.status(503).json({ ok: false, error: 'budget_unavailable', message: 'Fracs AI временно недоступен. Попробуйте позже или используйте свой API-ключ.' });
   }
+
+  const cxKey = isPhraseGen ? `ai-phrase-day:${uid}` : `ai-cx-day:${uid}`;
+  const cxCost = isPhraseGen ? 1 : complexity.points;
+  const cxLimit = isPhraseGen ? AI_LIMITS.dailyPhrases : AI_LIMITS.dailyComplexity;
+  let cxUsed = 0;
+  let cxConsumed = false;
+  let cxResetAt = 0;
+  if (balance <= 0) {
+    const cx = await consumeBudgetWindow(cxKey, cxCost, cxLimit, AI_LIMITS.perDayWindowMs, true);
+    cxUsed = cx.used;
+    cxResetAt = cx.resetAt || (Date.now() + AI_LIMITS.perDayWindowMs);
+    if (!cx.allowed) {
+      const hours = Math.max(1, Math.round((cxResetAt - Date.now()) / 3_600_000));
+      return void res.status(429).json({
+        ok: false,
+        error: 'quota_day',
+        complexity,
+        complexityUsed: cx.used,
+        complexityLimit: cxLimit,
+        resetAt: cxResetAt,
+        message: isPhraseGen
+          ? `Дневной лимит генерации фраз Telegram исчерпан (${cx.used}/${cxLimit}). Он обновится через ${hours} ч — или докупите токены прямо в программе.`
+          : `Лимит сложности Fracs AI исчерпан (${cx.used}/${cxLimit} ед.; задача «${complexity.label}» требует ${cxCost} ед.). Он обновится через ${hours} ч — или докупите токены прямо в программе.`,
+        buyUrl: `${config.appUrl}/app`,
+      });
+    }
+    cxConsumed = true;
+  }
+
+  // 2) Лимит по токенам: включённая дневная квота + купленные пакеты (пакеты не истекают).
+  const worstTokens = Math.round(totalInChars / 3.5) + complexity.reserveOutputTokens;
   const tokensAllowed = AI_LIMITS.dailyTokens + balance;
   if (usage.userTokens + worstTokens > tokensAllowed) {
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const left = Math.max(0, tokensAllowed - usage.userTokens);
+    const nextUtcMidnight = new Date();
+    nextUtcMidnight.setUTCHours(24, 0, 0, 0);
     return void res.status(429).json({
       ok: false,
       error: 'quota_tokens',
-      message: `Дневной лимит токенов Fracs AI исчерпан (включено ${AI_LIMITS.dailyTokens.toLocaleString('ru-RU')}/сутки). Купите дополнительные токены в кабинете — они не истекают: ${config.appUrl}/app`,
+      resetAt: nextUtcMidnight.getTime(),
+      message: `Дневной лимит токенов Fracs AI исчерпан (включено ${AI_LIMITS.dailyTokens.toLocaleString('ru-RU')}/сутки). Докупите токены прямо в программе — они не истекают.`,
       tokensLeft: left,
       buyUrl: `${config.appUrl}/app`,
     });
   }
 
-  // 3) бюджет в долларах: по пользователю и общий (предохранители от дорогих моделей).
+  // 3) Бюджет в долларах: по пользователю и общий (предохранители от дорогих моделей).
   const [pin, pout] = priceOf(body.model);
-  const worstUsd = (totalInChars / 3.5) * pin / 1e6 + body.max_tokens * pout / 1e6;
+  const worstUsd = (totalInChars / 3.5) * pin / 1e6 + complexity.reserveOutputTokens * pout / 1e6;
   if (usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     return void res.status(503).json({ ok: false, error: 'daily_budget', message: 'Общий лимит Fracs AI на сегодня исчерпан — он обновится завтра. Со своим API-ключом можно работать без ограничений.' });
   }
   if (usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
-    return void res.status(429).json({ ok: false, error: 'quota_budget', message: 'Дневной лимит Fracs AI по объёму генерации исчерпан. Он обновится завтра. Со своим API-ключом лимитов нет.' });
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
+    const nextUtcMidnight = new Date();
+    nextUtcMidnight.setUTCHours(24, 0, 0, 0);
+    return void res.status(429).json({ ok: false, error: 'quota_budget', resetAt: nextUtcMidnight.getTime(), message: 'Дневной лимит Fracs AI по объёму генерации исчерпан. Он обновится завтра или после покупки пакета токенов.' });
   }
 
   try {
@@ -373,15 +461,26 @@ appRouter.post('/ai', h(async (req, res) => {
         const u = JSON.parse(text)?.usage || {};
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
         const cost = Number(u.cost) > 0 ? Number(u.cost)
-          : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || body.max_tokens) * pout) / 1e6;
+          : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
         // Списание с купленного баланса: только то, что сверх включённой дневной квоты.
         const over = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
         if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error('[ai] tokens spend failed:', e));
       } catch (e) { console.error('[ai] usage write failed:', e); }
+    } else if (cxConsumed && upstream.status >= 500) {
+      await refundBudgetWindow(cxKey, cxCost);
+    }
+    res.setHeader('X-Fracs-Complexity-Tier', complexity.tier);
+    res.setHeader('X-Fracs-Complexity-Cost', String(cxCost));
+    if (balance <= 0 && !isPhraseGen) {
+      res.setHeader('X-Fracs-Complexity-Left', String(Math.max(0, cxLimit - cxUsed)));
+    }
+    if (cxResetAt > 0) {
+      res.setHeader('X-Fracs-Reset-At', String(cxResetAt));
     }
     res.status(upstream.status).type('application/json').send(text);
   } catch (e: any) {
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     res.status(502).json({ ok: false, error: 'upstream', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
 }));
@@ -423,20 +522,90 @@ appRouter.get('/ai/usage', h(async (req, res) => {
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
   try {
-    const [usage, balance] = await Promise.all([aiUsageToday(String(gate.user.id)), aiTokensGet(String(gate.user.id))]);
+    const uid = String(gate.user.id);
+    const [usage, balance, cx, px] = await Promise.all([
+      aiUsageToday(uid),
+      aiTokensGet(uid),
+      getBudgetWindow(`ai-cx-day:${uid}`),
+      getBudgetWindow(`ai-phrase-day:${uid}`),
+    ]);
     const allowed = AI_LIMITS.dailyTokens + balance;
     res.json({
       ok: true,
+      now: Date.now(),
       dailyIncluded: AI_LIMITS.dailyTokens,
       usedToday: usage.userTokens,
       requestsToday: usage.userRequests,
       balance,
       tokensLeft: Math.max(0, allowed - usage.userTokens),
+      dailyComplexityLimit: AI_LIMITS.dailyComplexity,
+      complexityUsed: cx.used,
+      complexityLeft: Math.max(0, AI_LIMITS.dailyComplexity - cx.used),
+      complexityResetAt: cx.resetAt || null,
+      dailyPhrasesLimit: AI_LIMITS.dailyPhrases,
+      phrasesUsed: px.used,
+      phrasesLeft: Math.max(0, AI_LIMITS.dailyPhrases - px.used),
+      phrasesResetAt: px.resetAt || null,
       packs: loadTokenPacks(),
+      paymentMethods: {
+        cryptobot: Boolean(config.cryptobotToken),
+        xrocket: Boolean(config.xrocketKey),
+        requisites: true,
+      },
+      supportUsername: config.supportUsername,
     });
   } catch (e) {
     console.error('[ai] usage endpoint failed:', e);
     res.status(503).json({ ok: false, error: 'usage_unavailable' });
+  }
+}));
+
+/** Покупка дополнительных токенов Fracs AI прямо из программы (по ключу лицензии). */
+appRouter.post('/ai/buy', h(async (req, res) => {
+  if (!(await rateLimit(`app-ai-buy-ip:${req.ip}`, 60, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
+  }
+  const gate = await fracsAiGate(req);
+  if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  const user = gate.user;
+  if (!(await rateLimit(`app-ai-buy:${user.id}`, 15, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, error: 'rate_limited', message: 'Слишком много попыток оплаты. Подождите пару минут.' });
+  }
+  const packId = String(req.body?.packId || '');
+  const pack = loadTokenPacks().find((p) => p.id === packId);
+  if (!pack) {
+    return void res.status(400).json({ ok: false, error: 'bad_pack', message: 'Неизвестный пакет токенов.' });
+  }
+  const rawMethod = String(req.body?.method || 'cryptobot');
+  const supportUser = (config.supportUsername || 'HelpManage').replace(/^@/, '');
+  if (rawMethod === 'requisites') {
+    const whoLabel = user.tgId != null
+      ? `${user.username ? '@' + user.username : user.firstName} (id ${user.tgId})`
+      : `${user.email || user.firstName} (почта)`;
+    if (config.adminTgId > 0) {
+      await notify(
+        config.adminTgId,
+        `🧾 Заявка на токены Fracs AI из программы (реквизиты)\n${whoLabel}\nПакет: ${pack.title}, ${pack.priceRub} ₽`,
+      ).catch(() => {});
+    }
+    const text = `Здравствуйте! Хочу докупить токены Fracs AI из программы: ${pack.title} (${pack.priceRub} ₽).`;
+    return void res.json({
+      ok: true,
+      method: 'requisites',
+      confirmationUrl: `https://t.me/${supportUser}?text=${encodeURIComponent(text)}`,
+    });
+  }
+  const method: PaymentMethod = rawMethod === 'xrocket' ? 'xrocket' : 'cryptobot';
+  try {
+    const r = await createPayment(user, pack.id, method);
+    res.json({ ok: true, method, paymentId: r.paymentId, confirmationUrl: r.confirmationUrl });
+  } catch (e: any) {
+    console.error('[app ai buy]', e);
+    res.status(e.status || 502).json({
+      ok: false,
+      error: 'payment',
+      message: e.status ? e.message : 'Не удалось создать счёт на оплату. Попробуйте «Реквизиты».',
+    });
   }
 }));
 

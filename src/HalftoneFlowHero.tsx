@@ -128,13 +128,13 @@ const CSS =
   ".hfh-desc{margin:22px 0 0;max-width:44ch;font-size:clamp(15px,1.2vw,17px);line-height:1.6;opacity:.74;text-wrap:balance}" +
   ".hfh-fade{opacity:0;transform:translateY(12px);transition:opacity .9s ease,transform 1.1s cubic-bezier(.16,1,.3,1)}" +
   ".hfh-in .hfh-fade{opacity:1;transform:none}" +
-  ".hfh-form{position:relative;display:flex;align-items:center;gap:8px;width:min(560px,100%);height:60px;margin-top:32px;padding:6px 6px 6px 22px;border-radius:999px;pointer-events:auto;" +
+  ".hfh-form{position:relative;display:flex;align-items:center;gap:8px;width:min(680px,100%);height:60px;margin-top:32px;padding:6px 6px 6px 22px;border-radius:999px;pointer-events:auto;" +
   "background:color-mix(in oklab,var(--hfh-ground) 55%,transparent);box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--hfh-text) 16%,transparent),0 20px 50px -20px rgba(0,0,0,.6);backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);transition:box-shadow .35s}" +
   ".hfh-form:focus-within{box-shadow:inset 0 0 0 1px color-mix(in oklab,var(--hfh-hot) 70%,transparent),0 0 0 6px color-mix(in oklab,var(--hfh-hot) 14%,transparent),0 20px 50px -20px rgba(0,0,0,.6)}" +
   ".hfh-spark{flex:none;color:var(--hfh-hot)}" +
   ".hfh-field{position:relative;flex:1;min-width:0;height:100%}" +
   ".hfh-input{position:absolute;inset:0;width:100%;border:0;outline:0;background:transparent;color:inherit;font:inherit;font-size:16px}" +
-  ".hfh-ph{position:absolute;inset:0;display:flex;align-items:center;font-size:16px;opacity:.55;pointer-events:none;white-space:nowrap;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}" +
+  ".hfh-ph{position:absolute;inset:0;display:flex;align-items:center;font-size:16px;opacity:.55;pointer-events:none;white-space:nowrap;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 95%,transparent);mask-image:linear-gradient(90deg,#000 95%,transparent)}" +
   ".hfh-caret{display:inline-block;width:2px;height:1.1em;margin-left:2px;background:var(--hfh-hot);animation:hfh-blink 1s steps(1) infinite}" +
   ".hfh-go{flex:none;display:inline-flex;align-items:center;gap:8px;height:100%;padding:0 20px;border:0;border-radius:999px;cursor:pointer;font:inherit;font-size:15px;font-weight:600;" +
   "color:#fff;background:var(--hfh-hot);transition:transform .4s cubic-bezier(.3,1.5,.5,1),background-color .25s}" +
@@ -149,7 +149,7 @@ const CSS =
   ".hfh-av:first-child{margin-left:0}" +
   ".hfh-av:nth-child(2){background:#ff8a4c}.hfh-av:nth-child(3){background:var(--hfh-flow);color:var(--hfh-text)}" +
   "@keyframes hfh-blink{50%{opacity:0}}" +
-  "@media (max-width:560px){.hfh-go span{display:none}.hfh-go{padding:0 16px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}}" +
+  "@media (max-width:560px){.hfh-go span{display:none}.hfh-go{padding:0 16px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}.hfh-ph,.hfh-input{font-size:14.5px}}" +
   "@media (prefers-reduced-motion:reduce){.hfh-caret{animation:none}.hfh-card,.hfh-w,.hfh-fade,.hfh-go,.hfh-go svg{transition:none}}"
 
 function compile(gl: WebGLRenderingContext, type: number, src: string) {

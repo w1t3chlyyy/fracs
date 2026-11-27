@@ -311,50 +311,88 @@
   .lesson-body{padding:0 16px 14px;white-space:pre-wrap;line-height:1.6;font-size:14px;color:var(--text);opacity:.9}
 
   /* ---- AI-Агент ---- */
+  .content.wide .topbar{display:none}
+  .content.wide .work{padding:18px clamp(18px,3vw,32px)}
   .work-panel[data-panel="ai"]{flex:1;min-height:0}
-  .ai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;height:100%}
-  .ai-chat-col{display:flex;flex-direction:column;gap:14px;min-height:0}
-  /* Маскот: оранжевый шар с глазами; глаза моргают сами */
-  .ai-mascot{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    gap:10px;min-height:300px;user-select:none}
-  .ai-mascot svg{width:min(280px,50vw);height:auto;animation:fracs-bob 4.5s ease-in-out infinite;
-    filter:drop-shadow(0 0 46px rgba(242,101,34,.30))}
+  .ai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;height:100%;min-height:0}
+  .ai-chat-col{display:flex;flex-direction:column;gap:12px;min-height:0;align-items:center}
+  /* Маскот: пустой экран с быстрыми стартами */
+  .ai-mascot{flex:1;width:100%;max-width:760px;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;min-height:280px;user-select:none;padding:12px 0}
+  .ai-mascot svg{width:min(220px,42vw);height:auto;animation:fracs-bob 4.5s ease-in-out infinite;
+    filter:drop-shadow(0 0 42px rgba(242,101,34,.26))}
   .ai-mascot .eye{animation:fracs-blink 4.6s infinite;transform-box:fill-box;transform-origin:center}
   @keyframes fracs-blink{0%,91%,100%{transform:scaleY(1)}93.5%{transform:scaleY(.07)}96.5%{transform:scaleY(1)}}
-  @keyframes fracs-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
-  .ai-greet{font-family:Jost,Montserrat,sans-serif;font-size:clamp(19px,2.4vw,25px);font-weight:700;
-    color:var(--text);text-align:center;line-height:1.32;letter-spacing:-.01em}
-  .ai-msg{max-width:80%;padding:11px 15px;border-radius:14px;font-size:13.5px;line-height:1.5}
-  .ai-msg.bot{background:var(--surface2);border:1px solid var(--line);align-self:flex-start;border-bottom-left-radius:4px}
-  .ai-msg.user{background:var(--primary);color:#fff;align-self:flex-end;border-bottom-right-radius:4px}
-  .ai-msg.sys{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:var(--warn);align-self:center;font-size:12.5px;text-align:center;max-width:90%}
-  .ai-side{display:flex;flex-direction:column;gap:14px}
-  .ai-side-h{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 6px}
-  .ai-files-empty{font-size:12.5px;color:var(--muted);border:1px dashed var(--line);border-radius:12px;padding:12px 14px;line-height:1.45}
-  .ai-chat{flex:1;min-height:220px;background:var(--surface);border:1px solid var(--line);border-radius:16px;
-    padding:18px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+  @keyframes fracs-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+  .ai-greet{font-family:Jost,Montserrat,sans-serif;font-size:clamp(20px,2.4vw,26px);font-weight:700;
+    color:var(--text);text-align:center;line-height:1.28;letter-spacing:-.015em}
+  .ai-starters{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:6px;max-width:640px}
+  .ai-starter{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.03);color:#b4b4bd;
+    border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:500;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s;text-align:left}
+  .ai-starter:hover{border-color:rgba(242,101,34,.5);color:#fff;background:rgba(242,101,34,.08)}
+
+  /* Поток переписки: воздух и типографика без вложенных рамок */
+  .ai-chat{flex:1;width:100%;max-width:760px;min-height:180px;background:transparent;border:none;border-radius:0;
+    padding:8px 4px 18px;overflow:auto;display:flex;flex-direction:column;gap:18px;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.14) transparent}
+  .ai-msg{max-width:85%;font-size:14px;line-height:1.6;word-break:break-word}
+  .ai-msg.user{align-self:flex-end;max-width:min(540px,84%);background:#16161b;
+    border:1px solid rgba(255,255,255,.11);color:#f4f4f6;padding:11px 16px;
+    border-radius:14px 14px 3px 14px;white-space:pre-wrap}
+  .ai-msg.bot{align-self:flex-start;width:100%;max-width:66ch;background:transparent;border:none;
+    padding:4px 2px 14px;border-bottom:1px solid rgba(255,255,255,.06);border-radius:0;
+    display:flex;flex-direction:column;gap:6px}
+  .ai-turn-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#8e8e98}
+  .ai-turn-mark{width:7px;height:7px;border-radius:2px;background:var(--primary);flex:none}
+  .ai-turn-who{font-weight:650;color:#d4d4dc;letter-spacing:.01em}
+  .ai-turn-trace{color:#787882;font-size:11.5px}
+  .ai-turn-body{font-size:14.5px;line-height:1.64;color:#ececf0;white-space:pre-wrap}
+  .ai-msg.sys{align-self:stretch;max-width:100%;background:rgba(242,101,34,.065);
+    border:1px solid rgba(242,101,34,.24);border-radius:10px;padding:11px 14px;color:#f4bfa3;
+    font-size:13px;line-height:1.55;text-align:left;white-space:pre-wrap}
+  .ai-msg a{color:#ff8b4d;text-decoration:underline;text-underline-offset:3px}
+  .ai-msg a:hover{color:#ffb085}
+
+  /* Живая лента этапов работы нейросети */
+  .ai-stage-bar{display:flex;flex-direction:column;gap:7px;padding:10px 13px;background:#0d0d10;
+    border:1px solid rgba(255,255,255,.1);border-radius:12px}
+  .ai-stages{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .ai-stage-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;
+    font-size:11.5px;font-weight:600;color:#6e6e78;background:rgba(255,255,255,.025);
+    border:1px solid rgba(255,255,255,.07);transition:color .2s,border-color .2s,background .2s}
+  .ai-stage-tag .st-dot{width:6px;height:6px;border-radius:50%;background:#4a4a52;flex:none}
+  .ai-stage-tag.is-active{color:#fff;border-color:rgba(242,101,34,.55);background:rgba(242,101,34,.14)}
+  .ai-stage-tag.is-active .st-dot{background:var(--primary);animation:pulse 1.05s infinite}
+  .ai-stage-tag.is-done{color:#34d399;border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.07)}
+  .ai-stage-tag.is-done .st-dot{background:#34d399}
+  .ai-stage-sep{color:#3f3f46;font-size:11px;user-select:none}
+
+  .ai-side{display:flex;flex-direction:column;gap:16px;border-left:1px solid rgba(255,255,255,.07);padding-left:20px;min-height:0;overflow:auto}
+  .ai-side-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
+  .ai-files-empty{font-size:12.5px;color:#787882;border:1px dashed rgba(255,255,255,.11);border-radius:10px;padding:12px 13px;line-height:1.45}
   .ai-chips{display:flex;flex-wrap:wrap;gap:6px}
-  .ai-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text);background:var(--surface);
-    border:1px solid var(--line);border-radius:999px;padding:5px 6px 5px 11px;max-width:260px}
+  .ai-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text);background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 6px 4px 10px;max-width:260px}
   .ai-chip .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
   .ai-chip .cs{color:var(--muted);flex:none}
-  .ai-chip button{flex:none;width:18px;height:18px;border-radius:50%;border:0;background:rgba(255,255,255,.08);
+  .ai-chip button{flex:none;width:18px;height:18px;border-radius:5px;border:0;background:rgba(255,255,255,.08);
     color:var(--muted);cursor:pointer;font-size:11px;line-height:18px;padding:0;text-align:center}
   .ai-chip button:hover{background:rgba(248,113,113,.2);color:#f87171}
   .ai-chip .cic{width:13px;height:13px;flex:none;color:var(--primary)}
-  .ai-desc{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;
-    font-size:13px;color:var(--muted);line-height:1.55}
-  .ai-side h3{margin:0 0 10px;font-size:15px;color:var(--text)}
-  .ai-files{display:flex;flex-direction:column;gap:10px}
-  .ai-file{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);
-    border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .15s}
-  .ai-file:hover{border-color:rgba(255,255,255,.25)}
-  .ai-file .fic{width:38px;height:38px;border-radius:10px;background:var(--surface2);display:flex;align-items:center;
+  .ai-desc{background:#0c0c0f;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:13px 15px;
+    font-size:12.5px;color:#8e8e98;line-height:1.58}
+  .ai-side h3{margin:0 0 10px;font-size:14px;font-weight:650;color:var(--text)}
+  .ai-files{display:flex;flex-direction:column;gap:8px}
+  .ai-file{display:flex;align-items:center;gap:11px;background:#0c0c0f;border:1px solid rgba(255,255,255,.09);
+    border-radius:10px;padding:10px 12px;cursor:pointer;transition:border-color .15s;text-decoration:none}
+  .ai-file:hover{border-color:rgba(242,101,34,.4)}
+  .ai-file .fic{width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.04);display:flex;align-items:center;
     justify-content:center;color:var(--primary);flex:none}
-  .ai-file .fic svg{width:20px;height:20px}
+  .ai-file .fic svg{width:18px;height:18px}
   .ai-file .fn{font-size:13px;font-weight:600;color:var(--text)}
   .ai-file .fup{margin-left:auto;color:var(--muted)}
-  .ai-file .fup svg{width:18px;height:18px}
+  .ai-file .fup svg{width:17px;height:17px}
 
   /* ---- License gate ---- */
   #lic{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.78);backdrop-filter:blur(6px);
@@ -404,34 +442,77 @@
   .ic-caret{display:inline-flex;vertical-align:-2px;width:13px;height:13px}
   .ic-x{display:inline-flex;vertical-align:-2px;width:14px;height:14px}
 
-  .btn-clip{flex:none;width:46px;height:46px;border-radius:50%;background:var(--surface);border:1px solid var(--line);
-    color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s}
-  .btn-clip:hover{color:var(--text);border-color:rgba(255,255,255,.25)}
-  .btn-clip svg{width:19px;height:19px}
-  .btn-clip.has{color:var(--primary);border-color:rgba(242,101,34,.5)}
-  .ai-send{flex:none;width:46px;height:46px;border-radius:50%;background:var(--primary);color:var(--on-primary);
-    border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s}
+  .btn-clip{flex:none;width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,.035);
+    border:1px solid rgba(255,255,255,.09);color:var(--muted);cursor:pointer;display:flex;
+    align-items:center;justify-content:center;padding:0;transition:.15s}
+  .btn-clip:hover{color:var(--text);border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.07)}
+  .btn-clip svg{width:17px;height:17px}
+  .btn-clip.has{color:var(--primary);border-color:rgba(242,101,34,.45);background:rgba(242,101,34,.1)}
+  .ai-send{flex:none;width:36px;height:36px;border-radius:9px;background:var(--primary);color:var(--on-primary);
+    border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:.15s}
   .ai-send:hover{background:var(--primary-dark)}
-  .ai-send:disabled{opacity:.5}
-  .ai-send svg{width:19px;height:19px}
-  .ai-pick{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--surface);
-    border:1px solid var(--line);border-radius:12px;padding:7px 7px 7px 14px}
-  .ai-pick .pt{font-size:13px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .ai-pick .pb{background:var(--primary);color:var(--on-primary);font-size:12px;font-weight:650;border-radius:9px;
-    padding:8px 16px;text-decoration:none;white-space:nowrap}
-  .ai-pick .pb:hover{background:var(--primary-dark);color:var(--on-primary)}
-  .ai-input-bar{display:flex;gap:8px;align-items:flex-end}
-  .ai-input-bar textarea{flex:1;min-height:52px;max-height:180px;resize:none;border-radius:999px;
-    padding:14px 22px;line-height:1.45;background:rgba(0,0,0,.35)}
-  .ai-input-bar .btn-run{flex:none;padding:10px 16px}
-  .ai-status{padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.04);display:inline-block}
+  .ai-send:disabled{opacity:.45;cursor:not-allowed}
+  .ai-send svg{width:17px;height:17px}
+
+  /* Единый студийный композер (без слоистых пилюль) */
+  .ai-dock{width:100%;max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+  .ai-composer{background:#0d0d10;border:1px solid rgba(255,255,255,.12);border-radius:14px;
+    display:flex;flex-direction:column;transition:border-color .15s,box-shadow .15s}
+  .ai-composer:focus-within{border-color:rgba(242,101,34,.62);box-shadow:0 0 0 3px rgba(242,101,34,.12)}
+  .ai-comp-head{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:8px 13px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .ai-agent-meta{display:flex;align-items:center;gap:10px;min-width:0;font-size:12px;color:#8e8e98}
+  .ai-agent-label{color:#d4d4dc;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ai-quota-label{color:#787882;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .ai-quota-label:empty{display:none}
+  .ai-cfg-link{color:#a1a1aa;text-decoration:none;font-size:12px;font-weight:600;padding:4px 9px;
+    border-radius:7px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.03);
+    white-space:nowrap;transition:color .15s,border-color .15s,background .15s;cursor:pointer}
+  .ai-cfg-link:hover{color:#fff;border-color:rgba(242,101,34,.45);background:rgba(242,101,34,.09)}
+  .ai-head-acts{display:flex;align-items:center;gap:6px;flex:none}
+  .ai-buy-pill{color:#ff9c58;font-size:12px;font-weight:600;padding:4px 10px;border-radius:7px;
+    border:1px solid rgba(242,101,34,.38);background:rgba(242,101,34,.11);cursor:pointer;
+    white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+  .ai-buy-pill:hover{color:#fff;border-color:rgba(242,101,34,.7);background:rgba(242,101,34,.22)}
+  .ai-turn-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .ai-msg-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:9px;
+    font-size:12.5px;font-weight:600;text-decoration:none;cursor:pointer;
+    border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#f4f4f6;
+    transition:border-color .15s,background .15s,transform .1s}
+  .ai-msg-btn:hover{border-color:rgba(242,101,34,.55);background:rgba(242,101,34,.12);color:#fff}
+  .ai-msg-btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;text-decoration:none}
+  .ai-msg-btn.primary:hover{background:var(--primary-dark);border-color:var(--primary-dark);color:#fff}
+  .ai-msg-btn.approve{border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.13);color:#6ee7b7}
+  .ai-msg-btn.approve:hover{border-color:rgba(52,211,153,.75);background:rgba(52,211,153,.22);color:#ecfdf5}
+  .ai-msg-btn:disabled{opacity:.48;cursor:not-allowed}
+  .ai-quota-banner{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:10px 14px;border-radius:12px;background:#14100d;border:1px solid rgba(242,101,34,.42);
+    font-size:12.5px;color:#f5d0b5}
+  .ai-quota-banner-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .ai-quota-banner-info strong{color:#fff;font-size:13px;font-weight:650}
+  .ai-quota-timer{font-variant-numeric:tabular-nums;color:#ff9c58;font-weight:700}
+  .ai-comp-extras{display:flex;flex-direction:column;gap:8px;padding:8px 13px 0}
+  .ai-comp-extras:empty,.ai-comp-extras[hidden]{display:none}
+  .ai-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .ai-actions .btn-export,.ai-actions .btn-clear{border-radius:8px;padding:7px 12px;font-size:12.5px}
+  .ai-composer textarea{width:100%;border:none;border-radius:0;background:transparent;box-shadow:none;
+    min-height:46px;max-height:180px;resize:none;padding:12px 15px 6px;font-size:14.5px;line-height:1.5;color:var(--text)}
+  .ai-composer textarea:focus{border:none;box-shadow:none}
+  .ai-comp-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px 10px 12px}
+  .ai-comp-left{display:flex;align-items:center;gap:10px;min-width:0}
+  .ai-kbd-hint{font-size:11.5px;color:#5e5e68;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ai-status{padding:0;border-radius:0;background:none;font-size:12px;color:#9a9aa4;line-height:1.4}
   #aiStatusPill:empty{display:none}
-  .ai-dock{width:100%;max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
-  .ai-status.running,.ai-status.queued{color:#fbbf24}
-  .ai-status.preview{color:#34d399}
-  .ai-status.building{color:#F26522}
-  .ai-status.done{color:#34d399}
+  .ai-status.running,.ai-status.queued,.ai-status.thinking{color:#d4d4dc}
+  .ai-status.preview,.ai-status.done{color:#34d399}
+  .ai-status.building,.ai-status.checking,.ai-status.packaging{color:#f4a26e}
   .ai-status.failed,.ai-status.cancelled{color:#f87171}
+  @media (max-width:1100px){
+    .ai-side{border-left:none;padding-left:0;border-top:1px solid rgba(255,255,255,.07);padding-top:16px}
+  }
+  @media (max-width:640px){
+    .ai-kbd-hint{display:none}
+  }
 
   #lic .plans-grid{display:flex;flex-direction:column;gap:9px;margin:6px 0 4px;text-align:left}
   #lic .plan{border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:13px 14px;background:rgba(255,255,255,.03);cursor:pointer;transition:border-color .15s,background .15s;display:flex;justify-content:space-between;align-items:center;gap:10px}
@@ -443,6 +524,38 @@
   #lic .plan.active-plan{border-color:rgba(52,211,153,.4);background:rgba(52,211,153,.06)}
   #lic .toggle-key{display:block;margin:10px auto 0;font-size:12px;color:#888;text-decoration:underline;cursor:pointer;background:none;border:none}
   #lic .toggle-key:hover{color:#fff}
+
+  #aiBuyModal{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.76);backdrop-filter:blur(6px);
+    display:none;align-items:center;justify-content:center;padding:20px}
+  #aiBuyModal.open{display:flex}
+  #aiBuyModal .buy-box{background:#121216;border:1px solid rgba(255,255,255,.12);border-radius:16px;
+    max-width:460px;width:100%;padding:22px;box-shadow:0 24px 64px rgba(0,0,0,.6);display:flex;flex-direction:column;gap:14px}
+  #aiBuyModal .buy-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  #aiBuyModal .buy-head h3{margin:0;font-size:17px;font-weight:700;color:#fff}
+  #aiBuyModal .buy-close{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#a1a1aa;
+    width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;line-height:1}
+  #aiBuyModal .buy-close:hover{color:#fff;border-color:rgba(255,255,255,.25)}
+  #aiBuyModal .buy-stat{font-size:12.5px;color:#9a9aa4;background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px 12px;line-height:1.5}
+  #aiBuyModal .buy-packs{display:flex;flex-direction:column;gap:8px}
+  #aiBuyModal .buy-pack{display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;
+    padding:11px 13px;border-radius:11px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.025);
+    color:#fff;cursor:pointer;transition:border-color .15s,background .15s}
+  #aiBuyModal .buy-pack:hover{border-color:rgba(242,101,34,.5)}
+  #aiBuyModal .buy-pack.on{border-color:#F26522;background:rgba(242,101,34,.1)}
+  #aiBuyModal .buy-pack-t{font-size:13.5px;font-weight:650;color:#fff}
+  #aiBuyModal .buy-pack-d{font-size:12px;color:#8e8e98;margin-top:2px}
+  #aiBuyModal .buy-pack-p{font-size:15px;font-weight:700;color:#ff9c58;white-space:nowrap}
+  #aiBuyModal .buy-methods{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  #aiBuyModal .buy-m{padding:8px 6px;border-radius:9px;border:1px solid rgba(255,255,255,.11);
+    background:rgba(255,255,255,.025);color:#c4c4cc;font-size:12px;font-weight:600;cursor:pointer;text-align:center}
+  #aiBuyModal .buy-m:hover{border-color:rgba(242,101,34,.45);color:#fff}
+  #aiBuyModal .buy-m.on{border-color:#F26522;background:rgba(242,101,34,.14);color:#fff}
+  #aiBuyModal .buy-msg{font-size:12.5px;min-height:18px;color:#f5d0b5;line-height:1.45}
+  #aiBuyModal .buy-go{width:100%;padding:11px 14px;border-radius:10px;border:none;background:var(--primary);
+    color:#fff;font-size:13.5px;font-weight:650;cursor:pointer}
+  #aiBuyModal .buy-go:hover{background:var(--primary-dark)}
+  #aiBuyModal .buy-go:disabled{opacity:.5;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -697,33 +810,69 @@
                 <g class="eye"><rect x="117" y="58" width="10" height="25" rx="5" fill="#fff"/></g>
               </svg>
               <div class="ai-greet" data-i18n="greet">Привет! Отличный день,<br>чтобы сделать сайт</div>
+              <div class="ai-starters" id="aiStarters">
+                <button type="button" class="ai-starter" data-prompt="Собери одностраничный сайт для кофейни в Москве без контактов, в стиле editorial" data-i18n="st_coffee">Сайт для кофейни в Москве</button>
+                <button type="button" class="ai-starter" data-prompt="Сделай лендинг для автосервиса с прайсом услуг, гарантией и блоком FAQ" data-i18n="st_auto">Лендинг автосервиса</button>
+                <button type="button" class="ai-starter" data-prompt="Сделай сайт-визитку для стоматологии со спокойной светлой палитрой и записью" data-i18n="st_med">Сайт для клиники</button>
+              </div>
             </div>
             <div class="ai-chat" id="aiChat" hidden></div>
             <div class="ai-dock">
-              <div class="ai-chips" id="aiChips" hidden></div>
-              <div class="ai-actions" style="display:flex;gap:8px;flex-wrap:wrap">
-                <a class="btn-clear" id="aiOpenPreview" style="display:none" href="#" target="_blank" rel="noopener">Открыть превью</a>
-                <button type="button" class="btn-export" id="aiApprove" style="display:none">Одобрить и собрать</button>
-                <button type="button" class="btn-export" id="aiEditLayout" style="display:none">Изменить макет</button>
-                <button type="button" class="btn-export" id="aiExport" style="display:none">Скачать ZIP</button>
+              <div class="ai-stage-bar" id="aiStageBar" hidden>
+                <div class="ai-stages" id="aiStages">
+                  <span class="ai-stage-tag" data-stage="thinking"><span class="st-dot"></span><span data-i18n="stage_thinking">Думаю</span></span>
+                  <span class="ai-stage-sep">›</span>
+                  <span class="ai-stage-tag" data-stage="building"><span class="st-dot"></span><span data-i18n="stage_building">Собираю</span></span>
+                  <span class="ai-stage-sep">›</span>
+                  <span class="ai-stage-tag" data-stage="checking"><span class="st-dot"></span><span data-i18n="stage_checking">Проверяю шедевр</span></span>
+                  <span class="ai-stage-sep">›</span>
+                  <span class="ai-stage-tag" data-stage="packaging"><span class="st-dot"></span><span data-i18n="stage_packaging">Упаковываю</span></span>
+                </div>
+                <div class="ai-status" id="aiStatusPill"></div>
               </div>
-              <div class="ai-pick">
-                <span class="pt" data-i18n="agent_pick">Выбери и настрой AI агента</span>
-                <a class="pb" href="/static/settings.html" data-i18n="agent_pick_btn">Настройка</a>
+              <div class="ai-quota-banner" id="aiQuotaBanner" hidden>
+                <div class="ai-quota-banner-info">
+                  <strong id="aiQuotaBannerTitle">Дневной лимит Fracs AI исчерпан</strong>
+                  <span>Обновление через <span class="ai-quota-timer" id="aiQuotaTimer">—</span> · либо докупите токены без ожидания</span>
+                </div>
+                <button type="button" class="ai-msg-btn primary" id="aiQuotaBuyBtn">Докупить лимиты</button>
               </div>
-              <div class="ai-input-bar">
-                <button type="button" class="btn-clip" id="aiAttach" title="Прикрепить файл (текст уйдёт в промт, картинка — как изображение)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-                <input type="file" id="aiFile" multiple hidden>
-                <textarea id="aiPrompt" data-i18n-ph="prompt_ph" placeholder="Давай сделаем шедевр" rows="1"></textarea>
-                <button type="button" class="ai-send" id="aiSend" data-i18n-title="ai_send_title" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+              <div class="ai-composer">
+                <div class="ai-comp-head">
+                  <div class="ai-agent-meta">
+                    <span class="ai-agent-label" id="aiAgentLabel">AI-агент</span>
+                    <span class="ai-quota-label" id="aiQuotaLabel"></span>
+                  </div>
+                  <div class="ai-head-acts">
+                    <button type="button" class="ai-buy-pill" id="aiBuyBtn" style="display:none">Докупить лимиты</button>
+                    <a class="ai-cfg-link" href="/static/settings.html" data-i18n="agent_pick_btn">Настроить →</a>
+                  </div>
+                </div>
+                <div class="ai-comp-extras" id="aiCompExtras" hidden>
+                  <div class="ai-chips" id="aiChips" hidden></div>
+                  <div class="ai-actions" id="aiActions" hidden>
+                    <a class="btn-clear" id="aiOpenPreview" style="display:none" href="#" target="_blank" rel="noopener">Открыть превью</a>
+                    <button type="button" class="btn-export" id="aiApprove" style="display:none">Одобрить и собрать</button>
+                    <button type="button" class="btn-export" id="aiEditLayout" style="display:none">Изменить макет</button>
+                    <button type="button" class="btn-export" id="aiExport" style="display:none">Скачать ZIP</button>
+                  </div>
+                </div>
+                <textarea id="aiPrompt" data-i18n-ph="prompt_ph" placeholder="Опишите бизнес и какой сайт нужен…" rows="1"></textarea>
+                <div class="ai-comp-foot">
+                  <div class="ai-comp-left">
+                    <button type="button" class="btn-clip" id="aiAttach" title="Прикрепить файл (текст уйдёт в промт, картинка — как изображение)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                    <input type="file" id="aiFile" multiple hidden>
+                    <span class="ai-kbd-hint" data-i18n="kbd_hint">Enter — отправить · Shift+Enter — перенос</span>
+                  </div>
+                  <button type="button" class="ai-send" id="aiSend" data-i18n-title="ai_send_title" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+                </div>
               </div>
-              <div class="ai-status" id="aiStatusPill" style="font-size:12px;color:#888"></div>
             </div>
           </div>
           <div class="ai-side">
             <div class="ai-desc" data-i18n="ai_desc">Настройте своего AI агента за пару минут. Нейросеть создаёт сайты по карточкам бизнеса или промту и выдаёт открытку с QR-кодом. Один общий промт Fracs защищает от «нейрослопа», ваш ExtraПромт добавляется поверх.</div>
             <div>
-              <h3 style="margin:0 0 10px;font-size:15px;color:var(--text)" data-i18n="files_title">Передача файлов</h3>
+              <h3 data-i18n="files_title">Передача файлов</h3>
               <div class="ai-side-h" data-i18n="files_agent">Файлы агента</div>
               <div class="ai-files" id="aiFilesOut">
                 <div class="ai-files-empty">Появятся здесь после одобрения: site.zip и открытка с QR</div>
@@ -755,6 +904,25 @@
   </div>
   <p style="margin:14px 0 0;font-size:12.5px"><a id="lic-site" href="#" target="_blank" rel="noopener">Открыть кабинет на сайте</a></p>
 </div></div>
+
+<!-- In-app token top-up modal -->
+<div id="aiBuyModal" role="dialog" aria-modal="true" aria-labelledby="aiBuyTitle">
+  <div class="buy-box">
+    <div class="buy-head">
+      <h3 id="aiBuyTitle">Докупить лимиты Fracs AI</h3>
+      <button type="button" class="buy-close" id="aiBuyClose" title="Закрыть">×</button>
+    </div>
+    <div class="buy-stat" id="aiBuyStat">Загружаю лимиты и доступные пакеты…</div>
+    <div class="buy-packs" id="aiBuyPacks"></div>
+    <div class="buy-methods" id="aiBuyMethods">
+      <button type="button" class="buy-m on" data-method="cryptobot">CryptoBot</button>
+      <button type="button" class="buy-m" data-method="xrocket">xRocket</button>
+      <button type="button" class="buy-m" data-method="requisites">Реквизиты</button>
+    </div>
+    <div class="buy-msg" id="aiBuyMsg"></div>
+    <button type="button" class="buy-go" id="aiBuySubmit">Перейти к оплате</button>
+  </div>
+</div>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -784,8 +952,11 @@
       st_ready:'Ready', st_running:'Parsing…', st_done:'Done', st_stopped:'Stopped', st_error:'Error', mark:'Contacted', mark_on:'<span class="ic-inline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> Contacted', note_ph:'Note…', hist_open:'Open', hist_merge:' Merge selected (dedup)', recs_short:'rec.', more:'more',
       a_need_url:'Provide at least one 2GIS link', a_need_query:'Enter a query', a_need_city:'Select at least one city', a_server:'Server unavailable: ', a_start_err:'Start error', a_need_select:'Check the records to merge', a_merge_err:'Merge error', c_del:'Delete this record from history?',
       lt_lessons:'Training', lt_strat:'Strategies', next_lesson:'Next lesson ',
-      settings_btn:'Settings', agent_pick:'Pick and tune your AI agent', agent_pick_btn:'Set up',
-      greet:'Hi! Great day,<br>to build a website', prompt_ph:'Let\'s make a masterpiece', ai_send_title:'Send',
+      settings_btn:'Settings', agent_pick:'AI Agent', agent_pick_btn:'Configure →',
+      greet:'Hi! Great day,<br>to build a website', prompt_ph:'Describe the business and site you want…', ai_send_title:'Send',
+      kbd_hint:'Enter — send · Shift+Enter — new line',
+      stage_thinking:'Thinking', stage_building:'Building', stage_checking:'Auditing', stage_packaging:'Packaging',
+      st_coffee:'Coffee shop website', st_auto:'Auto service landing', st_med:'Dental clinic site',
       ai_desc:'Set up your AI agent in a couple of minutes. The neural network builds websites from business cards or a prompt and produces a postcard with a QR code. One shared Fracs prompt protects from “neuroslop”, your ExtraPrompt is added on top.',
       files_title:'File transfer', files_agent:'Agent files', files_my:'My files (in chat)',
       tg_ai_hint:'Enter a phrase — FracsAI will generate 20 similar ones and parse them after your approval.', tg_d1:'1 day', tg_d2:'2 days', tg_d3:'3 days', tg_days:'Period', tg_gen_btn:'Generate similar', tg_phrase_hint:'One phrase per line. Multiple phrases allowed.', tg_phrase_label:'Phrases', owners_btn:'Business owners', owners_title:'Third pass: look up company owners (director / sole trader) in open registries (PRO и Ultra)', auto_owners:'Look up business owners after parsing'
@@ -825,8 +996,11 @@
       a_need_select:'Отметьте галочками записи для объединения', a_merge_err:'Ошибка объединения',
       c_del:'Удалить эту запись из истории?',
       lt_lessons:'Обучение', lt_strat:'Стратегии', next_lesson:'Следующий урок ',
-      settings_btn:'Настройки', agent_pick:'Выбери и настрой AI агента', agent_pick_btn:'Настройка',
-      greet:'Привет! Отличный день,<br>чтобы сделать сайт', prompt_ph:'Давай сделаем шедевр', ai_send_title:'Отправить',
+      settings_btn:'Настройки', agent_pick:'AI-агент', agent_pick_btn:'Настроить →',
+      greet:'Привет! Отличный день,<br>чтобы сделать сайт', prompt_ph:'Опишите бизнес и какой сайт нужен…', ai_send_title:'Отправить',
+      kbd_hint:'Enter — отправить · Shift+Enter — перенос',
+      stage_thinking:'Думаю', stage_building:'Собираю', stage_checking:'Проверяю шедевр', stage_packaging:'Упаковываю',
+      st_coffee:'Сайт для кофейни в Москве', st_auto:'Лендинг автосервиса', st_med:'Сайт для клиники',
       ai_desc:'Настройте своего AI агента за пару минут. Нейросеть создаёт сайты по карточкам бизнеса или промту и выдаёт открытку с QR-кодом. Один общий промт Fracs защищает от «нейрослопа», ваш ExtraПромт добавляется поверх.',
       files_title:'Передача файлов', files_agent:'Файлы агента', files_my:'Мои файлы (в чате)',
       tg_ai_hint:'Введите фразу — FracsAI сделает 20 похожих и по ним будет идти парсинг после вашего одобрения.', tg_d1:'За 1 день', tg_d2:'За 2 дня', tg_d3:'За 3 дня', tg_days:'Период', tg_gen_btn:'Сгенерировать похожие', tg_phrase_hint:'По одной фразе на строку. Можно несколько фраз.', tg_phrase_label:'Фразы', owners_btn:'Владельцы', owners_title:'Третий проход: поиск владельцев компании (директор / ИП) в открытых реестрах (PRO и Ultra)', auto_owners:'искать владельцев после парсинга'
@@ -847,6 +1021,7 @@
     if(GEN&&GEN.loaded){renderGenCities();renderGenDists();renderGenRubrics();renderGenQueryList();
       $('genRubBtn').textContent=GEN.rubCode?GEN.rubLabel:t('no_rubric');}
     setStatus(lastStatus); loadHistory(); renderGrid();
+    if(typeof window.refreshAiMeta==='function')window.refreshAiMeta();
     try{localStorage.setItem('lang',LANG);}catch(_){}
   }
   $('langbtns').addEventListener('click',function(e){var b=e.target.closest('button'); if(b)applyLang(b.getAttribute('data-lang'));});
@@ -1591,8 +1766,23 @@
           genPhrases=d.phrases||[];
           $('tgMsg').textContent='FracsAI предложил '+genPhrases.length+' фраз. Отмечайте нужные («+») или добавьте все — фразы встанут в поле слева, потом «Запустить».';
           renderGenPhrases();
+          if(typeof window.refreshAiUsage==='function')window.refreshAiUsage();
         }else{
-          $('tgMsg').textContent=(d&&d.pro_required)?'Fracs AI доступен только на тарифе Ultra.':((d&&d.error)||'Не удалось сгенерировать фразы.');
+          if(d&&d.pro_required){$('tgMsg').textContent='Fracs AI доступен только на тарифе Ultra.';}
+          else if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет|фраз/i.test(d.error||''))){
+            var timerNote='';
+            if(d.reset_at){
+              var s=Math.max(0,Math.ceil((d.reset_at-Date.now())/1000));
+              var hh=Math.floor(s/3600),mm=Math.floor((s%3600)/60);
+              timerNote=' (обновление через '+hh+'ч '+mm+'м)';
+            }
+            $('tgMsg').innerHTML=esc(d.error||'Лимит исчерпан.')+esc(timerNote)+' <button type="button" class="dl-fmt" id="tgBuyLimitBtn" style="margin-left:8px;color:#ff9c58;border-color:rgba(242,101,34,.45)">Докупить лимиты</button>';
+            var bBtn=$('tgBuyLimitBtn');
+            if(bBtn&&typeof window.openAiBuyModal==='function')bBtn.onclick=function(){window.openAiBuyModal();};
+            if(typeof window.handleAiQuotaError==='function')window.handleAiQuotaError(d.error,d.reset_at||0,d.error_code||'');
+          }else{
+            $('tgMsg').textContent=(d&&d.error)||'Не удалось сгенерировать фразы.';
+          }
         }
       })
       .catch(function(){$('tgMsg').textContent='Нет связи с программой.';})
@@ -1618,13 +1808,96 @@
    Fracs AI включается только на тарифе Ultra. */
 (function(){
   var $=function(id){return document.getElementById(id)};
+  var esc=window.esc||function(s){return (s==null?'':String(s)).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});};
   function ls(k){try{return localStorage.getItem(k)||'';}catch(e){return '';}}
-  function addMsg(cls,text){
+
+  function safePreviewHref(u){
+    u=String(u||'').trim();
+    if(!u)return '';
+    if(/^\/(sites|api\/ai)\/[A-Za-z0-9._\-\/]+$/i.test(u))return u;
+    if(/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(u))return u;
+    return '';
+  }
+
+  function linkifySafe(text){
+    var s=esc(text||'');
+    return s.replace(/(https?:\/\/[^\s<>"')]+)/g,function(u){
+      return '<a href="'+u+'" target="_blank" rel="noopener">'+u+'</a>';
+    });
+  }
+
+  function addMsg(cls,text,meta){
     var c=$('aiChat'),m=$('aiMascot');
     if(c&&c.hidden)c.hidden=false;
     if(m)m.style.display='none';
-    var msg=document.createElement('div');msg.className='ai-msg '+cls;msg.textContent=text;c.appendChild(msg);c.scrollTop=c.scrollHeight;
+    var msg=document.createElement('div');
+    msg.className='ai-msg '+cls;
+    if(cls==='bot'){
+      var who=(meta&&meta.who)||'Fracs AI';
+      var trace=(meta&&meta.trace)?'<span class="ai-turn-trace">· '+esc(meta.trace)+'</span>':'';
+      var actionsHtml='';
+      if(meta&&meta.actions&&meta.actions.length){
+        actionsHtml='<div class="ai-turn-actions">'+meta.actions.map(function(a){
+          var clsBtn='ai-msg-btn'+(a.primary?' primary':'')+(a.cls?(' '+a.cls):'');
+          if(a.type==='link'){
+            var href=safePreviewHref(a.href);
+            if(!href)return '';
+            return '<a class="'+clsBtn+'" href="'+esc(href)+'" target="_blank" rel="noopener">'+esc(a.label)+'</a>';
+          }
+          return '<button type="button" class="'+clsBtn+'" data-ai-act="'+esc(a.act||'')+'">'+esc(a.label)+'</button>';
+        }).join('')+'</div>';
+      }
+      msg.innerHTML='<div class="ai-turn-head"><span class="ai-turn-mark"></span><span class="ai-turn-who">'+esc(who)+'</span>'+trace+'</div>'+
+        '<div class="ai-turn-body">'+linkifySafe(text)+'</div>'+actionsHtml;
+    }else if(cls==='sys'){
+      msg.innerHTML=linkifySafe(text);
+    }else{
+      msg.textContent=text;
+    }
+    c.appendChild(msg);
+    c.scrollTop=c.scrollHeight;
+    return msg;
   }
+
+  var STAGE_ORDER=['thinking','building','checking','packaging'];
+  function setAiStage(stage,detailText){
+    var bar=$('aiStageBar'),pill=$('aiStatusPill');
+    if(!bar)return;
+    if(!stage){
+      bar.hidden=true;
+      if(pill){pill.textContent='';pill.className='ai-status';}
+      [].forEach.call(bar.querySelectorAll('.ai-stage-tag'),function(el){el.classList.remove('is-active','is-done');});
+      return;
+    }
+    bar.hidden=false;
+    var activeIdx=STAGE_ORDER.indexOf(stage);
+    if(stage==='preview') activeIdx=3; // thinking/building/checking завершены, ждёт одобрения для packaging
+    if(stage==='done') activeIdx=4;
+    [].forEach.call(bar.querySelectorAll('.ai-stage-tag'),function(el){
+      var st=el.getAttribute('data-stage');
+      var idx=STAGE_ORDER.indexOf(st);
+      el.classList.remove('is-active','is-done');
+      if(stage==='done' || (stage==='preview' && idx<3) || (activeIdx>=0 && idx<activeIdx)){
+        el.classList.add('is-done');
+      }else if(activeIdx>=0 && idx===activeIdx && stage!=='preview'){
+        el.classList.add('is-active');
+      }
+    });
+    if(pill){
+      pill.className='ai-status '+stage;
+      if(detailText!==undefined) pill.textContent=detailText;
+    }
+  }
+
+  function syncComposerExtras(){
+    var extras=$('aiCompExtras'),chips=$('aiChips'),acts=$('aiActions');
+    if(!extras)return;
+    var hasChips=chips&&!chips.hidden;
+    var hasActs=acts&&[].some.call(acts.children,function(el){return el.style.display!=='none';});
+    if(acts)acts.hidden=!hasActs;
+    extras.hidden=!(hasChips||hasActs);
+  }
+
   var STYLE_NAMES={auto:'«Цех» — авто',coffee:'«Обжарка» — кафе',medical:'«Доверие» — медицина',beauty:'«Латунь» — барбершоп',build:'«Бетон» — стройка/мебель',neutral:'«Люкс» — премиум'};
   var ICON={zip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>',
     png:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>',
@@ -1637,12 +1910,12 @@
     var box=$(boxId); if(!box)return;
     if(!files||!files.length){box.innerHTML='<div class="ai-files-empty">'+emptyText+'</div>';return;}
     box.innerHTML=files.map(function(f,ix){
-      var ic=f.type==='png'||f.kind==='image'?ICON.img:(f.type==='zip'?ICON.zip:(f.kind==='text'?ICON.file:ICON.file));
+      var ic=f.type==='png'||f.kind==='image'?ICON.img:(f.type==='zip'?ICON.zip:ICON.file);
       var right=downloadable
         ?'<span class="fup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span>'
         :'<button type="button" data-rm="'+ix+'" title="Убрать">×</button>';
-      return '<a class="ai-file"'+(f.url?' href="'+f.url+'" download':'')+'><span class="fic">'+ic+'</span>'+
-        '<span class="fn">'+f.name+'</span><span class="cs" style="margin-left:auto;color:var(--muted);font-size:11.5px">'+fmtSize(f.size)+'</span>'+
+      return '<a class="ai-file"'+(f.url?' href="'+esc(f.url)+'" download':'')+'><span class="fic">'+ic+'</span>'+
+        '<span class="fn">'+esc(f.name)+'</span><span class="cs" style="margin-left:auto;color:var(--muted);font-size:11.5px">'+fmtSize(f.size)+'</span>'+
         right+'</a>';
     }).join('');
     [].forEach.call(box.querySelectorAll('[data-rm]'),function(btn){
@@ -1658,7 +1931,12 @@
   function renderChips(){
     var wrap=$('aiChips'),clip=$('aiAttach');
     if(!wrap)return;
-    if(!uploads.length){wrap.hidden=true;wrap.innerHTML='';if(clip)clip.classList.remove('has');return;}
+    if(!uploads.length){
+      wrap.hidden=true;wrap.innerHTML='';
+      if(clip)clip.classList.remove('has');
+      syncComposerExtras();
+      return;
+    }
     wrap.hidden=false;if(clip)clip.classList.add('has');
     wrap.innerHTML=uploads.map(function(u,ix){
       var ic=u.kind==='image'?ICON.img:ICON.file;
@@ -1669,6 +1947,7 @@
       btn.addEventListener('click',function(){removeUpload(+btn.getAttribute('data-chip'));});
     });
     renderFileList('aiFilesIn',uploads,'Пусто — нажмите скрепку в чате и приложите прайс, фото или текст',false);
+    syncComposerExtras();
   }
   function refreshServerUploads(){
     fetch('/api/ai/uploads/'+sessionId).then(function(r){return r.json()}).then(function(d){
@@ -1676,7 +1955,6 @@
     }).catch(function(){});
   }
   function removeUpload(ix){
-    /* полный список приходит с бэкенда; снимаем по совпадению имени */
     var gone=uploads[ix];if(!gone)return;
     uploads.splice(ix,1);renderChips();
     fetch('/api/ai/uploads/'+sessionId,{method:'DELETE'}).then(refreshServerUploads).catch(function(){});
@@ -1692,39 +1970,264 @@
       if(!fs.length)return;
       var fd=new FormData();fd.append('session_id',sessionId);
       fs.forEach(function(f){fd.append('files',f,f.name);});
-      if($('aiStatusPill'))$('aiStatusPill').textContent='Загружаю файлы…';
+      setAiStage('thinking','Загружаю вложения…');
       fetch('/api/ai/upload',{method:'POST',body:fd})
         .then(function(r){return r.json()})
         .then(function(d){
+          setAiStage(null);
           if(d&&d.ok){
             addMsg('sys','Приложено: '+d.files.map(function(f){return f.name;}).join(', ')+'. Отправьте сообщение — файлы уйдут в контекст.');
             refreshServerUploads();
           }else{addMsg('sys','Не удалось загрузить файлы: '+(d&&d.error||'ошибка'));}
-        }).catch(function(){addMsg('sys','Нет связи с бэкендом при загрузке файлов.');});
+        }).catch(function(){setAiStage(null);addMsg('sys','Нет связи с бэкендом при загрузке файлов.');});
     });
   }
 
-  /* ── провайдеры и модели ──
-     Настройки агента живут на отдельной странице (/static/settings.html) и
-     сохраняются в localStorage; здесь только читаем их. */
-  var providers=[],currentProvider='';
+  /* ── провайдеры, модели, квота, таймер и докупка лимитов ── */
+  var providers=[],currentProvider='',lastUsage=null,quotaResetAt=0,quotaTimerId=null;
+  var selectedPackId='',selectedPayMethod='cryptobot',buyPollId=null;
+
+  function fmtCountdown(ms){
+    var sec=Math.max(0,Math.ceil(ms/1000));
+    var h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+    var pad=function(n){return n<10?('0'+n):String(n);};
+    return pad(h)+':'+pad(m)+':'+pad(s);
+  }
+
+  function tickQuotaCountdown(){
+    var banner=$('aiQuotaBanner'),timerEl=$('aiQuotaTimer'),q=$('aiQuotaLabel');
+    if(!quotaResetAt||Date.now()>=quotaResetAt){
+      if(quotaTimerId){clearInterval(quotaTimerId);quotaTimerId=null;}
+      quotaResetAt=0;
+      if(banner)banner.hidden=true;
+      refreshAiUsage();
+      return;
+    }
+    var txt=fmtCountdown(quotaResetAt-Date.now());
+    if(timerEl)timerEl.textContent=txt;
+    if(q&&currentProvider==='Fracs AI'&&lastUsage&&!(lastUsage.balance>0)&&lastUsage.complexityLeft<=0){
+      q.textContent='Лимит исчерпан · '+txt;
+    }
+  }
+
+  function startQuotaCountdown(resetAtMs, title){
+    var banner=$('aiQuotaBanner'),titleEl=$('aiQuotaBannerTitle');
+    if(!resetAtMs||resetAtMs<=Date.now()){
+      resetAtMs=Date.now()+60*1000;
+    }
+    quotaResetAt=resetAtMs;
+    if(titleEl&&title)titleEl.textContent=title;
+    if(banner)banner.hidden=false;
+    if(!quotaTimerId)quotaTimerId=setInterval(tickQuotaCountdown,1000);
+    tickQuotaCountdown();
+  }
+
+  function handleAiQuotaError(errText, resetAtMs, errCode){
+    var isQuota=Boolean(resetAtMs)||/quota_|rate_limited/i.test(errCode||'')||/лимит|токен|сложност|бюджет|фраз/i.test(errText||'');
+    if(!isQuota)return false;
+    var title=/фраз/i.test(errText||'')?'Лимит генерации фраз исчерпан':'Лимит Fracs AI исчерпан';
+    if(resetAtMs){startQuotaCountdown(resetAtMs,title);}
+    else{
+      var b=$('aiQuotaBanner'),t=$('aiQuotaBannerTitle'),tm=$('aiQuotaTimer');
+      if(t)t.textContent=title;
+      if(tm)tm.textContent='скоро';
+      if(b)b.hidden=false;
+    }
+    return true;
+  }
+
+  function renderBuyModalState(){
+    var stat=$('aiBuyStat'),packsEl=$('aiBuyPacks'),methodsEl=$('aiBuyMethods'),go=$('aiBuySubmit');
+    if(!lastUsage||!lastUsage.ok){
+      if(stat)stat.textContent='Чтобы докупить токены Fracs AI, войдите по активной лицензии и проверьте интернет.';
+      if(packsEl)packsEl.innerHTML='';
+      if(go)go.disabled=true;
+      return;
+    }
+    var bal=Number(lastUsage.balance||0);
+    var cxLeft=Number(lastUsage.complexityLeft||0), cxLim=Number(lastUsage.dailyComplexityLimit||0);
+    var phLeft=Number(lastUsage.phrasesLeft||0), phLim=Number(lastUsage.dailyPhrasesLimit||0);
+    if(stat){
+      stat.innerHTML='Баланс токенов: <b>'+esc(bal.toLocaleString('ru-RU'))+'</b> · '+
+        'Сайты: <b>'+cxLeft+' / '+cxLim+'</b> ед. · '+
+        'Фразы TG: <b>'+phLeft+' / '+phLim+'</b>';
+    }
+    var packs=lastUsage.packs||[];
+    if(!selectedPackId&&packs.length)selectedPackId=packs[0].id;
+    if(packsEl){
+      packsEl.innerHTML=packs.map(function(p){
+        var on=p.id===selectedPackId;
+        var price=p.priceRub?p.priceRub.toLocaleString('ru-RU')+' ₽':'—';
+        return '<button type="button" class="buy-pack'+(on?' on':'')+'" data-pack="'+esc(p.id)+'">'+
+          '<div><div class="buy-pack-t">'+esc(p.title)+'</div><div class="buy-pack-d">'+esc(p.description||'')+'</div></div>'+
+          '<div class="buy-pack-p">'+esc(price)+'</div></button>';
+      }).join('');
+      [].forEach.call(packsEl.querySelectorAll('[data-pack]'),function(btn){
+        btn.addEventListener('click',function(){
+          selectedPackId=btn.getAttribute('data-pack')||'';
+          renderBuyModalState();
+        });
+      });
+    }
+    var pm=lastUsage.paymentMethods||{cryptobot:true,xrocket:true,requisites:true};
+    if(methodsEl){
+      [].forEach.call(methodsEl.querySelectorAll('[data-method]'),function(btn){
+        var m=btn.getAttribute('data-method');
+        var enabled=pm[m]!==false;
+        btn.style.display=enabled?'':'none';
+        btn.classList.toggle('on',m===selectedPayMethod&&enabled);
+      });
+      if(pm[selectedPayMethod]===false){
+        selectedPayMethod=pm.cryptobot?'cryptobot':(pm.xrocket?'xrocket':'requisites');
+        [].forEach.call(methodsEl.querySelectorAll('[data-method]'),function(btn){
+          btn.classList.toggle('on',btn.getAttribute('data-method')===selectedPayMethod);
+        });
+      }
+    }
+    if(go)go.disabled=!packs.length;
+  }
+
+  function openExternalUrl(u){
+    if(!u)return;
+    fetch('/api/open',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})})
+      .then(function(r){if(!r.ok)window.open(u,'_blank','noopener');})
+      .catch(function(){window.open(u,'_blank','noopener');});
+  }
+
+  function closeAiBuyModal(){
+    var modal=$('aiBuyModal');
+    if(modal)modal.classList.remove('open');
+    if(buyPollId){clearInterval(buyPollId);buyPollId=null;}
+  }
+
+  function openAiBuyModal(){
+    var modal=$('aiBuyModal'),msg=$('aiBuyMsg');
+    if(!modal)return;
+    if(msg)msg.textContent='';
+    modal.classList.add('open');
+    renderBuyModalState();
+    refreshAiUsage(true);
+  }
+
+  function bindBuyModal(){
+    var closeBtn=$('aiBuyClose'),modal=$('aiBuyModal'),methodsEl=$('aiBuyMethods'),go=$('aiBuySubmit');
+    if(closeBtn)closeBtn.addEventListener('click',closeAiBuyModal);
+    if(modal)modal.addEventListener('click',function(e){if(e.target===modal)closeAiBuyModal();});
+    if(methodsEl){
+      methodsEl.addEventListener('click',function(e){
+        var b=e.target.closest('[data-method]'); if(!b)return;
+        selectedPayMethod=b.getAttribute('data-method')||'cryptobot';
+        renderBuyModalState();
+      });
+    }
+    if(go){
+      go.addEventListener('click',function(){
+        if(!selectedPackId)return;
+        var msg=$('aiBuyMsg'),orig=go.textContent;
+        var prevBal=lastUsage?Number(lastUsage.balance||0):0;
+        go.disabled=true;go.textContent='Создаю счёт…';
+        if(msg)msg.textContent='';
+        fetch('/api/ai/buy',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({packId:selectedPackId,method:selectedPayMethod})})
+          .then(function(r){return r.json()})
+          .then(function(d){
+            if(!d||!d.ok||!d.confirmationUrl){
+              if(msg)msg.textContent=(d&&d.message)||'Не удалось создать счёт на оплату.';
+              return;
+            }
+            openExternalUrl(d.confirmationUrl);
+            if(msg)msg.textContent=d.method==='requisites'
+              ?'Открыт чат поддержки в Telegram — после оплаты баланс обновится автоматически.'
+              :'Счёт открыт в браузере. Ожидаю подтверждение оплаты…';
+            if(buyPollId)clearInterval(buyPollId);
+            var tries=0;
+            buyPollId=setInterval(function(){
+              tries++;
+              if(tries>120){clearInterval(buyPollId);buyPollId=null;return;}
+              fetch('/api/ai/usage').then(function(r){return r.json()}).then(function(u){
+                if(u&&u.ok&&Number(u.balance||0)>prevBal){
+                  clearInterval(buyPollId);buyPollId=null;
+                  lastUsage=u;
+                  quotaResetAt=0;
+                  var b=$('aiQuotaBanner');if(b)b.hidden=true;
+                  refreshAiUsage();
+                  closeAiBuyModal();
+                  addMsg('sys','Баланс токенов пополнен: теперь '+Number(u.balance).toLocaleString('ru-RU')+' токенов.');
+                }
+              }).catch(function(){});
+            },2500);
+          })
+          .catch(function(){if(msg)msg.textContent='Нет связи с сервером оплаты.';})
+          .then(function(){go.disabled=false;go.textContent=orig;});
+      });
+    }
+    var b1=$('aiBuyBtn'),b2=$('aiQuotaBuyBtn');
+    if(b1)b1.addEventListener('click',openAiBuyModal);
+    if(b2)b2.addEventListener('click',openAiBuyModal);
+  }
+
+  function updateAgentMeta(){
+    var lbl=$('aiAgentLabel'),buyBtn=$('aiBuyBtn');
+    if(lbl){
+      var m=currentModel();
+      var shortModel=m?(m.split('/').pop()):'';
+      lbl.textContent=(currentProvider||'AI-агент')+(shortModel?(' · '+shortModel):'');
+    }
+    if(buyBtn)buyBtn.style.display=(currentProvider==='Fracs AI')?'':'none';
+    refreshAiUsage();
+  }
+  function refreshAiUsage(reRenderModal){
+    var q=$('aiQuotaLabel'),banner=$('aiQuotaBanner');
+    if(!q)return;
+    if(currentProvider!=='Fracs AI'){
+      q.textContent='';
+      if(banner)banner.hidden=true;
+      return;
+    }
+    fetch('/api/ai/usage').then(function(r){return r.json()}).then(function(d){
+      if(d&&d.ok){
+        lastUsage=d;
+        var skew=typeof d.now==='number'?(Date.now()-d.now):0;
+        var rst=d.complexityResetAt?(d.complexityResetAt+skew):0;
+        if(d.balance>0){
+          q.textContent='Баланс: '+d.balance.toLocaleString('ru-RU')+' ток.';
+          if(banner)banner.hidden=true;
+          quotaResetAt=0;
+        }else if(typeof d.complexityLeft==='number'&&typeof d.dailyComplexityLimit==='number'){
+          if(d.complexityLeft<=0){
+            startQuotaCountdown(rst,'Дневной лимит Fracs AI исчерпан');
+          }else{
+            var phTxt=(typeof d.phrasesLeft==='number')?(' · Фразы: '+d.phrasesLeft+'/'+d.dailyPhrasesLimit):'';
+            q.textContent='Сложность: '+d.complexityLeft+' / '+d.dailyComplexityLimit+' ед.'+phTxt;
+            if(banner&&!quotaResetAt)banner.hidden=true;
+          }
+        }
+        if(reRenderModal)renderBuyModalState();
+      }
+    }).catch(function(){});
+  }
+  window.refreshAiMeta=updateAgentMeta;
+  window.refreshAiUsage=refreshAiUsage;
+  window.openAiBuyModal=openAiBuyModal;
+  window.handleAiQuotaError=handleAiQuotaError;
+
   function loadProviders(){
     var saved=ls('fracsAiProvider');
     fetch('/api/ai/providers').then(function(r){return r.json()}).then(function(d){
       providers=(d&&d.providers)||[];
       var usable=providers.filter(function(p){return p.allowed!==false;});
       currentProvider=usable.some(function(p){return p.id===saved;})?saved:(usable[0]?usable[0].id:'Z.ai');
+      updateAgentMeta();
     }).catch(function(){
       currentProvider=saved||'Z.ai';
+      updateAgentMeta();
     });
   }
   function providerInfo(id){for(var i=0;i<providers.length;i++){if(providers[i].id===id)return providers[i];}return null;}
-  /* Ключ текущего провайдера из хранилища (Fracs AI ключ не нужен). */
   function activeKey(){
     if(currentProvider==='Fracs AI')return '';
     return ls('fracsAiKey:'+currentProvider);
   }
-  /* Модель текущего провайдера из хранилища; иначе первая из каталога провайдера. */
   function currentModel(){
     var info=providerInfo(currentProvider)||{};
     var m=ls('fracsAiModel:'+currentProvider);
@@ -1733,58 +2236,127 @@
   }
 
   /* ── статус и опрос задачи ── */
-  var currentJob=null, poller=null, seenLogs=0, previewShown=false, previewMsgShown=false, doneShown=false;
+  var currentJob=null, poller=null, seenLogs=0, previewShown=false, previewMsgShown=false, doneShown=false, approvingJob='';
   var chatHistory=[];
 
   function statusMsg(s){
-    return {queued:'В очереди…',running:'Генерируем сайт…',preview:'Готово превью — посмотрите и одобрите.',
-      building:'Собираем ZIP и открытку с QR…',done:'Готово! Файлы можно скачать справа.',
+    return {queued:'В очереди…',thinking:'Думаю над структурой…',running:'Генерируем сайт…',
+      building:'Собираю код и стили…',checking:'Проверяю шедевр…',
+      preview:'Готово превью — откройте и одобрите.',
+      packaging:'Собираю ZIP и открытку с QR…',done:'Шедевр готов! Файлы можно скачать справа.',
       failed:'Ошибка генерации.',cancelled:'Отменено.'}[s]||s;
+  }
+
+  function approveCurrentJob(triggerBtn){
+    if(!currentJob||approvingJob===currentJob)return;
+    approvingJob=currentJob;
+    if(triggerBtn)triggerBtn.disabled=true;
+    var apBtn=$('aiApprove'); if(apBtn)apBtn.disabled=true;
+    [].forEach.call(document.querySelectorAll('#aiChat [data-ai-act="approve"]'),function(b){b.disabled=true;});
+    addMsg('user','Одобряю — соберите ZIP и открытку.');
+    setAiStage('packaging','Упаковываю видеообзор, открытку с QR и ZIP…');
+    fetch('/api/ai/approve/'+currentJob,{method:'POST'}).then(function(r){return r.json()})
+      .then(function(d){
+        if(!d.ok){
+          approvingJob='';
+          if(apBtn)apBtn.disabled=false;
+          setAiStage(null);
+          addMsg('sys',d.error||'Не удалось начать сборку.');
+        }else{
+          addMsg('bot','Принято — упаковываю видеообзор, открытку с QR и архив сайта.',{who:(currentProvider||'Fracs AI'),trace:'Упаковываю'});
+        }
+      })
+      .catch(function(){
+        approvingJob='';
+        if(apBtn)apBtn.disabled=false;
+        setAiStage(null);
+        addMsg('sys','Нет связи.');
+      });
+  }
+
+  function enterEditMode(){
+    if(!currentJob){addMsg('sys','Сначала соберите макет.');return;}
+    var inp=$('aiPrompt'); if(inp)inp.focus();
+    var sv=ls('fracsAiStyle');
+    var stName=sv?(STYLE_NAMES[sv]||('«'+sv+'»')):'авто по рубрике';
+    addMsg('bot','Режим правки: напишите, что изменить в макете (и при желании смените стиль в настройках — сейчас: '+stName+') и отправьте. Сайт обновится поверх текущей версии, а прежняя сохранится.',{who:(currentProvider||'Fracs AI')});
   }
 
   function poll(){
     if(!currentJob)return;
     fetch('/api/ai/status/'+currentJob).then(function(r){return r.json()}).then(function(d){
-      if(!d.ok){addMsg('sys',d.error||'Ошибка статуса');clearInterval(poller);poller=null;return;}
-      /* Промежуточные логи агента НЕ пишем в чат (замусоривает): показываем
-         последнюю строку компактно в статусе; в чат попадают только
-         превью, результат и ошибки. Полный лог — /api/ai/status/<id>.logs */
+      if(!d.ok){addMsg('sys',d.error||'Ошибка статуса');clearInterval(poller);poller=null;setAiStage(null);return;}
       var logs=d.logs||[];
-      if(logs.length){
-        if($('aiStatusPill'))$('aiStatusPill').textContent=logs[logs.length-1];
-        seenLogs=logs.length;
-      }
-      if(d.preview_url&&!previewShown){
+      var detail=logs.length?logs[logs.length-1]:statusMsg(d.stage||d.status);
+      seenLogs=logs.length;
+      var files=d.files||[];
+      var hasZip=files.some(function(f){return f.type==='zip';});
+      if((d.local_url||d.preview_url)&&!previewShown){
         previewShown=true;
-        var link='/api/ai/preview/'+currentJob;
-        var approveBtn=$('aiApprove'); if(approveBtn)approveBtn.style.display='';
-        var openBtn=$('aiOpenPreview'); if(openBtn){openBtn.style.display='';openBtn.href=link;openBtn.target='_blank';}
+        var previewTarget=safePreviewHref(d.local_url||d.preview_url)||('/api/ai/preview/'+currentJob);
+        var approveBtn=$('aiApprove'); if(approveBtn){approveBtn.style.display='';approveBtn.disabled=false;}
+        var openBtn=$('aiOpenPreview'); if(openBtn){openBtn.style.display='';openBtn.href=previewTarget;openBtn.target='_blank';}
         var editBtn=$('aiEditLayout'); if(editBtn)editBtn.style.display='';
-        var exBtn=$('aiExport'); if(exBtn)exBtn.style.display='';
-        if(d.local_url&&!previewMsgShown){
+        syncComposerExtras();
+        if(!previewMsgShown){
           previewMsgShown=true;
-          addMsg('bot','Превью готово — сайт открылся в панели справа. Нажмите «Одобрить и собрать», и я упакую открытку с QR и видеообзор.');
+          addMsg('bot','Превью готово — откройте макет кнопкой ниже и проверьте вёрстку. Если всё устраивает, нажмите «Одобрить и собрать» для создания открытки с QR, видеообзора и архива.',{
+            who:(currentProvider||'Fracs AI'),
+            trace:'Думаю · Собираю · Проверяю шедевр',
+            actions:[
+              {type:'link',label:'Открыть превью',href:previewTarget,primary:true},
+              {type:'btn',act:'approve',label:'Одобрить и собрать',cls:'approve'},
+              {type:'btn',act:'edit',label:'Изменить макет'}
+            ]
+          });
+          refreshAiUsage();
         }
       }
-      if(d.files&&d.files.length){setAgentFiles(d.files);}
-      if(d.status==='done'||d.status==='failed'||d.status==='cancelled'){
-        clearInterval(poller);poller=null;
-        var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
-        if($('aiStatusPill'))$('aiStatusPill').textContent=(d.status==='done'?'Готово':'Остановлено');
-        if(d.status==='done'&&!doneShown){doneShown=true;
-          addMsg('bot','Готово: ZIP со всем сайтом, открытка с QR и видеообзор — справа в «Передача файлов». QR на открытке открывает видеообзор — можно пересылать заказчику.');}
-        if(d.status==='failed'){addMsg('sys','Генерация не удалась: '+(d.error||''));
-          var ap=$('aiApprove');if(ap)ap.style.display='none';
-          var op=$('aiOpenPreview');if(op)op.style.display='none';}
+      var exBtn=$('aiExport');
+      if(exBtn){
+        exBtn.style.display=hasZip?'':'none';
+        if(hasZip)syncComposerExtras();
       }
-      setStatusPill(d.status);
+      if(files.length){setAgentFiles(files);}
+      if(d.status==='done'||d.status==='failed'||d.status==='cancelled'){
+        clearInterval(poller);poller=null;approvingJob='';
+        var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
+        if(d.status==='done'){
+          setAiStage('done','Шедевр готов');
+          if(!doneShown){
+            doneShown=true;
+            addMsg('bot','Готово: ZIP со всем сайтом, открытка с QR и видеообзор — справа в «Передача файлов». QR на открытке открывает видеообзор — можно пересылать заказчику.',{
+              who:(currentProvider||'Fracs AI'),
+              trace:'Упаковано в релиз'
+            });
+          }
+          setTimeout(function(){if(!poller)setAiStage(null);},3500);
+        }else if(d.status==='failed'){
+          setAiStage(null);
+          addMsg('sys','Генерация не удалась: '+(d.error||''));
+          handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
+          var ap=$('aiApprove');if(ap)ap.style.display='none';
+          var op=$('aiOpenPreview');if(op)op.style.display='none';
+          syncComposerExtras();
+        }else{
+          setAiStage(null);
+        }
+        refreshAiUsage();
+        return;
+      }
+      setAiStage(d.stage||d.status, detail);
     }).catch(function(){});
   }
 
-  function setStatusPill(s){
-    var pill=$('aiStatusPill'); if(!pill)return;
-    pill.className='ai-status '+s;
-    pill.textContent=statusMsg(s);
+  function buildPromptFromThread(latest){
+    var parts=[];
+    var userTurns=chatHistory.filter(function(m){return m.role==='user'&&m.content;});
+    for(var i=Math.max(0,userTurns.length-4);i<userTurns.length;i++){
+      var c=String(userTurns[i].content||'').trim();
+      if(c&&c!==latest)parts.push(c);
+    }
+    if(latest)parts.push(latest);
+    return parts.join('\n');
   }
 
   function startAgent(prompt,silent){
@@ -1795,7 +2367,7 @@
       return;
     }
     var needKey=!info.pro_only&&info.needs_key!==false;
-    if(needKey&&!key){addMsg('sys','Введите API-ключ в настройках агента (кнопка «Настройки» сверху) и сохраните его.');return;}
+    if(needKey&&!key){addMsg('sys','Введите API-ключ в настройках агента («Настроить →») и сохраните его.');return;}
     if(info.pro_only&&info.configured===false){addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
     var model=currentModel();
     var extra=ls('fracsAiExtra');
@@ -1807,27 +2379,29 @@
       temperature:parseFloat(ls('fracsAiTemp'))||0.7,
       max_tokens:parseInt(ls('fracsAiMaxTok'))||4096};
     if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
-    if($('aiStatusPill'))$('aiStatusPill').textContent='Запускаю агента…';
+    setAiStage('thinking','Думаю над задачей…');
     fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       .then(function(r){return r.json()}).then(function(d){
         if(!d.ok){
+          setAiStage(null);
           addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе Ultra.':(d.error||'Не удалось запустить агент.')));
+          handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
           if(d.pro_required){loadProviders();}
           return;}
-        currentJob=d.job_id;
+        currentJob=d.job_id;approvingJob='';
         seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
-        if($('aiStatusPill'))$('aiStatusPill').textContent='Агент работает…';
+        setAiStage('thinking','Запускаю сборку…');
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
-        var ap=$('aiApprove');if(ap)ap.style.display='none';
+        var ap=$('aiApprove');if(ap){ap.style.display='none';ap.disabled=false;}
         var op=$('aiOpenPreview');if(op)op.style.display='none';
         var eb=$('aiEditLayout');if(eb)eb.style.display='none';
         var ex=$('aiExport');if(ex)ex.style.display='none';
-        if(poller)clearInterval(poller);poller=setInterval(poll,1200);poll();
-      }).catch(function(e){addMsg('sys','Нет связи с бэкендом: '+e);});
+        syncComposerExtras();
+        if(poller)clearInterval(poller);poller=setInterval(poll,1100);poll();
+      }).catch(function(e){setAiStage(null);addMsg('sys','Нет связи с бэкендом: '+e);});
   }
 
-  /* Отправка из чата: сообщение уходит модели; сборка сайта стартует, если
-     модель поставила маркер [BUILD]. */
+  /* Отправка из чата: модель отвечает, а при маркере [BUILD] запускает сборку с контекстом диалога. */
   function aiChatSend(v){
     var info=providerInfo(currentProvider)||{};
     if(info.pro_only&&!info.allowed){
@@ -1837,61 +2411,95 @@
     var key=activeKey();
     if(info.pro_only&&info.configured===false){addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
     var model=currentModel();
-    var pill=$('aiStatusPill'); if(pill)pill.textContent='Агент печатает…';
+    setAiStage('thinking','Думаю над ответом…');
     fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({message:v,api_key:key,model:model,provider:currentProvider,
         base_url:ls('fracsAiBaseUrl'),history:chatHistory.slice(-8)})})
       .then(function(r){return r.json()})
       .then(function(d){
-        if(pill)pill.textContent='';
+        refreshAiUsage();
         if(d&&d.ok){
           var reply=d.reply||'…';
-          addMsg('bot',reply);
+          addMsg('bot',reply,{who:(currentProvider||'Fracs AI'),trace:d.build?'Думаю → Собираю':'Думаю'});
+          var fullBrief=buildPromptFromThread(v);
           chatHistory.push({role:'user',content:v});
           chatHistory.push({role:'assistant',content:reply});
-          if(d.build)startAgent(v,true);
+          if(d.build){
+            startAgent(fullBrief,true);
+          }else{
+            setAiStage(null);
+          }
           return;
         }
-        if(d&&d.error==='no_api_key'){addMsg('sys','API-ключ не задан — откройте «Настройки» сверху, вставьте ключ и сохраните.');return;}
+        setAiStage(null);
+        if(d&&d.error==='no_api_key'){addMsg('sys','API-ключ не задан — откройте «Настроить →», вставьте ключ и сохраните.');return;}
+        /* если модель отклонила запрос из-за квоты — честно показываем ошибку и включаем таймер/докупку */
+        if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет/i.test(d.error||''))){
+          addMsg('sys',d.error||'Лимит исчерпан.');
+          handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
+          return;
+        }
         /* модель недоступна → фолбэк: по ключевым словам решаем, строить или ответить */
-        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){startAgent(v,true);return;}
-        addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни по карточке 2ГИС» — и я соберу демо.');
+        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
+          startAgent(buildPromptFromThread(v),true);
+          return;
+        }
+        addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни в Москве» — и я соберу демо.',{who:(currentProvider||'Fracs AI')});
       })
       .catch(function(e){
-        if(pill)pill.textContent='';
-        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){startAgent(v,true);return;}
+        setAiStage(null);
+        if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
+          startAgent(buildPromptFromThread(v),true);
+          return;
+        }
         addMsg('sys','Нет связи с бэкендом: '+e);
       });
   }
-  /* Отправка: кнопка со стрелкой или Enter в поле ввода. */
+
+  function autoResizePrompt(){
+    var inp=$('aiPrompt'); if(!inp)return;
+    inp.style.height='auto';
+    inp.style.height=Math.min(180,Math.max(46,inp.scrollHeight))+'px';
+  }
+
   function sendFromInput(){
     var inp=$('aiPrompt'); var p=inp&&inp.value.trim()||'';
     if(!p)return;
     inp.value='';
+    autoResizePrompt();
     addMsg('user',p);
     aiChatSend(p);
   }
   $('aiSend').addEventListener('click',sendFromInput);
+  $('aiPrompt').addEventListener('input',autoResizePrompt);
   $('aiPrompt').addEventListener('keydown',function(e){
     if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendFromInput();}
   });
-  $('aiApprove').addEventListener('click',function(){
-    if(!currentJob)return;
-    addMsg('user','Одобряю — соберите ZIP и открытку.');
-    fetch('/api/ai/approve/'+currentJob,{method:'POST'}).then(function(r){return r.json()})
-      .then(function(d){if(!d.ok)addMsg('sys',d.error||'Не удалось начать сборку.');else addMsg('bot','Сборка пошла — ZIP и открытка появятся через несколько секунд.');})
-      .catch(function(){addMsg('sys','Нет связи.');});
-  });
-  $('aiEditLayout').addEventListener('click',function(){
-    if(!currentJob){addMsg('sys','Сначала соберите макет.');return;}
-    var inp=$('aiPrompt'); if(inp)inp.focus();
-    var sv=ls('fracsAiStyle');
-    var stName=sv?(STYLE_NAMES[sv]||('«'+sv+'»')):'авто по рубрике';
-    addMsg('bot','Режим правки: напишите, что изменить в макете (и при желании смените стиль в настройках — сейчас: '+stName+') и отправьте. Сайт обновится поверх текущей версии, а прежняя сохранится.');
-  });
+  var chatBox=$('aiChat');
+  if(chatBox){
+    chatBox.addEventListener('click',function(e){
+      var actBtn=e.target.closest('[data-ai-act]');
+      if(!actBtn)return;
+      var act=actBtn.getAttribute('data-ai-act');
+      if(act==='approve') approveCurrentJob(actBtn);
+      else if(act==='edit') enterEditMode();
+    });
+  }
+  var starters=$('aiStarters');
+  if(starters){
+    starters.addEventListener('click',function(e){
+      var b=e.target.closest('.ai-starter'); if(!b)return;
+      var p=b.getAttribute('data-prompt')||b.textContent||'';
+      if(!p)return;
+      addMsg('user',p);
+      aiChatSend(p);
+    });
+  }
+  $('aiApprove').addEventListener('click',function(){approveCurrentJob(this);});
+  $('aiEditLayout').addEventListener('click',enterEditMode);
   $('aiExport').addEventListener('click',function(){
     if(!currentJob){addMsg('sys','Сначала запустите генерацию.');return;}
-    addMsg('bot','Скачиваю ZIP со всем сайтом…');
+    addMsg('bot','Скачиваю ZIP со всем сайтом…',{who:(currentProvider||'Fracs AI')});
     window.location='/api/ai/download/'+currentJob+'?type=zip';
   });
 
@@ -1925,8 +2533,8 @@
       var prompt=lines.join('\n');
       var cfg=window.aiGetConfig();
       if(cfg.need_key&&!cfg.key){
-        var ta=$('aiPrompt'); if(ta)ta.value=prompt;
-        addMsg('sys','Карточка «'+(rec.name||'')+'» прочитана. Откройте «Настройки» сверху, вставьте API-ключ и вернитесь — отправьте сообщение, и макет соберётся по данным карточки.');
+        var ta=$('aiPrompt'); if(ta){ta.value=prompt;autoResizePrompt();}
+        addMsg('sys','Карточка «'+(rec.name||'')+'» прочитана. Откройте «Настроить →», вставьте API-ключ и вернитесь — отправьте сообщение, и макет соберётся по данным карточки.');
         return;
       }
       startAgent(prompt);
@@ -1935,8 +2543,10 @@
 
   /* init */
   bindClip();
+  bindBuyModal();
   loadProviders();
   refreshServerUploads();
+  syncComposerExtras();
 })();
 
 </script>

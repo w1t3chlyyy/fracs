@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
-import { config, TOKEN_PACKS } from './config.ts';
+import { config, loadTokenPacks } from './config.ts';
 import {
   claimTrial, countSearchesSince, getActiveFeatures, getPlans, getSearch, getTraining, hasUsedTrial, insertSearch, isSubscribed, listSearches, newId, ping, rateLimit, recentSearches,
   type SearchRecord, type User,
@@ -61,7 +61,7 @@ api.get('/config', h(async (_req, res) => {
     },
     supportUsername: config.supportUsername,
     plans: await getPlans(),
-    tokenPacks: TOKEN_PACKS,
+    tokenPacks: loadTokenPacks(),
     demo: { maps: false, tg: false },
     adminUsername: config.adminUsername || undefined,
   });
@@ -70,7 +70,7 @@ api.get('/config', h(async (_req, res) => {
 /** Публичный список тарифов и пакетов токенов — для десктопной программы (модалка подписки
  *  дёргает локальный Flask /api/plans, который проксирует сюда) и для любого внешнего клиента. */
 api.get('/plans', h(async (_req, res) => {
-  res.json({ ok: true, plans: await getPlans(), tokenPacks: TOKEN_PACKS });
+  res.json({ ok: true, plans: await getPlans(), tokenPacks: loadTokenPacks() });
 }));
 
 api.get('/cities', (req, res) => {
@@ -487,7 +487,7 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
 /** Заявка на подписку или пакет токенов по реквизитам: уведомляем админа в Telegram, клиент переходит в @HelpManage. */
 api.post('/payments/request', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`payreq:${req.user!.id}`, 5, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
-  const pack = TOKEN_PACKS.find((t) => t.id === String(req.body?.planId || ''));
+  const pack = loadTokenPacks().find((t) => t.id === String(req.body?.planId || ''));
   const plans = pack ? [] : await getPlans();
   const plan = pack ? undefined : plans.find((p) => p.id === String(req.body?.planId || ''));
   if (!pack && !plan) return void res.status(400).json({ error: 'bad_plan', message: 'Неизвестный тариф' });

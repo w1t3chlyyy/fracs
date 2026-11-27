@@ -746,13 +746,25 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     if r.status_code >= 400 and provider == 'Fracs AI':
         # наружу — только «свои» сообщения Fracs (лимиты прокси), без деталей движка
         msg = _FRACS_DOWN
+        err_code = ''
+        buy_url = ''
+        reset_at = 0
         try:
             err = r.json()
             if isinstance(err, dict) and err.get('ok') is False and isinstance(err.get('message'), str):
                 msg = err['message']
+                err_code = str(err.get('error') or '')
+                buy_url = str(err.get('buyUrl') or '')
+                reset_at = int(err.get('resetAt') or 0)
         except Exception:
             pass
-        return {'ok': False, 'error': msg, 'ms': _ms(started), 'skipped_images': skipped}
+        if not reset_at:
+            try:
+                reset_at = int(r.headers.get('X-Fracs-Reset-At') or 0)
+            except Exception:
+                reset_at = 0
+        return {'ok': False, 'error': msg, 'error_code': err_code, 'buy_url': buy_url,
+                'reset_at': reset_at, 'ms': _ms(started), 'skipped_images': skipped}
     if r.status_code >= 400:
         try:
             err = r.json()
@@ -792,8 +804,16 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
                 text = choices[0].get('text', '') or ''
     if not text:
         return {'ok': False, 'error': 'empty_response', 'ms': _ms(started), 'skipped_images': skipped}
+    cx_tier = r.headers.get('X-Fracs-Complexity-Tier', '')
+    cx_cost = r.headers.get('X-Fracs-Complexity-Cost', '')
+    cx_left = r.headers.get('X-Fracs-Complexity-Left', '')
+    try:
+        cx_reset = int(r.headers.get('X-Fracs-Reset-At') or 0)
+    except Exception:
+        cx_reset = 0
     return {'ok': True, 'text': text, 'ms': _ms(started), 'skipped_images': skipped,
-            'truncated': truncated}
+            'truncated': truncated, 'reset_at': cx_reset,
+            'complexity': {'tier': cx_tier, 'cost': cx_cost, 'left': cx_left} if cx_tier else None}
 
 
 def _ms(started: float) -> int:
@@ -815,6 +835,41 @@ def _extract_html(raw: str) -> str:
              '<meta name="viewport" content="width=device-width, initial-scale=1">'
              '<title>Сайт</title></head><body>' + s + '</body></html>')
     return s
+
+
+_SLOP_PHRASES = (
+    'инновационн',
+    'динамично развивающ',
+    'мы рады представить',
+    'индивидуальный подход',
+    'высокое качество по доступным ценам',
+    'ваш надёжный партнёр',
+    'ваш надежный партнер',
+    'lorem ipsum',
+)
+
+
+def _audit_generated_html(html: str) -> tuple[str, list[str]]:
+    """Быстрая проверка сгенерированного HTML перед показом превью."""
+    low = (html or '').lower()
+    checks = []
+    if 'name="viewport"' in low or "name='viewport'" in low:
+        checks.append('адаптив')
+    if '<style' in low:
+        checks.append('стили')
+    sections = len(re.findall(r'<section\b', low))
+    if sections:
+        checks.append(f'{sections} секц.')
+    if 'href="tel:' in low or 't.me/' in low or 'mailto:' in low:
+        checks.append('клик-контакты')
+    slop = [p for p in _SLOP_PHRASES if p in low]
+    notes = []
+    if slop:
+        notes.append(f'Замечены клише ({len(slop)}): при желании скорректируйте через «Изменить макет».')
+    summary = 'Проверка шедевра: ' + (', '.join(checks) if checks else 'HTML собран') + (
+        '' if slop else ' · анти-слоп пройден'
+    )
+    return summary, notes
 
 
 def fetch_models(provider: str, api_key: str, base_url: str = '') -> dict:
@@ -893,11 +948,16 @@ class AiJob:
     model: str
     provider: str
     status: str = 'queued'  # queued|running|preview|building|done|failed|cancelled
+    stage: str = 'queued'   # queued|thinking|building|checking|preview|packaging|done|failed|cancelled
+    stage_label: str = 'В очереди'
     logs: list[str] = field(default_factory=list)
     html: str = ''
     files: list[dict] = field(default_factory=list)
     uploads: list[dict] = field(default_factory=list)
     error: str = ''
+    error_code: str = ''
+    buy_url: str = ''
+    reset_at: int = 0
     created_at: float = field(default_factory=time.time)
     approved: threading.Event = field(default_factory=threading.Event)
     zip_path: str = ''
@@ -928,6 +988,8 @@ class AiJob:
         return {
             'ok': True,
             'status': self.status,
+            'stage': self.stage,
+            'stage_label': self.stage_label,
             'logs': self.logs[-30:],
             'preview_url': self.preview_url if self.status in ('preview', 'building', 'done') else '',
             'local_url': local_url,
@@ -939,6 +1001,9 @@ class AiJob:
                         for a in self.uploads],
             'model': self.model, 'provider': self.provider,
             'error': self.error,
+            'error_code': self.error_code,
+            'buy_url': self.buy_url,
+            'reset_at': self.reset_at,
         }
 
 
@@ -1091,18 +1156,23 @@ class AiAgentManager:
     def _log(self, job: AiJob, msg: str):
         job.logs.append(msg)
 
+    def _set_stage(self, job: AiJob, stage: str, label: str):
+        job.stage = stage
+        job.stage_label = label
+
     def _run(self, job: AiJob, api_key: str, extra: str, base_url: str,
              temperature: float, max_tokens: float, style: str = '',
              key21st: str = ''):
         try:
             job.status = 'running'
-            self._log(job, f'Агент запущен. Модель: {job.model or "default"} ({job.provider}).')
+            self._set_stage(job, 'thinking', 'Думаю')
+            self._log(job, f'Думаю над задачей… Модель: {job.model or "default"} ({job.provider}).')
             if style and style in STYLE_PROMPTS:
-                self._log(job, f'Стиль задан вручную: «{style}».')
+                self._log(job, f'Выбран стиль: «{style}».')
             # бесплатные референсы с 21st.dev (metadata-поиск компонентов)
             if key21st:
                 q = _21st_query_from_prompt(job.prompt)
-                self._log(job, f'Ищу референсы на 21st.dev: «{q}»…')
+                self._log(job, f'Подбираю референсы на 21st.dev: «{q}»…')
                 ref = _21st_search(q, key21st, limit=3) or \
                     _21st_search('hero section landing page', key21st, limit=2)
                 if ref:
@@ -1112,7 +1182,8 @@ class AiAgentManager:
                                   'не копируй чужой код и тексты):\n' + ref[:3000])
                 else:
                     self._log(job, '21st.dev: референсы не найдены — собираю без них.')
-            self._log(job, 'Отправляю промт в нейросеть…')
+            self._set_stage(job, 'building', 'Собираю')
+            self._log(job, 'Собираю вёрстку, стили и скрипты сайта…')
             res = _call_llm(job.provider, api_key, job.model, job.prompt, extra,
                             base_url=base_url, uploads=job.uploads,
                             temperature=temperature, max_tokens=max_tokens,
@@ -1122,10 +1193,15 @@ class AiAgentManager:
                            + ', '.join(res['skipped_images']))
             if not res.get('ok'):
                 job.status = 'failed'
+                self._set_stage(job, 'failed', 'Ошибка')
                 job.error = res.get('error', 'llm_error')
+                job.error_code = str(res.get('error_code') or '')
+                job.buy_url = str(res.get('buy_url') or '')
+                job.reset_at = int(res.get('reset_at') or 0)
                 self._log(job, f'Ошибка LLM: {job.error}')
                 return
-            self._log(job, f'Ответ получен за {res["ms"]} мс. Извлекаю HTML…')
+            self._set_stage(job, 'checking', 'Проверяю шедевр')
+            self._log(job, f'Ответ получен за {res["ms"]} мс. Проверяю шедевр…')
             html = _extract_html(res['text'])
             if res.get('truncated'):
                 self._log(job, 'Внимание: модель оборвала ответ по лимиту токенов — страница '
@@ -1133,6 +1209,10 @@ class AiAgentManager:
                                'сделать проще/короче, либо выберите модель с большим лимитом.')
                 if '</html>' not in html.lower():
                     html += '\n</body></html>' if '</body>' not in html.lower() else '\n</html>'
+            audit_summary, audit_notes = _audit_generated_html(html)
+            self._log(job, audit_summary)
+            for note in audit_notes:
+                self._log(job, note)
             job.html = html
             job.preview_url = f'/api/ai/preview/{job.job_id}'
             saved = _save_site_files(job)
@@ -1143,6 +1223,7 @@ class AiAgentManager:
                 self._log(job, 'Локальная проверка (откройте в браузере): '
                            f'{self.base_url}{saved}')
             job.status = 'preview'
+            self._set_stage(job, 'preview', 'Превью готово')
             self._log(job, 'Превью готово — посмотрите его перед сборкой.')
             self._log(job, 'Если устраивает — нажмите «Одобрить и собрать». '
                            'Если нет — нажмите «Изменить макет»: напишите правки и, '
@@ -1150,9 +1231,11 @@ class AiAgentManager:
                            'в ту же папку следующей версией.')
             if not job.approved.wait(timeout=3600):
                 job.status = 'cancelled'
+                self._set_stage(job, 'cancelled', 'Отменено')
                 self._log(job, 'Превью устарело (прошёл час). Запустите заново.')
                 return
             job.status = 'building'
+            self._set_stage(job, 'packaging', 'Упаковываю релиз')
             self._log(job, 'Собираю видеообзор (review.html)…')
             self._build_review(job)
             self._log(job, 'Публикую видеообзор по ссылке для QR…')
@@ -1163,9 +1246,11 @@ class AiAgentManager:
             self._build_zip(job)
             self._build_mp4(job)
             job.status = 'done'
-            self._log(job, 'Готово. ZIP и открытка — справа в «Передаче файлов».')
+            self._set_stage(job, 'done', 'Шедевр готов')
+            self._log(job, 'Шедевр готов. ZIP и открытка — справа в «Передаче файлов».')
         except Exception as e:  # pragma: no cover
             job.status = 'failed'
+            self._set_stage(job, 'failed', 'Ошибка')
             job.error = str(e)
             self._log(job, f'Ошибка: {e}')
 
@@ -1472,11 +1557,44 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         status = 403 if (not res.get('ok') and res.get('pro_required')) else 200
         return jsonify(res), status
 
+    @app.route('/api/ai/usage')
+    def ai_usage_proxy():
+        """Квота Fracs AI (сложность, фразы и токены) через прокси сайта для показа в чате."""
+        proxy = _fracs_proxy()
+        if not proxy:
+            return jsonify({'ok': False, 'error': 'not_proxied'})
+        try:
+            r = requests.get(proxy[0] + '/api/app/ai/usage',
+                             headers={'Authorization': 'Bearer ' + proxy[1]}, timeout=10)
+            return jsonify(r.json()), r.status_code
+        except Exception:
+            return jsonify({'ok': False, 'error': 'offline'}), 502
+
+    @app.route('/api/ai/buy', methods=['POST'])
+    def ai_buy_proxy():
+        """Покупка пакета токенов Fracs AI прямо из программы через сайт."""
+        proxy = _fracs_proxy()
+        if not proxy:
+            return jsonify({'ok': False, 'error': 'not_proxied',
+                            'message': 'Для покупки токенов войдите по лицензионному ключу.'}), 400
+        data = request.get_json(force=True, silent=True) or {}
+        payload = {
+            'packId': str(data.get('packId', '')).strip(),
+            'method': str(data.get('method', 'cryptobot')).strip(),
+        }
+        try:
+            r = requests.post(proxy[0] + '/api/app/ai/buy', json=payload,
+                              headers={'Authorization': 'Bearer ' + proxy[1]}, timeout=20)
+            return jsonify(r.json()), r.status_code
+        except Exception:
+            return jsonify({'ok': False, 'error': 'offline',
+                            'message': 'Нет связи с сервером оплаты Fracs.'}), 502
+
     @app.route('/api/ai/chat', methods=['POST'])
     def ai_chat():
         """Живой чат: модель отвечает текстом в чате, а не запускает сборку.
-        Если пользователь просит собрать/править сайт — модель ставит маркер
-        [BUILD], и фронт запускает сборку."""
+        Если пользователь просит собрать/править сайт и указал детали — модель ставит
+        маркер [BUILD], и фронт запускает сборку."""
         data = request.get_json(force=True, silent=True) or {}
         msg = str(data.get('message', '')).strip()
         if not msg:
@@ -1497,23 +1615,34 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                 lines.append(who + ': ' + str(m.get('content'))[:2000])
         lines.append('Пользователь: ' + msg)
         system = ('Ты — «личный AI-Агент» внутри программы Fracs. Отвечай в обычном чате: '
-                  'кратко, по-человечески, на русском, 2–5 предложений. Ты умеешь собирать '
+                  'кратко, по-человечески, на русском, 1–3 предложения. Ты умеешь собирать '
                   'одностраничные сайты-визитки по карточкам бизнеса (2ГИС) или текстовому '
                   'описанию, показывать превью, а после одобрения собирать ZIP, открытку с '
-                  'QR-кодом и видеообзор сайта. Если собеседник просит собрать или изменить '
-                  'сайт — коротко подтверди и спроси недостающее (ниша, город, контакты, '
-                  'стиль), НИЧЕГО не выдумывая про результат: сайт появится только после '
-                  'запуска сборки. Никогда не придумывай ссылки, URL и пути к файлам. '
-                  'Если собеседник просит сделать что-то с сайтом прямо сейчас (собрать, '
-                  'изменить, перегенерировать) — закончи ответ маркером [BUILD] отдельной строкой.')
+                  'QR-кодом и видеообзор. Никогда не придумывай ссылки, URL и пути к файлам. '
+                  'Если это приветствие или общий вопрос без задачи на сайт — просто ответь. '
+                  'Если собеседник просит собрать/изменить сайт и пока НЕ назвал даже нишу '
+                  'или бизнес — задай ОДИН короткий уточняющий вопрос (что за бизнес и пожелания). '
+                  'Если ниша/задача уже понятна ИЛИ собеседник уточнил детали (город, стиль, '
+                  'контакты, «без контактов», «собирай», «давай») — НЕ задавай больше вопросов, '
+                  'коротко подтверди старт сборки и ОБЯЗАТЕЛЬНО закончи ответ маркером [BUILD] '
+                  'на отдельной строке.')
         res = _call_llm(provider, api_key, model, '\n'.join(lines), base_url=base_url,
-                        temperature=0.6, max_tokens=1024, system=system)
+                        temperature=0.55, max_tokens=800, system=system)
         if not res.get('ok'):
-            return jsonify({'ok': False, 'error': str(res.get('error') or 'model_error')}), 502
+            return jsonify({'ok': False, 'error': str(res.get('error') or 'model_error'),
+                            'error_code': res.get('error_code', ''),
+                            'buy_url': res.get('buy_url', ''),
+                            'reset_at': res.get('reset_at', 0)}), 502
         text = str(res.get('text') or '').strip()
         build = '[BUILD]' in text
         text = text.replace('[BUILD]', '').strip()
-        return jsonify({'ok': True, 'reply': text, 'build': build})
+        return jsonify({
+            'ok': True,
+            'reply': text,
+            'build': build,
+            'stage': 'building' if build else 'thinking',
+            'stage_label': 'Собираю' if build else 'Думаю',
+        })
 
     @app.route('/api/ai/status/<job_id>')
     def ai_status(job_id: str):
@@ -1660,6 +1789,7 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
         res = _call_llm(provider, api_key, str(data.get('model', '')).strip(),
                         'Проверка связи. Ответь одним словом: ok.', '',
                         base_url=str(data.get('base_url', '')).strip(),
+                        max_tokens=32,
                         system='Ты — сервис проверки связи. Отвечай одним словом.')
         if not res.get('ok'):
             return jsonify({'ok': False, 'error': res.get('error', 'unknown'),
@@ -1704,7 +1834,10 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                         base_url=str(data.get('base_url', '')).strip(),
                         temperature=temperature, max_tokens=1200, system=system)
         if not res.get('ok'):
-            return jsonify({'ok': False, 'error': res.get('error', 'unknown')})
+            return jsonify({'ok': False, 'error': res.get('error', 'unknown'),
+                            'error_code': res.get('error_code', ''),
+                            'buy_url': res.get('buy_url', ''),
+                            'reset_at': res.get('reset_at', 0)})
         # парсим ответ: по строке на фразу, снимаем нумерацию/буллеты/кавычки
         phrases, seen = [], set()
         for line in res['text'].splitlines():

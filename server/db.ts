@@ -577,6 +577,97 @@ export async function rateLimit(key: string, max: number, windowMs: number, fail
   return true;
 }
 
+/** Потребляет `cost` единиц сложности из оконного бюджета `key` (таблица `rate_limits`).
+ *  Позволяет оценивать лимит Fracs AI по сложности задачи, а не плоским числом запросов. */
+export async function consumeBudgetWindow(
+  key: string,
+  cost: number,
+  max: number,
+  windowMs: number,
+  failClosed = true,
+): Promise<{ allowed: boolean; used: number; resetAt: number }> {
+  const safeCost = Math.max(1, Math.round(cost));
+  const now = Date.now();
+  if (useSupabase) {
+    try {
+      const r = await sb().from('rate_limits').select('n,reset_at').eq('key', key).maybeSingle();
+      if (r.error) throw new Error(r.error.message);
+      const existing = r.data;
+      const resetMs = existing?.reset_at ? Date.parse(existing.reset_at) : 0;
+      const expired = !existing || !Number.isFinite(resetMs) || resetMs <= now;
+      const current = expired ? 0 : Math.max(0, Number(existing.n) || 0);
+      if (current + safeCost > max) {
+        return { allowed: false, used: current, resetAt: expired ? now + windowMs : resetMs };
+      }
+      const nextUsed = current + safeCost;
+      const nextReset = expired ? new Date(now + windowMs).toISOString() : existing!.reset_at;
+      const up = await sb()
+        .from('rate_limits')
+        .upsert({ key, n: nextUsed, reset_at: nextReset }, { onConflict: 'key' });
+      if (up.error) throw new Error(up.error.message);
+      return { allowed: true, used: nextUsed, resetAt: Date.parse(nextReset) };
+    } catch (e: any) {
+      console.error('[db] consumeBudgetWindow:', e?.message || e);
+      return { allowed: !failClosed, used: 0, resetAt: now + windowMs };
+    }
+  }
+  const entry = memLimits.get(key);
+  if (!entry || now > entry.resetAt) {
+    if (safeCost > max) return { allowed: false, used: 0, resetAt: now + windowMs };
+    const resetAt = now + windowMs;
+    memLimits.set(key, { count: safeCost, resetAt });
+    return { allowed: true, used: safeCost, resetAt };
+  }
+  if (entry.count + safeCost > max) {
+    return { allowed: false, used: entry.count, resetAt: entry.resetAt };
+  }
+  entry.count += safeCost;
+  return { allowed: true, used: entry.count, resetAt: entry.resetAt };
+}
+
+export async function getBudgetWindow(key: string): Promise<{ used: number; resetAt: number }> {
+  const now = Date.now();
+  if (useSupabase) {
+    try {
+      const r = await sb().from('rate_limits').select('n,reset_at').eq('key', key).maybeSingle();
+      if (!r.error && r.data) {
+        const resetMs = Date.parse(r.data.reset_at);
+        if (Number.isFinite(resetMs) && resetMs > now) {
+          return { used: Math.max(0, Number(r.data.n) || 0), resetAt: resetMs };
+        }
+      }
+    } catch {
+      /* fallback 0 */
+    }
+    return { used: 0, resetAt: 0 };
+  }
+  const entry = memLimits.get(key);
+  if (!entry || now > entry.resetAt) return { used: 0, resetAt: 0 };
+  return { used: entry.count, resetAt: entry.resetAt };
+}
+
+export async function refundBudgetWindow(key: string, cost: number): Promise<void> {
+  const safeCost = Math.max(1, Math.round(cost));
+  const now = Date.now();
+  if (useSupabase) {
+    try {
+      const r = await sb().from('rate_limits').select('n,reset_at').eq('key', key).maybeSingle();
+      if (r.error || !r.data) return;
+      const resetMs = Date.parse(r.data.reset_at);
+      if (!Number.isFinite(resetMs) || resetMs <= now) return;
+      const next = Math.max(0, (Number(r.data.n) || 0) - safeCost);
+      await sb().from('rate_limits').update({ n: next }).eq('key', key);
+    } catch {
+      /* ignore refund error */
+    }
+    return;
+  }
+  const entry = memLimits.get(key);
+  if (entry && now <= entry.resetAt) {
+    entry.count = Math.max(0, entry.count - safeCost);
+  }
+}
+
 /* ── учёт расходов Fracs AI (таблица ai_usage, supabase/ai_usage.sql) ── */
 
 export interface AiUsageDay { userRequests: number; userCostUsd: number; userTokens: number; totalRequests: number; totalCostUsd: number; totalTokens: number }

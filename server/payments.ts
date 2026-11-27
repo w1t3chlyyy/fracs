@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { config, TOKEN_PACKS } from './config.ts';
+import { config, loadTokenPacks } from './config.ts';
 import {
   claimPayment, extendSubscription, findPaymentByProviderId, getPlans, getUser, insertPayment,
   newId, aiTokensAdd, revertPayment, setPaymentProviderId, type PaymentRecord, type User,
@@ -15,7 +15,7 @@ const XROCKET_API = 'https://pay.ton-rocket.com';
 async function activate(p: PaymentRecord) {
   const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
   // Пакет токенов Fracs AI — разовая покупка, баланс не истекает вместе с подпиской.
-  const pack = TOKEN_PACKS.find((t) => t.id === p.planId);
+  const pack = loadTokenPacks().find((t) => t.id === p.planId);
   if (pack) {
     if (!user) return;
     if (!(await claimPayment(p.id))) return;
@@ -61,7 +61,7 @@ export async function createPayment(
   planId: string,
   method?: PaymentMethod,
 ): Promise<{ paymentId: string; confirmationUrl?: string; activated?: boolean }> {
-  const pack = TOKEN_PACKS.find((t) => t.id === planId);
+  const pack = loadTokenPacks().find((t) => t.id === planId);
   const plans = pack ? [] : await getPlans();
   const plan = pack ? undefined : plans.find((p) => p.id === planId);
   if (!pack && !plan) throw Object.assign(new Error('Неизвестный тариф'), { status: 400 });
