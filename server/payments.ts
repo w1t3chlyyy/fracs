@@ -84,6 +84,8 @@ export async function createPayment(
   };
   await insertPayment(rec);
 
+  const returnUrl = config.appUrl.startsWith('https://') ? `${config.appUrl}/app?paid=1` : undefined;
+
   if (chosen === 'cryptobot') {
     if (!config.cryptobotToken) {
       throw Object.assign(new Error('Оплата через CryptoBot не настроена. Выберите «Реквизиты» для оплаты через @HelpManage.'), { status: 503 });
@@ -101,8 +103,7 @@ export async function createPayment(
         accepted_assets: 'USDT,TON,BTC,ETH,LTC,BNB,TRX,USDC',
         description: title,
         payload: rec.id,
-        paid_btn_name: 'callback',
-        paid_btn_url: `${config.appUrl}/app?paid=1`,
+        ...(returnUrl ? { paid_btn_name: 'callback', paid_btn_url: returnUrl } : {}),
       }),
       signal: AbortSignal.timeout(15_000),
     });
@@ -131,7 +132,8 @@ export async function createPayment(
       numPayments: 1,
       currency: 'USDT',
       description: `${title} (${amountRub} ₽)`,
-      callbackUrl: `${config.appUrl}/app?paid=1`,
+      commentsEnabled: false,
+      ...(returnUrl ? { callbackUrl: returnUrl } : {}),
       payload: rec.id,
     }),
     signal: AbortSignal.timeout(15_000),

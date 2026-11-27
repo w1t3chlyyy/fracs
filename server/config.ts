@@ -4,7 +4,8 @@ import 'dotenv/config';
 const env = process.env;
 const isProd = env.NODE_ENV === 'production';
 const port = Number(env.PORT || 3000);
-const vercelUrl = env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : '';
+const rawVercelHost = env.VERCEL_PROJECT_PRODUCTION_URL || env.VERCEL_URL || '';
+const vercelUrl = rawVercelHost ? `https://${rawVercelHost.replace(/^https?:\/\//, '')}` : '';
 
 export const config = {
   isProd,

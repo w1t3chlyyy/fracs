@@ -8,16 +8,20 @@ import "dotenv/config";
 var env = process.env;
 var isProd = env.NODE_ENV === "production";
 var port = Number(env.PORT || 3e3);
-var vercelUrl = env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : "";
+var rawVercelHost = env.VERCEL_PROJECT_PRODUCTION_URL || env.VERCEL_URL || "";
+var vercelUrl = rawVercelHost ? `https://${rawVercelHost.replace(/^https?:\/\//, "")}` : "";
 var config = {
   isProd,
   port,
   appUrl: (env.APP_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ""),
   sessionSecret: env.SESSION_SECRET || (isProd ? crypto.randomBytes(32).toString("hex") : "dev-secret-change-me"),
-  supabaseUrl: env.SUPABASE_URL || "",
+  supabaseUrl: (env.SUPABASE_URL || "").replace(/\/$/, ""),
   supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
   cronSecret: env.CRON_SECRET || "",
   searchRetentionDays: Number(env.SEARCH_RETENTION_DAYS || 30),
+  // Почта для OTP-кодов (Resend API, опционально)
+  resendApiKey: env.RESEND_API_KEY || "",
+  resendFrom: env.RESEND_FROM || "Fracs <onboarding@resend.dev>",
   // Ключ OpenRouter для прокси Fracs AI (/api/app/ai): хранится ТОЛЬКО на сервере,
   // в сборку программы не попадает. Пользовательский запрос идёт с ключом лицензии.
   openrouterApiKey: env.OPENROUTER_API_KEY || "",
@@ -27,8 +31,6 @@ var config = {
   // На Vercel работает только webhook. polling — для локальной разработки.
   botMode: env.TELEGRAM_BOT_MODE === "webhook" ? "webhook" : "polling",
   webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || "",
-  // Вход без бота — только для локальной разработки (или если явно включено).
-  devLogin: env.ALLOW_DEV_LOGIN === "true" || !isProd && !env.TELEGRAM_BOT_TOKEN,
   mapsProvider: env.MAPS_PROVIDER || "mock",
   gisKey: env.GIS_API_KEY || "",
   mapsWorkerUrl: (env.MAPS_WORKER_URL || "").replace(/\/$/, ""),
@@ -36,14 +38,16 @@ var config = {
   tgProvider: env.TG_PROVIDER || "mock",
   tgParserUrl: (env.TG_PARSER_URL || "").replace(/\/$/, ""),
   tgParserKey: env.TG_PARSER_KEY || "",
-  paymentProvider: env.PAYMENT_PROVIDER || "mock",
-  allowMockPayments: !isProd || env.ALLOW_MOCK_PAYMENTS === "true",
-  yookassaShopId: env.YOOKASSA_SHOP_ID || "",
-  yookassaSecret: env.YOOKASSA_SECRET_KEY || "",
+  paymentProvider: env.PAYMENT_PROVIDER === "xrocket" ? "xrocket" : "cryptobot",
+  cryptobotToken: env.CRYPTOBOT_API_TOKEN || "",
+  xrocketKey: env.XROCKET_API_KEY || "",
+  xrocketWebhookToken: env.XROCKET_WEBHOOK_TOKEN || "",
+  usdtRubRate: Number(env.USDT_RUB_RATE || 95),
+  supportUsername: (env.SUPPORT_TG_USERNAME || "HelpManage").replace(/^@/, ""),
   dailySearchLimit: Number(env.DAILY_SEARCH_LIMIT || 40),
   // Telegram ID админа (число, не @username): подписка ему не нужна, всё открыто.
   adminTgId: Number(env.ADMIN_TG_ID) || 0,
-  // @username админа: кнопка оплаты в кабинете ведёт в чат с ним (t.me/<username>).
+  // @username админа: уведомления о заявках.
   adminUsername: (env.ADMIN_TG_USERNAME || "").replace(/^@/, ""),
   // Обязательные подписки на каналы перед активацией кабинета. Список через запятую:
   // @username канала или его числовой ID (-100…). Бот должен быть админом в каждом канале,
@@ -53,10 +57,8 @@ var config = {
 };
 if (isProd) {
   const missing = ["SESSION_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"].filter((k) => !env[k]);
-  if (missing.length) throw new Error(`[config] \u0412 production \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B: ${missing.join(", ")}`);
-  if (env.SESSION_SECRET.length < 32) throw new Error("[config] SESSION_SECRET \u0434\u043E\u043B\u0436\u0435\u043D \u0431\u044B\u0442\u044C \u2265 32 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432");
-  if (env.ALLOW_DEV_LOGIN === "true") throw new Error("[config] ALLOW_DEV_LOGIN \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D \u0432 production");
-  if (env.ALLOW_MOCK_PAYMENTS === "true") throw new Error("[config] ALLOW_MOCK_PAYMENTS \u0437\u0430\u043F\u0440\u0435\u0449\u0451\u043D \u0432 production");
+  if (missing.length) console.warn(`[config] \u041F\u0435\u0440\u0435\u043C\u0435\u043D\u043D\u044B\u0435 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u044B (\u0440\u0430\u0431\u043E\u0442\u0430\u0435\u043C \u0432 fallback-\u0440\u0435\u0436\u0438\u043C\u0435): ${missing.join(", ")}`);
+  if (env.SESSION_SECRET && env.SESSION_SECRET.length < 32) console.warn("[config] SESSION_SECRET \u0440\u0435\u043A\u043E\u043C\u0435\u043D\u0434\u0443\u0435\u0442\u0441\u044F \u2265 32 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432");
 }
 var PLANS = [
   {
@@ -473,14 +475,6 @@ async function findPaymentByProviderId(providerId) {
   }
   return null;
 }
-async function cancelPayment(id) {
-  if (useSupabase) {
-    check(await sb().from("payments").update({ status: "canceled" }).eq("id", id).eq("status", "pending"), "cancelPayment");
-    return;
-  }
-  const p = memPayments.get(id);
-  if (p && p.status === "pending") p.status = "canceled";
-}
 async function claimPayment(id) {
   if (useSupabase) {
     const r = await sb().from("payments").update({ status: "succeeded", paid_at: (/* @__PURE__ */ new Date()).toISOString() }).eq("id", id).eq("status", "pending").select("*");
@@ -524,6 +518,82 @@ async function rateLimit(key, max, windowMs, failClosed = false) {
   if (entry.count >= max) return false;
   entry.count++;
   return true;
+}
+async function consumeBudgetWindow(key, cost, max, windowMs, failClosed = true) {
+  const safeCost = Math.max(1, Math.round(cost));
+  const now = Date.now();
+  if (useSupabase) {
+    try {
+      const r = await sb().from("rate_limits").select("n,reset_at").eq("key", key).maybeSingle();
+      if (r.error) throw new Error(r.error.message);
+      const existing = r.data;
+      const resetMs = existing?.reset_at ? Date.parse(existing.reset_at) : 0;
+      const expired = !existing || !Number.isFinite(resetMs) || resetMs <= now;
+      const current = expired ? 0 : Math.max(0, Number(existing.n) || 0);
+      if (current + safeCost > max) {
+        return { allowed: false, used: current, resetAt: expired ? now + windowMs : resetMs };
+      }
+      const nextUsed = current + safeCost;
+      const nextReset = expired ? new Date(now + windowMs).toISOString() : existing.reset_at;
+      const up = await sb().from("rate_limits").upsert({ key, n: nextUsed, reset_at: nextReset }, { onConflict: "key" });
+      if (up.error) throw new Error(up.error.message);
+      return { allowed: true, used: nextUsed, resetAt: Date.parse(nextReset) };
+    } catch (e) {
+      console.error("[db] consumeBudgetWindow:", e?.message || e);
+      return { allowed: !failClosed, used: 0, resetAt: now + windowMs };
+    }
+  }
+  const entry = memLimits.get(key);
+  if (!entry || now > entry.resetAt) {
+    if (safeCost > max) return { allowed: false, used: 0, resetAt: now + windowMs };
+    const resetAt = now + windowMs;
+    memLimits.set(key, { count: safeCost, resetAt });
+    return { allowed: true, used: safeCost, resetAt };
+  }
+  if (entry.count + safeCost > max) {
+    return { allowed: false, used: entry.count, resetAt: entry.resetAt };
+  }
+  entry.count += safeCost;
+  return { allowed: true, used: entry.count, resetAt: entry.resetAt };
+}
+async function getBudgetWindow(key) {
+  const now = Date.now();
+  if (useSupabase) {
+    try {
+      const r = await sb().from("rate_limits").select("n,reset_at").eq("key", key).maybeSingle();
+      if (!r.error && r.data) {
+        const resetMs = Date.parse(r.data.reset_at);
+        if (Number.isFinite(resetMs) && resetMs > now) {
+          return { used: Math.max(0, Number(r.data.n) || 0), resetAt: resetMs };
+        }
+      }
+    } catch {
+    }
+    return { used: 0, resetAt: 0 };
+  }
+  const entry = memLimits.get(key);
+  if (!entry || now > entry.resetAt) return { used: 0, resetAt: 0 };
+  return { used: entry.count, resetAt: entry.resetAt };
+}
+async function refundBudgetWindow(key, cost) {
+  const safeCost = Math.max(1, Math.round(cost));
+  const now = Date.now();
+  if (useSupabase) {
+    try {
+      const r = await sb().from("rate_limits").select("n,reset_at").eq("key", key).maybeSingle();
+      if (r.error || !r.data) return;
+      const resetMs = Date.parse(r.data.reset_at);
+      if (!Number.isFinite(resetMs) || resetMs <= now) return;
+      const next = Math.max(0, (Number(r.data.n) || 0) - safeCost);
+      await sb().from("rate_limits").update({ n: next }).eq("key", key);
+    } catch {
+    }
+    return;
+  }
+  const entry = memLimits.get(key);
+  if (entry && now <= entry.resetAt) {
+    entry.count = Math.max(0, entry.count - safeCost);
+  }
 }
 var memAiUsage = /* @__PURE__ */ new Map();
 var utcDay = () => (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
@@ -1190,7 +1260,10 @@ async function handleAdminCallback(cb) {
       return true;
     }
     const rows = list.map((u) => [
-      { text: `${(u.username || u.firstName).slice(0, 20)}${isSubscribed(u) ? " \u2705" : " \u2B1C"}`, callback_data: `adm:u:${u.tgId}` }
+      {
+        text: `${(u.username || u.firstName || u.email || "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C").slice(0, 20)}${isSubscribed(u) ? " \u2705" : " \u2B1C"}`,
+        callback_data: u.tgId != null ? `adm:u:${u.tgId}` : `adm:uid:${u.id}`
+      }
     ]);
     rows.push([{ text: "\u2190 \u041D\u0430\u0437\u0430\u0434", callback_data: "adm:home" }]);
     await editMsg(chatId, messageId, "\u{1F465} \u041F\u043E\u0441\u043B\u0435\u0434\u043D\u0438\u0435 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438\n\n\u0422\u0430\u043F\u043D\u0438\u0442\u0435 \u043F\u043E \u0441\u0442\u0440\u043E\u043A\u0435, \u0447\u0442\u043E\u0431\u044B \u0432\u044B\u0434\u0430\u0442\u044C \u0438\u043B\u0438 \u0441\u043D\u044F\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443:", { inline_keyboard: rows });
@@ -1224,12 +1297,31 @@ async function handleAdminCallback(cb) {
     await answerCb(cbId);
     return true;
   }
-  const g = data.match(/^adm:g:(\d+):(\w+):(\d+)$/);
+  const mUid = data.match(/^adm:uid:([0-9a-f-]+)$/i);
+  if (mUid) {
+    const u = await getUser(mUid[1]);
+    if (!u) return answerCb(cbId, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D", true).then(() => true);
+    const text = `\u{1F464} ${who(u)}
+\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430: ${isSubscribed(u) ? "\u0434\u043E " + fmt(u.subscriptionUntil) : "\u043D\u0435\u0442"}${u.planId ? ` (${u.planId})` : ""}
+\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F: ${fmt(u.createdAt)}`;
+    const kb = {
+      inline_keyboard: [
+        [{ text: "Ultra 30 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${u.id}:ultra:30` }, { text: "PRO 30 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${u.id}:pro:30` }],
+        [{ text: "Start 30 \u0434\u043D\u0435\u0439", callback_data: `adm:g:${u.id}:start:30` }],
+        [{ text: "\u2715 \u0421\u043D\u044F\u0442\u044C \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443", callback_data: `adm:r:${u.id}` }],
+        [{ text: "\u2190 \u041A \u0441\u043F\u0438\u0441\u043A\u0443", callback_data: "adm:users" }]
+      ]
+    };
+    await editMsg(chatId, messageId, text, kb);
+    await answerCb(cbId);
+    return true;
+  }
+  const g = data.match(/^adm:g:([^:]+):(\w+):(\d+)$/);
   if (g) {
-    const tgId = Number(g[1]);
+    const target = g[1];
     const planId = g[2];
     const days = Number(g[3]);
-    const u = await findUser(String(tgId));
+    const u = /^\d+$/.test(target) ? await findUser(target) : await getUser(target);
     if (!u) return answerCb(cbId, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D", true).then(() => true);
     const plans = await getPlans();
     if (!plans.some((p) => p.id === planId)) return answerCb(cbId, `\u0422\u0430\u0440\u0438\u0444 ${planId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true).then(() => true);
@@ -1237,17 +1329,27 @@ async function handleAdminCallback(cb) {
     await answerCb(cbId, `\u2705 ${planId.toUpperCase()} ${days} \u0434\u043D. \u0434\u043E ${fmt(upd.subscriptionUntil)}`);
     await notify(upd.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${fmt(upd.subscriptionUntil)}. \u041A\u0430\u0431\u0438\u043D\u0435\u0442: ${publicUrl()}/app`).catch(() => {
     });
-    await renderUserView(chatId, messageId, tgId);
+    if (upd.tgId != null) {
+      await renderUserView(chatId, messageId, upd.tgId);
+    } else {
+      await editMsg(chatId, messageId, `\u{1F464} ${who(upd)}
+\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430: \u0434\u043E ${fmt(upd.subscriptionUntil)} (${planId})`, backKb("adm:users"));
+    }
     return true;
   }
-  const r = data.match(/^adm:r:(\d+)$/);
+  const r = data.match(/^adm:r:([^:]+)$/);
   if (r) {
-    const tgId = Number(r[1]);
-    const u = await findUser(String(tgId));
+    const target = r[1];
+    const u = /^\d+$/.test(target) ? await findUser(target) : await getUser(target);
     if (!u) return answerCb(cbId, "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D", true).then(() => true);
     await setSubscription(u.id, null);
     await answerCb(cbId, "\u{1F6AB} \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0441\u043D\u044F\u0442\u0430");
-    await renderUserView(chatId, messageId, tgId);
+    if (u.tgId != null) {
+      await renderUserView(chatId, messageId, u.tgId);
+    } else {
+      await editMsg(chatId, messageId, `\u{1F464} ${who(u)}
+\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430: \u043D\u0435\u0442`, backKb("adm:users"));
+    }
     return true;
   }
   return false;
@@ -1452,6 +1554,9 @@ async function handleLoginConfirm(cb) {
     return;
   }
   await finalizeStart(chatId, user, "login", token);
+  if (cb.message?.message_id) {
+    await editMsg(chatId, cb.message.message_id, "\u2705 \u0412\u0445\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D! \u0412\u0435\u0440\u043D\u0438\u0442\u0435\u0441\u044C \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440.", { reply_markup: { inline_keyboard: [] } });
+  }
   await answerCb(cbId, "\u0412\u0445\u043E\u0434 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D");
 }
 async function handleSubCallback(cb) {
@@ -1505,7 +1610,8 @@ async function handleSubCallback(cb) {
 async function handleUpdate(update) {
   const cb = update?.callback_query;
   if (cb) {
-    if (config.adminTgId > 0 && cb.from?.id === config.adminTgId) {
+    const cbData = String(cb.data || "");
+    if (config.adminTgId > 0 && cb.from?.id === config.adminTgId && cbData.startsWith("adm:")) {
       try {
         await handleAdminCallback(cb);
       } catch (e) {
@@ -1675,7 +1781,7 @@ async function ensureWebhook() {
 }
 async function startBot() {
   if (!config.botToken) {
-    console.log("[bot] TELEGRAM_BOT_TOKEN \u043D\u0435 \u0437\u0430\u0434\u0430\u043D \u2014 \u0432\u0445\u043E\u0434 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430 \u043E\u0442\u043A\u043B\u044E\u0447\u0451\u043D" + (config.devLogin ? " (\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D dev-\u0432\u0445\u043E\u0434)" : ""));
+    console.log("[bot] TELEGRAM_BOT_TOKEN \u043D\u0435 \u0437\u0430\u0434\u0430\u043D \u2014 \u0432\u0445\u043E\u0434 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430 \u043E\u0442\u043A\u043B\u044E\u0447\u0451\u043D");
     return;
   }
   const me = await tg("getMe");
@@ -1749,7 +1855,7 @@ function cookies(header = "") {
 }
 function cookieOpts(req) {
   const secure = req.secure || req.get("x-forwarded-proto") === "https" || config.isProd;
-  const sameSite = secure && process.env.COOKIE_SAMESITE === "None" ? "None" : "Lax";
+  const sameSite = secure && process.env.COOKIE_SAMESITE !== "Lax" ? "None" : "Lax";
   return { secure, sameSite };
 }
 function setSession(req, res, uid) {
@@ -1783,7 +1889,12 @@ var authRouter = Router();
 authRouter.post("/start", h(async (req, res) => {
   if (!await rateLimit(`auth:${req.ip}`, 20, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited" });
   const username = await getBotUsername();
-  if (!username) return void res.status(503).json({ error: "bot_not_configured", message: "\u0411\u043E\u0442 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 TELEGRAM_BOT_TOKEN \u0438 TELEGRAM_BOT_USERNAME (\u0438\u043B\u0438 \u0447\u0442\u043E \u0431\u043E\u0442 \u0437\u0430\u043F\u0443\u0449\u0435\u043D \u0432 webhook-\u0440\u0435\u0436\u0438\u043C\u0435)" });
+  if (!username) {
+    return void res.status(503).json({
+      error: "bot_not_configured",
+      message: "\u0411\u043E\u0442 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 TELEGRAM_BOT_TOKEN \u0438 TELEGRAM_BOT_USERNAME"
+    });
+  }
   const token = randomToken(24);
   await createLoginToken(token);
   res.json({ token, url: `https://t.me/${username}?start=${token}` });
@@ -1798,15 +1909,6 @@ authRouter.get("/status", h(async (req, res) => {
   setSession(req, res, uid);
   res.json({ status: "ok" });
 }));
-authRouter.post("/dev", h(async (req, res) => {
-  if (!config.devLogin) return void res.status(404).json({ error: "not_found" });
-  let user = await upsertTgUser({ id: 1, username: "dev_user", first_name: "\u0420\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A" });
-  if (!isSubscribed(user)) {
-    user = await extendSubscription(user.id, 30);
-  }
-  setSession(req, res, user.id);
-  res.json({ ok: true });
-}));
 authRouter.post("/logout", (req, res) => {
   const { secure, sameSite } = cookieOpts(req);
   res.append("Set-Cookie", `${COOKIE}=; Path=/; HttpOnly; SameSite=${sameSite}; Max-Age=0${secure ? "; Secure" : ""}`);
@@ -1815,7 +1917,32 @@ authRouter.post("/logout", (req, res) => {
 var EMAIL_RE = /^[^\s@]{1,64}@[^\s@]+\.[^\s@]{2,}$/;
 var CODE_RE = /^\d{6,8}$/;
 var normalizeEmail = (raw) => raw.trim().toLowerCase();
-var emailAuthReady = () => Boolean(config.supabaseUrl && config.supabaseKey);
+var OTP_TTL_MS = 10 * 6e4;
+var localOtps = /* @__PURE__ */ new Map();
+var hashOtp = (email, code) => crypto4.createHmac("sha256", config.sessionSecret).update(`email-otp:${email}:${code}`).digest("hex");
+function issueLocalOtp(email) {
+  const now = Date.now();
+  for (const [k, v] of localOtps) if (v.expiresAt < now) localOtps.delete(k);
+  const code = String(crypto4.randomInt(1e5, 1e6));
+  localOtps.set(email, { hash: hashOtp(email, code), expiresAt: now + OTP_TTL_MS, attempts: 0 });
+  return code;
+}
+function verifyLocalOtp(email, code) {
+  const entry = localOtps.get(email);
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt || entry.attempts >= 5) {
+    localOtps.delete(email);
+    return false;
+  }
+  entry.attempts++;
+  const expected = hashOtp(email, code);
+  const a = Buffer.from(entry.hash);
+  const b = Buffer.from(expected);
+  const ok = a.length === b.length && crypto4.timingSafeEqual(a, b);
+  if (ok || entry.attempts >= 5) localOtps.delete(email);
+  return ok;
+}
+var supabaseEmailReady = () => Boolean(config.supabaseUrl && config.supabaseKey);
 function supabaseAuthHeaders() {
   return {
     apikey: config.supabaseKey,
@@ -1823,53 +1950,94 @@ function supabaseAuthHeaders() {
     "Content-Type": "application/json"
   };
 }
+async function resendSendOtp(email, code) {
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.resendApiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: config.resendFrom,
+      to: [email],
+      subject: `\u041A\u043E\u0434 \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430 \u0432 Fracs: ${code}`,
+      html: `<div style="font-family:sans-serif;background:#0a0a0a;color:#fff;padding:32px;border-radius:16px;max-width:480px;margin:0 auto">
+        <h2 style="margin:0 0 12px;color:#fff">\u0412\u0445\u043E\u0434 \u0432 Fracs</h2>
+        <p style="margin:0 0 20px;color:#ccc">\u0412\u0430\u0448 \u043E\u0434\u043D\u043E\u0440\u0430\u0437\u043E\u0432\u044B\u0439 \u043A\u043E\u0434 \u0434\u043B\u044F \u0432\u0445\u043E\u0434\u0430 (\u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0442\u0435\u043B\u0435\u043D 10 \u043C\u0438\u043D\u0443\u0442):</p>
+        <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#F26522;background:#141414;padding:16px 24px;border-radius:12px;text-align:center;border:1px solid #F26522">${code}</div>
+      </div>`
+    }),
+    signal: AbortSignal.timeout(1e4)
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body?.message || `resend_${r.status}`);
+  }
+}
 async function supabaseOtpStart(email) {
   const r = await fetch(`${config.supabaseUrl}/auth/v1/otp`, {
     method: "POST",
     headers: supabaseAuthHeaders(),
-    body: JSON.stringify({ email, create_user: true })
+    body: JSON.stringify({ email, create_user: true }),
+    signal: AbortSignal.timeout(1e4)
   });
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
     const msg = body?.error_description || body?.msg || body?.message || `supabase_${r.status}`;
-    throw Object.assign(new Error(msg), { code: r.status === 429 ? "email_rate_limited" : "email_start_failed" });
+    const isRate = r.status === 429 || body?.error_code === "over_email_send_rate_limit";
+    throw Object.assign(new Error(msg), { code: isRate ? "email_rate_limited" : "email_start_failed" });
   }
 }
 async function supabaseOtpVerify(email, code) {
   const r = await fetch(`${config.supabaseUrl}/auth/v1/verify`, {
     method: "POST",
     headers: supabaseAuthHeaders(),
-    body: JSON.stringify({ type: "email", email, token: code })
+    body: JSON.stringify({ type: "email", email, token: code }),
+    signal: AbortSignal.timeout(1e4)
   });
   return r.ok;
 }
 authRouter.post("/email/start", h(async (req, res) => {
-  if (!emailAuthReady()) return void res.status(503).json({ error: "email_auth_unavailable", message: "Email-\u0432\u0445\u043E\u0434 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" });
   const email = normalizeEmail(String(req.body?.email || ""));
   if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: "bad_email", message: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 \u044D\u043B. \u043F\u043E\u0447\u0442\u044B" });
   if (!await rateLimit(`auth-email-ip:${req.ip}`, 10, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited" });
-  if (!await rateLimit(`auth-email-addr:${email}`, 4, 30 * 6e4, true)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E \u2014 \u043A\u043E\u0434 \u0443\u0436\u0435 \u043B\u0435\u0442\u0438\u0442." });
-  try {
-    await supabaseOtpStart(email);
-  } catch (e) {
-    if (e?.code === "email_rate_limited") return void res.status(429).json({ error: "rate_limited", message: "\u041F\u0438\u0441\u044C\u043C\u043E \u0443\u0436\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u043F\u0435\u0440\u0435\u0434 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u043E\u0439 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u043E\u0439." });
-    console.warn("[auth] email/start supabase:", e?.message);
-    return void res.status(502).json({ error: "email_start_failed", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u0434. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
+  if (!await rateLimit(`auth-email-addr:${email}`, 5, 30 * 6e4, true)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E \u2014 \u043A\u043E\u0434 \u0443\u0436\u0435 \u043B\u0435\u0442\u0438\u0442." });
+  if (config.resendApiKey) {
+    const code = issueLocalOtp(email);
+    try {
+      await resendSendOtp(email, code);
+      return void res.json({ ok: true, email });
+    } catch (e) {
+      localOtps.delete(email);
+      console.warn("[auth] email/start resend:", e?.message);
+      return void res.status(502).json({ error: "email_start_failed", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u0434. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
+    }
   }
-  res.json({ ok: true, email });
+  if (supabaseEmailReady()) {
+    try {
+      await supabaseOtpStart(email);
+      return void res.json({ ok: true, email });
+    } catch (e) {
+      if (e?.code === "email_rate_limited") return void res.status(429).json({ error: "rate_limited", message: "\u041F\u0438\u0441\u044C\u043C\u043E \u0443\u0436\u0435 \u043E\u0442\u043F\u0440\u0430\u0432\u043B\u0435\u043D\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u043F\u0435\u0440\u0435\u0434 \u043F\u043E\u0432\u0442\u043E\u0440\u043D\u043E\u0439 \u043E\u0442\u043F\u0440\u0430\u0432\u043A\u043E\u0439." });
+      console.warn("[auth] email/start supabase:", e?.message);
+      return void res.status(502).json({ error: "email_start_failed", message: "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043E\u0442\u043F\u0440\u0430\u0432\u0438\u0442\u044C \u043A\u043E\u0434. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0439\u043A\u0438 \u043F\u043E\u0447\u0442\u044B \u0438\u043B\u0438 \u0432\u043E\u0439\u0434\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 Telegram." });
+    }
+  }
+  return void res.status(503).json({ error: "email_auth_unavailable", message: "\u041E\u0442\u043F\u0440\u0430\u0432\u043A\u0430 \u043F\u043E\u0447\u0442\u044B \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D\u0430. \u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0447\u0435\u0440\u0435\u0437 Telegram \u0438\u043B\u0438 \u0437\u0430\u0434\u0430\u0439\u0442\u0435 RESEND_API_KEY / SUPABASE_URL." });
 }));
 authRouter.post("/email/verify", h(async (req, res) => {
-  if (!emailAuthReady()) return void res.status(503).json({ error: "email_auth_unavailable", message: "Email-\u0432\u0445\u043E\u0434 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" });
   const email = normalizeEmail(String(req.body?.email || ""));
   const code = String(req.body?.code || "").replace(/\D/g, "");
   if (!EMAIL_RE.test(email)) return void res.status(400).json({ error: "bad_email", message: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u0430\u0434\u0440\u0435\u0441 \u044D\u043B. \u043F\u043E\u0447\u0442\u044B" });
   if (!CODE_RE.test(code)) return void res.status(400).json({ error: "bad_code", message: "\u041A\u043E\u0434 \u2014 6\u20138 \u0446\u0438\u0444\u0440 \u0438\u0437 \u043F\u0438\u0441\u044C\u043C\u0430" });
   if (!await rateLimit(`auth-email-verify:${req.ip}:${email}`, 8, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u043F\u043E\u043F\u044B\u0442\u043E\u043A. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 10 \u043C\u0438\u043D\u0443\u0442." });
-  let ok = false;
-  try {
-    ok = await supabaseOtpVerify(email, code);
-  } catch (e) {
-    console.warn("[auth] email/verify supabase:", e);
+  let ok = verifyLocalOtp(email, code);
+  if (!ok && supabaseEmailReady()) {
+    try {
+      ok = await supabaseOtpVerify(email, code);
+    } catch (e) {
+      console.warn("[auth] email/verify supabase:", e);
+    }
   }
   if (!ok) return void res.status(400).json({ error: "bad_code", message: "\u041D\u0435\u0432\u0435\u0440\u043D\u044B\u0439 \u0438\u043B\u0438 \u0443\u0441\u0442\u0430\u0440\u0435\u0432\u0448\u0438\u0439 \u043A\u043E\u0434" });
   const user = await upsertEmailUser(email);
@@ -1878,7 +2046,7 @@ authRouter.post("/email/verify", h(async (req, res) => {
 }));
 
 // server/appRoutes.ts
-import crypto5 from "node:crypto";
+import crypto6 from "node:crypto";
 import { Router as Router2 } from "express";
 
 // server/cityData.ts
@@ -2328,6 +2496,201 @@ function getRows(rec, offset, limit2) {
 }
 var headRows = (rec) => rec.demo ? getRows(rec, 0, 3) : rec.head ?? [];
 
+// server/payments.ts
+import crypto5 from "node:crypto";
+var CRYPTOBOT_API = "https://pay.crypt.bot/api";
+var XROCKET_API = "https://pay.xrocket.tg";
+async function activate(p) {
+  const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
+  const pack = loadTokenPacks().find((t) => t.id === p.planId);
+  if (pack) {
+    if (!user) return;
+    if (!await claimPayment(p.id)) return;
+    try {
+      await aiTokensAdd(user.id, pack.tokens);
+      await notify(user.tgId, `\u26A1\uFE0F \u0422\u043E\u043A\u0435\u043D\u044B Fracs AI \u0437\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u044B: +${pack.tokens.toLocaleString("ru-RU")}. \u0411\u0430\u043B\u0430\u043D\u0441 \u043D\u0435 \u0438\u0441\u0442\u0435\u043A\u0430\u0435\u0442 \u2014 \u0441\u043C\u043E\u0442\u0440\u0438\u0442\u0435 \u043E\u0441\u0442\u0430\u0442\u043E\u043A \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435: ${config.appUrl}/app`);
+    } catch (e) {
+      await revertPayment(p.id);
+      throw e;
+    }
+    return;
+  }
+  const plan = plans.find((x) => x.id === p.planId);
+  if (!user || !plan) return;
+  if (!await claimPayment(p.id)) return;
+  try {
+    const updated = await extendSubscription(user.id, plan.days, plan.id);
+    await notify(user.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${new Date(updated.subscriptionUntil).toLocaleDateString("ru-RU")}. \u0414\u0430\u043D\u043D\u044B\u0435 \u043E\u0442\u043A\u0440\u044B\u0442\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435: ${config.appUrl}/app`);
+  } catch (e) {
+    await revertPayment(p.id);
+    throw e;
+  }
+}
+async function getUsdtRubRate() {
+  try {
+    const r = await fetch("https://api.coinbase.com/v2/exchange-rates?currency=USDT", {
+      signal: AbortSignal.timeout(2500)
+    });
+    if (r.ok) {
+      const j = await r.json();
+      const rub = Number(j?.data?.rates?.RUB);
+      if (Number.isFinite(rub) && rub > 20 && rub < 500) return rub;
+    }
+  } catch {
+  }
+  return Number.isFinite(config.usdtRubRate) && config.usdtRubRate > 0 ? config.usdtRubRate : 95;
+}
+async function createPayment(user, planId, method) {
+  const pack = loadTokenPacks().find((t) => t.id === planId);
+  const plans = pack ? [] : await getPlans();
+  const plan = pack ? void 0 : plans.find((p) => p.id === planId);
+  if (!pack && !plan) throw Object.assign(new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444"), { status: 400 });
+  const chosen = method === "cryptobot" || method === "xrocket" ? method : config.paymentProvider;
+  const amountRub = pack ? pack.priceRub : plan.priceRub;
+  const title = pack ? `\u0422\u043E\u043A\u0435\u043D\u044B Fracs AI: ${pack.title}` : `\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs: ${plan.title}`;
+  const rec = {
+    id: newId(),
+    userId: user.id,
+    planId: (pack ?? plan).id,
+    amountRub,
+    status: "pending",
+    provider: chosen,
+    providerId: null,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    paidAt: null
+  };
+  await insertPayment(rec);
+  const returnUrl = config.appUrl.startsWith("https://") ? `${config.appUrl}/app?paid=1` : void 0;
+  if (chosen === "cryptobot") {
+    if (!config.cryptobotToken) {
+      throw Object.assign(new Error("\u041E\u043F\u043B\u0430\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 CryptoBot \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D\u0430. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \xAB\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B\xBB \u0434\u043B\u044F \u043E\u043F\u043B\u0430\u0442\u044B \u0447\u0435\u0440\u0435\u0437 @HelpManage."), { status: 503 });
+    }
+    const resp2 = await fetch(`${CRYPTOBOT_API}/createInvoice`, {
+      method: "POST",
+      headers: {
+        "Crypto-Pay-API-Token": config.cryptobotToken,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        currency_type: "fiat",
+        fiat: "RUB",
+        amount: String(amountRub),
+        accepted_assets: "USDT,TON,BTC,ETH,LTC,BNB,TRX,USDC",
+        description: title,
+        payload: rec.id,
+        ...returnUrl ? { paid_btn_name: "callback", paid_btn_url: returnUrl } : {}
+      }),
+      signal: AbortSignal.timeout(15e3)
+    });
+    const json2 = await resp2.json().catch(() => ({}));
+    if (!resp2.ok || !json2?.ok || !json2?.result) {
+      throw new Error(`CryptoBot: ${json2?.error?.name || resp2.status}`);
+    }
+    await setPaymentProviderId(rec.id, String(json2.result.invoice_id));
+    const confirmationUrl = json2.result.bot_invoice_url || json2.result.web_app_invoice_url || json2.result.mini_app_invoice_url;
+    return { paymentId: rec.id, confirmationUrl };
+  }
+  if (!config.xrocketKey) {
+    throw Object.assign(new Error("\u041E\u043F\u043B\u0430\u0442\u0430 \u0447\u0435\u0440\u0435\u0437 xRocket \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D\u0430. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \xAB\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B\xBB \u0434\u043B\u044F \u043E\u043F\u043B\u0430\u0442\u044B \u0447\u0435\u0440\u0435\u0437 @HelpManage."), { status: 503 });
+  }
+  const rate = await getUsdtRubRate();
+  const usdtAmount = Math.max(0.1, Math.round(amountRub / rate * 100) / 100);
+  const resp = await fetch(`${XROCKET_API}/tg-invoices`, {
+    method: "POST",
+    headers: {
+      "Rocket-Pay-Key": config.xrocketKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      amount: usdtAmount,
+      numPayments: 1,
+      currency: "USDT",
+      description: `${title} (${amountRub} \u20BD)`,
+      commentsEnabled: false,
+      ...returnUrl ? { callbackUrl: returnUrl } : {},
+      payload: rec.id
+    }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok || !json?.success || !json?.data?.link) {
+    const errMsg = Array.isArray(json?.message) ? json.message.join("; ") : json?.message || (json?.errors ? JSON.stringify(json.errors) : resp.status);
+    throw new Error(`xRocket: ${errMsg}`);
+  }
+  await setPaymentProviderId(rec.id, String(json.data.id));
+  return { paymentId: rec.id, confirmationUrl: String(json.data.link) };
+}
+function verifyCryptoBotSig(rawBody, signature) {
+  if (!config.cryptobotToken || !rawBody || !signature) return false;
+  const secret = crypto5.createHash("sha256").update(config.cryptobotToken).digest();
+  const expected = crypto5.createHmac("sha256", secret).update(rawBody).digest("hex");
+  return safeEqual(expected, signature.toLowerCase());
+}
+async function handleCryptoBotWebhook(body, rawBody, signature = "") {
+  if (!verifyCryptoBotSig(rawBody, signature)) return;
+  if (body?.update_type !== "invoice_paid") return;
+  const inv = body?.payload;
+  const invoiceId = inv?.invoice_id;
+  if (invoiceId == null) return;
+  const rec = await findPaymentByProviderId(String(invoiceId));
+  if (!rec || rec.status !== "pending") return;
+  const checkResp = await fetch(`${CRYPTOBOT_API}/getInvoices`, {
+    method: "POST",
+    headers: { "Crypto-Pay-API-Token": config.cryptobotToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ invoice_ids: String(invoiceId) }),
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!checkResp.ok) return;
+  const checkJson = await checkResp.json().catch(() => ({}));
+  const real = checkJson?.result?.items?.[0];
+  if (real?.status === "paid" && String(real.payload || "") === rec.id) {
+    await activate(rec);
+  }
+}
+function verifyXRocketSig(rawBody, headers) {
+  if (!rawBody) return false;
+  const legacySig = (headers.legacySig || "").trim();
+  const signature = (headers.signature || "").trim();
+  const timestamp = (headers.timestamp || "").trim();
+  if (config.xrocketWebhookToken && signature && timestamp) {
+    const tsNum = Number(timestamp);
+    if (!Number.isFinite(tsNum)) return false;
+    const tsSec = tsNum > 1e12 ? tsNum / 1e3 : tsNum;
+    if (Math.abs(Date.now() / 1e3 - tsSec) > 300) return false;
+    const payload = `${timestamp}.${rawBody.toString("utf8")}`;
+    const hmacHex = crypto5.createHmac("sha256", config.xrocketWebhookToken).update(payload, "utf8").digest("hex");
+    const hmacB64 = crypto5.createHmac("sha256", config.xrocketWebhookToken).update(payload, "utf8").digest("base64");
+    if (safeEqual(hmacHex, signature.toLowerCase()) || safeEqual(hmacB64, signature)) return true;
+  }
+  if (legacySig) {
+    for (const key of [config.xrocketWebhookToken, config.xrocketKey].filter(Boolean)) {
+      const secret = crypto5.createHash("sha256").update(key).digest();
+      const expected = crypto5.createHmac("sha256", secret).update(rawBody).digest("hex");
+      if (safeEqual(expected, legacySig.toLowerCase())) return true;
+    }
+    return false;
+  }
+  return !config.xrocketWebhookToken;
+}
+async function handleXRocketWebhook(body, rawBody, headers = {}) {
+  if (!config.xrocketKey) return;
+  if (!verifyXRocketSig(rawBody, headers)) return;
+  const invoiceId = body?.data?.id ?? body?.invoice?.id ?? body?.invoice_id ?? body?.id;
+  if (invoiceId == null) return;
+  const rec = await findPaymentByProviderId(String(invoiceId));
+  if (!rec || rec.status !== "pending") return;
+  const checkResp = await fetch(`${XROCKET_API}/tg-invoices/${encodeURIComponent(String(invoiceId))}`, {
+    headers: { "Rocket-Pay-Key": config.xrocketKey },
+    signal: AbortSignal.timeout(15e3)
+  });
+  if (!checkResp.ok) return;
+  const checkJson = await checkResp.json().catch(() => ({}));
+  const real = checkJson?.data;
+  if (real?.status === "paid" && String(real.payload || "") === rec.id) {
+    await activate(rec);
+  }
+}
+
 // server/aiDesign.ts
 var DESIGN_VERSION = "2026-11-26.1";
 var DESIGN_LIBRARIES = {
@@ -2437,7 +2800,7 @@ var PLATFORMS = [
 var h2 = (fn) => (req, res, next) => {
   Promise.resolve(fn(req, res, next)).catch(next);
 };
-var mac = (uid) => crypto5.createHmac("sha256", process.env.LICENSE_SECRET || config.sessionSecret).update("fracs-app-license:" + uid).digest("base64url").slice(0, 24);
+var mac = (uid) => crypto6.createHmac("sha256", process.env.LICENSE_SECRET || config.sessionSecret).update("fracs-app-license:" + uid).digest("base64url").slice(0, 24);
 var licenseKey = (uid) => `fracs.${Buffer.from(uid).toString("base64url")}.${mac(uid)}`;
 function parseKey(key) {
   if (typeof key !== "string") return null;
@@ -2447,7 +2810,7 @@ function parseKey(key) {
   const expected = mac(uid);
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
-  return a.length === b.length && crypto5.timingSafeEqual(a, b) ? uid : null;
+  return a.length === b.length && crypto6.timingSafeEqual(a, b) ? uid : null;
 }
 var cache = null;
 async function release() {
@@ -2578,23 +2941,25 @@ var envNum = (k, d) => {
   return Number.isFinite(n) && n > 0 ? n : d;
 };
 var AI_LIMITS = {
-  perMinute: envNum("AI_USER_PER_MIN", 4),
+  perMinute: envNum("AI_USER_PER_MIN", 20),
   // всплеск: не больше N запросов в минуту
-  perHour: envNum("AI_USER_PER_HOUR", 12),
-  // …в час
-  perDay: envNum("AI_USER_PER_DAY", 3),
-  // …в сутки: хватает на 1 сайт (генерация + правка + фразы)
+  perHour: envNum("AI_USER_PER_HOUR", 120),
+  // …в час (щедро для чата и генератора фраз)
+  dailyComplexity: envNum("AI_DAILY_COMPLEXITY", 60),
+  // бюджет сложности сайтов/чата на окно
+  dailyPhrases: envNum("AI_DAILY_PHRASES", 150),
+  // отдельный щедрый лимит для генерации фраз Telegram
   perDayWindowMs: envNum("AI_USER_DAY_WINDOW_MS", 10 * 36e5),
-  // окно «суточного» лимита — 10 часов (обновится через 10 часов, не в полночь)
-  dailyTokens: envNum("AI_DAILY_TOKENS", 15e4),
-  // включённая дневная квота токенов (~7 генераций сайта)
-  userDailyUsd: envNum("AI_USER_DAILY_USD", 1.5),
+  // окно сброса — 10 часов
+  dailyTokens: envNum("AI_DAILY_TOKENS", 6e5),
+  // увеличенная включённая дневная квота токенов
+  userDailyUsd: envNum("AI_USER_DAILY_USD", 5),
   // потолок расходов на одного пользователя в сутки
-  globalDailyUsd: envNum("AI_GLOBAL_DAILY_USD", 40),
+  globalDailyUsd: envNum("AI_GLOBAL_DAILY_USD", 80),
   // аварийный предохранитель: общий бюджет в сутки
   maxTokens: envNum("AI_MAX_TOKENS", 12e3),
   // потолок ответа модели
-  maxInputChars: envNum("AI_MAX_INPUT_CHARS", 4e4),
+  maxInputChars: envNum("AI_MAX_INPUT_CHARS", 45e3),
   maxImages: 3
 };
 var DESIGN_MARKER = "DESIGN_SYSTEM_VERSION:";
@@ -2609,6 +2974,54 @@ var AI_PRICE = {
 };
 var priceOf = (model) => AI_PRICE[model] || [1, 4];
 var aiErr = (status, error, message, extra = {}) => [status, { ok: false, error, message, ...extra }];
+function detectSiteBuild(messages, maxTokens, imageCount) {
+  if (imageCount > 0 || maxTokens > 2200) return true;
+  for (const m of messages) {
+    const txt = typeof m?.content === "string" ? m.content : Array.isArray(m?.content) ? m.content.map((p) => p?.text || "").join("\n") : "";
+    if (/DESIGN_SYSTEM_VERSION:|СТИЛЕВОЙ РЕЦЕПТ|ТИПОГРАФИКА|текущая-версия-сайта\.html|<!DOCTYPE|<html/i.test(txt)) {
+      return true;
+    }
+  }
+  return false;
+}
+function detectPhraseGen(messages, maxTokens, inChars, isSiteBuild) {
+  if (isSiteBuild || maxTokens > 2e3 || inChars > 4e3) return false;
+  const full = messages.map((m) => typeof m?.content === "string" ? m.content : "").join("\n");
+  return /поисковую фразу|парсингу заявок в Telegram|Исходная фраза:/i.test(full);
+}
+function assessAiComplexity(maxTokens, inChars, imageCount, isSiteBuild, isPhraseGen) {
+  if (isPhraseGen && imageCount === 0) {
+    return {
+      points: 0,
+      tier: "phrase",
+      label: "\u0413\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u044F \u0444\u0440\u0430\u0437",
+      reserveOutputTokens: Math.min(maxTokens, 1200)
+    };
+  }
+  if (!isSiteBuild && imageCount === 0 && inChars < 5500 && maxTokens <= 2200) {
+    return {
+      points: 1,
+      tier: "light",
+      label: "\u041B\u0451\u0433\u043A\u0430\u044F",
+      reserveOutputTokens: Math.min(maxTokens, 1600)
+    };
+  }
+  if (inChars < 4500 && maxTokens <= 5e3 && imageCount === 0 || !isSiteBuild && imageCount === 0) {
+    return {
+      points: 3,
+      tier: "medium",
+      label: "\u0421\u0440\u0435\u0434\u043D\u044F\u044F",
+      reserveOutputTokens: Math.min(maxTokens, 5500)
+    };
+  }
+  const extraSize = inChars > 14e3 ? 1 : 0;
+  return {
+    points: Math.min(14, 6 + imageCount * 2 + extraSize),
+    tier: "heavy",
+    label: "\u0421\u043B\u043E\u0436\u043D\u0430\u044F",
+    reserveOutputTokens: maxTokens
+  };
+}
 function sanitizeAiBody(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { err: aiErr(400, "bad_request", "\u041E\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044F \u0442\u0435\u043B\u043E chat/completions.") };
   const model = String(raw.model || "");
@@ -2643,11 +3056,12 @@ function sanitizeAiBody(raw) {
   const temp = Number(raw.temperature);
   return {
     inChars: chars,
+    imageCount: images,
     body: { model, messages, max_tokens: maxTokens, temperature: Number.isFinite(temp) ? Math.min(1.2, Math.max(0, temp)) : 0.7, stream: false, usage: { include: true } }
   };
 }
 appRouter.post("/ai", h2(async (req, res) => {
-  if (!await rateLimit(`app-ai:${req.ip}`, 240, 10 * 6e4, true)) {
+  if (!await rateLimit(`app-ai:${req.ip}`, 360, 10 * 6e4, true)) {
     return void res.status(429).json({ ok: false, reason: "rate_limited" });
   }
   const gate2 = await fracsAiGate(req);
@@ -2658,10 +3072,13 @@ appRouter.post("/ai", h2(async (req, res) => {
   const uid = String(gate2.user.id);
   const clean = sanitizeAiBody(req.body?.body ?? req.body);
   if ("err" in clean) return void res.status(clean.err[0]).json(clean.err[1]);
-  const { body, inChars } = clean;
+  const { body, inChars, imageCount } = clean;
+  const isSiteBuild = detectSiteBuild(body.messages, body.max_tokens, imageCount);
+  const isPhraseGen = detectPhraseGen(body.messages, body.max_tokens, inChars, isSiteBuild);
+  const complexity = assessAiComplexity(body.max_tokens, inChars, imageCount, isSiteBuild, isPhraseGen);
   let designChars = 0;
   const hasDesign = body.messages.some((m) => m.role === "system" && typeof m.content === "string" && m.content.includes(DESIGN_MARKER));
-  if (!hasDesign) {
+  if (isSiteBuild && !hasDesign) {
     const sys = `DESIGN_SYSTEM_VERSION: ${DESIGN_VERSION}
 ` + FRACS_DESIGN_SYSTEM;
     body.messages.unshift({ role: "system", content: sys });
@@ -2669,51 +3086,71 @@ appRouter.post("/ai", h2(async (req, res) => {
   }
   const totalInChars = inChars + designChars;
   if (!await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 6e4, true)) {
-    return void res.status(429).json({ ok: false, error: "quota_minute", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435." });
+    return void res.status(429).json({ ok: false, error: "quota_minute", resetAt: Date.now() + 6e4, message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u044B\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u044B. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435." });
   }
   if (!await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 36e5, true)) {
-    return void res.status(429).json({ ok: false, error: "quota_hour", message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI: ${AI_LIMITS.perHour} \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432 \u0432 \u0447\u0430\u0441. \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447 \u2014 \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u043E\u0432.` });
+    return void res.status(429).json({ ok: false, error: "quota_hour", resetAt: Date.now() + 36e5, message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI: ${AI_LIMITS.perHour} \u043E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0439 \u0432 \u0447\u0430\u0441. \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447 \u2014 \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u043E\u0432.` });
   }
-  if (!await rateLimit(`ai-u-day:${uid}`, AI_LIMITS.perDay, AI_LIMITS.perDayWindowMs, true)) {
-    let dayBalance = 0;
-    try {
-      dayBalance = await aiTokensGet(uid);
-    } catch {
-      dayBalance = 0;
-    }
-    if (dayBalance <= 0) {
-      const hours = Math.round(AI_LIMITS.perDayWindowMs / 36e5);
-      return void res.status(429).json({ ok: false, error: "quota_day", message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (${AI_LIMITS.perDay} \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432). \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 ${hours} \u0447 \u2014 \u0438\u043B\u0438 \u043A\u0443\u043F\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435, \u043E\u043D\u0438 \u0441\u043D\u0438\u043C\u0430\u044E\u0442 \u043B\u0438\u043C\u0438\u0442: ${config.appUrl}/app`, buyUrl: `${config.appUrl}/app` });
-    }
-  }
-  const worstTokens = Math.round(totalInChars / 3.5) + body.max_tokens;
-  let usage;
   let balance = 0;
+  let usage;
   try {
-    usage = await aiUsageToday(uid);
-    balance = await aiTokensGet(uid);
+    [usage, balance] = await Promise.all([aiUsageToday(uid), aiTokensGet(uid)]);
   } catch (e) {
     console.error("[ai] usage/tokens read failed \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043E\u0442\u043A\u043B\u043E\u043D\u0451\u043D (\u043F\u0440\u0435\u0434\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435\u043B\u044C):", e);
     return void res.status(503).json({ ok: false, error: "budget_unavailable", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447." });
   }
+  const cxKey = isPhraseGen ? `ai-phrase-day:${uid}` : `ai-cx-day:${uid}`;
+  const cxCost = isPhraseGen ? 1 : complexity.points;
+  const cxLimit = isPhraseGen ? AI_LIMITS.dailyPhrases : AI_LIMITS.dailyComplexity;
+  let cxUsed = 0;
+  let cxConsumed = false;
+  let cxResetAt = 0;
+  if (balance <= 0) {
+    const cx = await consumeBudgetWindow(cxKey, cxCost, cxLimit, AI_LIMITS.perDayWindowMs, true);
+    cxUsed = cx.used;
+    cxResetAt = cx.resetAt || Date.now() + AI_LIMITS.perDayWindowMs;
+    if (!cx.allowed) {
+      const hours = Math.max(1, Math.round((cxResetAt - Date.now()) / 36e5));
+      return void res.status(429).json({
+        ok: false,
+        error: "quota_day",
+        complexity,
+        complexityUsed: cx.used,
+        complexityLimit: cxLimit,
+        resetAt: cxResetAt,
+        message: isPhraseGen ? `\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0444\u0440\u0430\u0437 Telegram \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (${cx.used}/${cxLimit}). \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 ${hours} \u0447 \u2014 \u0438\u043B\u0438 \u0434\u043E\u043A\u0443\u043F\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u043F\u0440\u044F\u043C\u043E \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435.` : `\u041B\u0438\u043C\u0438\u0442 \u0441\u043B\u043E\u0436\u043D\u043E\u0441\u0442\u0438 Fracs AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (${cx.used}/${cxLimit} \u0435\u0434.; \u0437\u0430\u0434\u0430\u0447\u0430 \xAB${complexity.label}\xBB \u0442\u0440\u0435\u0431\u0443\u0435\u0442 ${cxCost} \u0435\u0434.). \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 ${hours} \u0447 \u2014 \u0438\u043B\u0438 \u0434\u043E\u043A\u0443\u043F\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u043F\u0440\u044F\u043C\u043E \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435.`,
+        buyUrl: `${config.appUrl}/app`
+      });
+    }
+    cxConsumed = true;
+  }
+  const worstTokens = Math.round(totalInChars / 3.5) + complexity.reserveOutputTokens;
   const tokensAllowed = AI_LIMITS.dailyTokens + balance;
   if (usage.userTokens + worstTokens > tokensAllowed) {
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const left = Math.max(0, tokensAllowed - usage.userTokens);
+    const nextUtcMidnight = /* @__PURE__ */ new Date();
+    nextUtcMidnight.setUTCHours(24, 0, 0, 0);
     return void res.status(429).json({
       ok: false,
       error: "quota_tokens",
-      message: `\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 \u0442\u043E\u043A\u0435\u043D\u043E\u0432 Fracs AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (\u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E ${AI_LIMITS.dailyTokens.toLocaleString("ru-RU")}/\u0441\u0443\u0442\u043A\u0438). \u041A\u0443\u043F\u0438\u0442\u0435 \u0434\u043E\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435 \u2014 \u043E\u043D\u0438 \u043D\u0435 \u0438\u0441\u0442\u0435\u043A\u0430\u044E\u0442: ${config.appUrl}/app`,
+      resetAt: nextUtcMidnight.getTime(),
+      message: `\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 \u0442\u043E\u043A\u0435\u043D\u043E\u0432 Fracs AI \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D (\u0432\u043A\u043B\u044E\u0447\u0435\u043D\u043E ${AI_LIMITS.dailyTokens.toLocaleString("ru-RU")}/\u0441\u0443\u0442\u043A\u0438). \u0414\u043E\u043A\u0443\u043F\u0438\u0442\u0435 \u0442\u043E\u043A\u0435\u043D\u044B \u043F\u0440\u044F\u043C\u043E \u0432 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u0435 \u2014 \u043E\u043D\u0438 \u043D\u0435 \u0438\u0441\u0442\u0435\u043A\u0430\u044E\u0442.`,
       tokensLeft: left,
       buyUrl: `${config.appUrl}/app`
     });
   }
   const [pin, pout] = priceOf(body.model);
-  const worstUsd = totalInChars / 3.5 * pin / 1e6 + body.max_tokens * pout / 1e6;
+  const worstUsd = totalInChars / 3.5 * pin / 1e6 + complexity.reserveOutputTokens * pout / 1e6;
   if (usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     return void res.status(503).json({ ok: false, error: "daily_budget", message: "\u041E\u0431\u0449\u0438\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043D\u0430 \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D \u2014 \u043E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430. \u0421\u043E \u0441\u0432\u043E\u0438\u043C API-\u043A\u043B\u044E\u0447\u043E\u043C \u043C\u043E\u0436\u043D\u043E \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u0431\u0435\u0437 \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u0439." });
   }
   if (usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
-    return void res.status(429).json({ ok: false, error: "quota_budget", message: "\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043F\u043E \u043E\u0431\u044A\u0451\u043C\u0443 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D. \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430. \u0421\u043E \u0441\u0432\u043E\u0438\u043C API-\u043A\u043B\u044E\u0447\u043E\u043C \u043B\u0438\u043C\u0438\u0442\u043E\u0432 \u043D\u0435\u0442." });
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
+    const nextUtcMidnight = /* @__PURE__ */ new Date();
+    nextUtcMidnight.setUTCHours(24, 0, 0, 0);
+    return void res.status(429).json({ ok: false, error: "quota_budget", resetAt: nextUtcMidnight.getTime(), message: "\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043F\u043E \u043E\u0431\u044A\u0451\u043C\u0443 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D. \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430 \u0438\u043B\u0438 \u043F\u043E\u0441\u043B\u0435 \u043F\u043E\u043A\u0443\u043F\u043A\u0438 \u043F\u0430\u043A\u0435\u0442\u0430 \u0442\u043E\u043A\u0435\u043D\u043E\u0432." });
   }
   try {
     const upstream = await fetch(config.openrouterUrl + "/chat/completions", {
@@ -2727,16 +3164,27 @@ appRouter.post("/ai", h2(async (req, res) => {
       try {
         const u = JSON.parse(text)?.usage || {};
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
-        const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || body.max_tokens) * pout) / 1e6;
+        const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
         const over = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
         if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error("[ai] tokens spend failed:", e));
       } catch (e) {
         console.error("[ai] usage write failed:", e);
       }
+    } else if (cxConsumed && upstream.status >= 500) {
+      await refundBudgetWindow(cxKey, cxCost);
+    }
+    res.setHeader("X-Fracs-Complexity-Tier", complexity.tier);
+    res.setHeader("X-Fracs-Complexity-Cost", String(cxCost));
+    if (balance <= 0 && !isPhraseGen) {
+      res.setHeader("X-Fracs-Complexity-Left", String(Math.max(0, cxLimit - cxUsed)));
+    }
+    if (cxResetAt > 0) {
+      res.setHeader("X-Fracs-Reset-At", String(cxResetAt));
     }
     res.status(upstream.status).type("application/json").send(text);
   } catch (e) {
+    if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     res.status(502).json({ ok: false, error: "upstream", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
 }));
@@ -2773,20 +3221,89 @@ appRouter.get("/ai/usage", h2(async (req, res) => {
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
   try {
-    const [usage, balance] = await Promise.all([aiUsageToday(String(gate2.user.id)), aiTokensGet(String(gate2.user.id))]);
+    const uid = String(gate2.user.id);
+    const [usage, balance, cx, px] = await Promise.all([
+      aiUsageToday(uid),
+      aiTokensGet(uid),
+      getBudgetWindow(`ai-cx-day:${uid}`),
+      getBudgetWindow(`ai-phrase-day:${uid}`)
+    ]);
     const allowed2 = AI_LIMITS.dailyTokens + balance;
     res.json({
       ok: true,
+      now: Date.now(),
       dailyIncluded: AI_LIMITS.dailyTokens,
       usedToday: usage.userTokens,
       requestsToday: usage.userRequests,
       balance,
       tokensLeft: Math.max(0, allowed2 - usage.userTokens),
-      packs: loadTokenPacks()
+      dailyComplexityLimit: AI_LIMITS.dailyComplexity,
+      complexityUsed: cx.used,
+      complexityLeft: Math.max(0, AI_LIMITS.dailyComplexity - cx.used),
+      complexityResetAt: cx.resetAt || null,
+      dailyPhrasesLimit: AI_LIMITS.dailyPhrases,
+      phrasesUsed: px.used,
+      phrasesLeft: Math.max(0, AI_LIMITS.dailyPhrases - px.used),
+      phrasesResetAt: px.resetAt || null,
+      packs: loadTokenPacks(),
+      paymentMethods: {
+        cryptobot: Boolean(config.cryptobotToken),
+        xrocket: Boolean(config.xrocketKey),
+        requisites: true
+      },
+      supportUsername: config.supportUsername
     });
   } catch (e) {
     console.error("[ai] usage endpoint failed:", e);
     res.status(503).json({ ok: false, error: "usage_unavailable" });
+  }
+}));
+appRouter.post("/ai/buy", h2(async (req, res) => {
+  if (!await rateLimit(`app-ai-buy-ip:${req.ip}`, 60, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E." });
+  }
+  const gate2 = await fracsAiGate(req);
+  if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  const user = gate2.user;
+  if (!await rateLimit(`app-ai-buy:${user.id}`, 15, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u043F\u043E\u043F\u044B\u0442\u043E\u043A \u043E\u043F\u043B\u0430\u0442\u044B. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043F\u0430\u0440\u0443 \u043C\u0438\u043D\u0443\u0442." });
+  }
+  const packId = String(req.body?.packId || "");
+  const pack = loadTokenPacks().find((p) => p.id === packId);
+  if (!pack) {
+    return void res.status(400).json({ ok: false, error: "bad_pack", message: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u043F\u0430\u043A\u0435\u0442 \u0442\u043E\u043A\u0435\u043D\u043E\u0432." });
+  }
+  const rawMethod = String(req.body?.method || "cryptobot");
+  const supportUser = (config.supportUsername || "HelpManage").replace(/^@/, "");
+  if (rawMethod === "requisites") {
+    const whoLabel = user.tgId != null ? `${user.username ? "@" + user.username : user.firstName} (id ${user.tgId})` : `${user.email || user.firstName} (\u043F\u043E\u0447\u0442\u0430)`;
+    if (config.adminTgId > 0) {
+      await notify(
+        config.adminTgId,
+        `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u0442\u043E\u043A\u0435\u043D\u044B Fracs AI \u0438\u0437 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B (\u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B)
+${whoLabel}
+\u041F\u0430\u043A\u0435\u0442: ${pack.title}, ${pack.priceRub} \u20BD`
+      ).catch(() => {
+      });
+    }
+    const text = `\u0417\u0434\u0440\u0430\u0432\u0441\u0442\u0432\u0443\u0439\u0442\u0435! \u0425\u043E\u0447\u0443 \u0434\u043E\u043A\u0443\u043F\u0438\u0442\u044C \u0442\u043E\u043A\u0435\u043D\u044B Fracs AI \u0438\u0437 \u043F\u0440\u043E\u0433\u0440\u0430\u043C\u043C\u044B: ${pack.title} (${pack.priceRub} \u20BD).`;
+    return void res.json({
+      ok: true,
+      method: "requisites",
+      confirmationUrl: `https://t.me/${supportUser}?text=${encodeURIComponent(text)}`
+    });
+  }
+  const method = rawMethod === "xrocket" ? "xrocket" : "cryptobot";
+  try {
+    const r = await createPayment(user, pack.id, method);
+    res.json({ ok: true, method, paymentId: r.paymentId, confirmationUrl: r.confirmationUrl });
+  } catch (e) {
+    console.error("[app ai buy]", e);
+    res.status(e.status || 502).json({
+      ok: false,
+      error: "payment",
+      message: e.status ? e.message : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u0441\u0447\u0451\u0442 \u043D\u0430 \u043E\u043F\u043B\u0430\u0442\u0443. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \xAB\u0420\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B\xBB."
+    });
   }
 }));
 appRouter.get("/ai/design", h2(async (req, res) => {
@@ -2855,7 +3372,7 @@ var demoPage = async (req, res) => {
 import { Router as Router3 } from "express";
 
 // server/webapp.ts
-import crypto6 from "node:crypto";
+import crypto7 from "node:crypto";
 function verifyInitData(initData) {
   if (!config.botToken || typeof initData !== "string" || !initData.trim()) {
     return { ok: false, error: "no_init_data" };
@@ -2871,11 +3388,11 @@ function verifyInitData(initData) {
   }
   params.delete("hash");
   const dataCheckString = [...params.entries()].sort(([a2], [b2]) => a2 < b2 ? -1 : a2 > b2 ? 1 : 0).map(([k, v]) => `${k}=${v}`).join("\n");
-  const secret = crypto6.createHmac("sha256", "WebAppData").update(config.botToken).digest();
-  const calc = crypto6.createHmac("sha256", secret).update(dataCheckString).digest("hex");
+  const secret = crypto7.createHmac("sha256", "WebAppData").update(config.botToken).digest();
+  const calc = crypto7.createHmac("sha256", secret).update(dataCheckString).digest("hex");
   const a = Buffer.from(calc);
   const b = Buffer.from(hash);
-  if (a.length !== b.length || !crypto6.timingSafeEqual(a, b)) {
+  if (a.length !== b.length || !crypto7.timingSafeEqual(a, b)) {
     return { ok: false, error: "bad_hash" };
   }
   const userRaw = params.get("user");
@@ -3018,94 +3535,8 @@ adminRouter.post("/channels/check", h3(async (req, res) => {
 }));
 
 // server/routes.ts
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 import { Router as Router4 } from "express";
-
-// server/payments.ts
-var YK = "https://api.yookassa.ru/v3/payments";
-var ykAuth = () => "Basic " + Buffer.from(`${config.yookassaShopId}:${config.yookassaSecret}`).toString("base64");
-async function activate(p) {
-  const [user, plans] = await Promise.all([getUser(p.userId), getPlans()]);
-  const pack = TOKEN_PACKS.find((t) => t.id === p.planId);
-  if (pack) {
-    if (!user) return;
-    if (!await claimPayment(p.id)) return;
-    try {
-      await aiTokensAdd(user.id, pack.tokens);
-      await notify(user.tgId, `\u26A1\uFE0F \u0422\u043E\u043A\u0435\u043D\u044B Fracs AI \u0437\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u044B: +${pack.tokens.toLocaleString("ru-RU")}. \u0411\u0430\u043B\u0430\u043D\u0441 \u043D\u0435 \u0438\u0441\u0442\u0435\u043A\u0430\u0435\u0442 \u2014 \u0441\u043C\u043E\u0442\u0440\u0438\u0442\u0435 \u043E\u0441\u0442\u0430\u0442\u043E\u043A \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435: ${config.appUrl}/app`);
-    } catch (e) {
-      await revertPayment(p.id);
-      throw e;
-    }
-    return;
-  }
-  const plan = plans.find((x) => x.id === p.planId);
-  if (!user || !plan) return;
-  if (!await claimPayment(p.id)) return;
-  try {
-    const updated = await extendSubscription(user.id, plan.days, plan.id);
-    await notify(user.tgId, `\u2705 \u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 \u0430\u043A\u0442\u0438\u0432\u043D\u0430 \u0434\u043E ${new Date(updated.subscriptionUntil).toLocaleDateString("ru-RU")}. \u0414\u0430\u043D\u043D\u044B\u0435 \u043E\u0442\u043A\u0440\u044B\u0442\u044B \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442\u0435: ${config.appUrl}/app`);
-  } catch (e) {
-    await revertPayment(p.id);
-    throw e;
-  }
-}
-async function createPayment(user, planId) {
-  const pack = TOKEN_PACKS.find((t) => t.id === planId);
-  const plans = pack ? [] : await getPlans();
-  const plan = pack ? void 0 : plans.find((p) => p.id === planId);
-  if (!pack && !plan) throw Object.assign(new Error("\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444"), { status: 400 });
-  const amountRub = pack ? pack.priceRub : plan.priceRub;
-  const title = pack ? `\u0422\u043E\u043A\u0435\u043D\u044B Fracs AI: ${pack.title}` : `\u041F\u043E\u0434\u043F\u0438\u0441\u043A\u0430 Fracs: ${plan.title}`;
-  const rec = {
-    id: newId(),
-    userId: user.id,
-    planId: (pack ?? plan).id,
-    amountRub,
-    status: "pending",
-    provider: config.paymentProvider,
-    providerId: null,
-    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-    paidAt: null
-  };
-  await insertPayment(rec);
-  if (config.paymentProvider === "yookassa") {
-    if (!config.yookassaShopId || !config.yookassaSecret) throw new Error("\u042EKassa \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D\u0430");
-    const resp = await fetch(YK, {
-      method: "POST",
-      headers: { Authorization: ykAuth(), "Idempotence-Key": rec.id, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        amount: { value: amountRub.toFixed(2), currency: "RUB" },
-        capture: true,
-        confirmation: { type: "redirect", return_url: `${config.appUrl}/app?paid=1` },
-        description: title,
-        metadata: { paymentId: rec.id }
-      }),
-      signal: AbortSignal.timeout(15e3)
-    });
-    const json = await resp.json();
-    if (!resp.ok) throw new Error(`\u042EKassa: ${json?.description || resp.status}`);
-    await setPaymentProviderId(rec.id, json.id);
-    return { confirmationUrl: json.confirmation?.confirmation_url };
-  }
-  if (!config.allowMockPayments) throw Object.assign(new Error("\u041E\u043F\u043B\u0430\u0442\u0430 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D\u0430"), { status: 503 });
-  await activate(rec);
-  return { activated: true };
-}
-async function handleYookassaWebhook(body) {
-  const id = body?.object?.id;
-  if (typeof id !== "string") return;
-  const rec = await findPaymentByProviderId(id);
-  if (!rec || rec.status !== "pending") return;
-  const resp = await fetch(`${YK}/${encodeURIComponent(id)}`, { headers: { Authorization: ykAuth() }, signal: AbortSignal.timeout(15e3) });
-  if (!resp.ok) return;
-  const real = await resp.json();
-  if (real.status === "canceled") {
-    await cancelPayment(rec.id);
-  } else if (real.status === "succeeded" && Number(real.amount?.value) === rec.amountRub && real.metadata?.paymentId === rec.id) {
-    await activate(rec);
-  }
-}
 
 // server/cron.ts
 async function cronHandler(req, res) {
@@ -3161,28 +3592,44 @@ api.get("/health", h4(async (_req, res) => {
 }));
 api.get("/config", h4(async (_req, res) => {
   res.json({
-    devLogin: config.devLogin,
     payment: config.paymentProvider,
+    paymentMethods: {
+      cryptobot: Boolean(config.cryptobotToken),
+      xrocket: Boolean(config.xrocketKey),
+      requisites: true
+    },
+    supportUsername: config.supportUsername,
     plans: await getPlans(),
-    tokenPacks: TOKEN_PACKS,
+    tokenPacks: loadTokenPacks(),
     demo: { maps: false, tg: false },
     adminUsername: config.adminUsername || void 0
   });
 }));
 api.get("/plans", h4(async (_req, res) => {
-  res.json({ ok: true, plans: await getPlans(), tokenPacks: TOKEN_PACKS });
+  res.json({ ok: true, plans: await getPlans(), tokenPacks: loadTokenPacks() });
 }));
 api.get("/cities", (req, res) => {
   res.json({ items: searchCities(String(req.query.q || "").slice(0, 40), 8) });
 });
-api.post("/payments/yookassa/webhook", h4(async (req, res) => {
-  if (config.paymentProvider === "yookassa") {
-    try {
-      await handleYookassaWebhook(req.body);
-    } catch (e) {
-      console.error("[yookassa]", e);
-      return void res.sendStatus(500);
-    }
+api.post("/payments/cryptobot/webhook", h4(async (req, res) => {
+  try {
+    await handleCryptoBotWebhook(req.body, req.rawBody, req.get("crypto-pay-api-signature") || "");
+  } catch (e) {
+    console.error("[cryptobot]", e);
+    return void res.sendStatus(500);
+  }
+  res.sendStatus(200);
+}));
+api.post("/payments/xrocket/webhook", h4(async (req, res) => {
+  try {
+    await handleXRocketWebhook(req.body, req.rawBody, {
+      legacySig: req.get("rocket-pay-signature") || "",
+      signature: req.get("signature") || "",
+      timestamp: req.get("signature-timestamp") || ""
+    });
+  } catch (e) {
+    console.error("[xrocket]", e);
+    return void res.sendStatus(500);
   }
   res.sendStatus(200);
 }));
@@ -3221,7 +3668,7 @@ var maskStart = (s, keep = 3) => s.slice(0, keep) + MASK;
 var parseCooldownMs = 6 * 60 * 6e4;
 function signTrialTicket(ticket) {
   const payload = Buffer.from(JSON.stringify(ticket)).toString("base64url");
-  const signature = crypto7.createHmac("sha256", config.sessionSecret).update("trial-ticket:" + payload).digest("base64url");
+  const signature = crypto8.createHmac("sha256", config.sessionSecret).update("trial-ticket:" + payload).digest("base64url");
   return `${payload}.${signature}`;
 }
 function verifyTrialTicket(value, userId) {
@@ -3230,8 +3677,8 @@ function verifyTrialTicket(value, userId) {
   if (separator <= 0) return null;
   const payload = value.slice(0, separator);
   const supplied = Buffer.from(value.slice(separator + 1));
-  const expected = Buffer.from(crypto7.createHmac("sha256", config.sessionSecret).update("trial-ticket:" + payload).digest("base64url"));
-  if (supplied.length !== expected.length || !crypto7.timingSafeEqual(supplied, expected)) return null;
+  const expected = Buffer.from(crypto8.createHmac("sha256", config.sessionSecret).update("trial-ticket:" + payload).digest("base64url"));
+  if (supplied.length !== expected.length || !crypto8.timingSafeEqual(supplied, expected)) return null;
   try {
     const ticket = JSON.parse(Buffer.from(payload, "base64url").toString());
     if (ticket.userId !== userId || !ticket.jobId || !ticket.seed || Date.now() - ticket.createdAt > 24 * 60 * 6e4) return null;
@@ -3372,7 +3819,7 @@ api.post("/search/maps/trial/start", requireAuth, h4(async (req, res) => {
   const uniqueUrls = [...new Set(parsed.map((search) => search.url))];
   const niche = cleanText(parsed[0].niche, 80) || "\u041F\u043E\u0438\u0441\u043A 2\u0413\u0418\u0421";
   const cityLabel = [...new Set(parsed.map((search) => search.city))].join(", ");
-  const seed = crypto7.createHash("sha256").update([...uniqueUrls].sort().join("\n")).digest("hex");
+  const seed = crypto8.createHash("sha256").update([...uniqueUrls].sort().join("\n")).digest("hex");
   try {
     const workerResponse = await fetch(`${config.mapsWorkerUrl}/api/internal/trial/jobs`, {
       method: "POST",
@@ -3558,31 +4005,33 @@ api.get("/search/:id/export.csv", requireAuth, h4(async (req, res) => {
 }));
 api.post("/payments/request", requireAuth, h4(async (req, res) => {
   if (!await rateLimit(`payreq:${req.user.id}`, 5, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043D\u0435\u043C\u043D\u043E\u0433\u043E." });
-  const pack = TOKEN_PACKS.find((t) => t.id === String(req.body?.planId || ""));
+  const pack = loadTokenPacks().find((t) => t.id === String(req.body?.planId || ""));
   const plans = pack ? [] : await getPlans();
   const plan = pack ? void 0 : plans.find((p) => p.id === String(req.body?.planId || ""));
   if (!pack && !plan) return void res.status(400).json({ error: "bad_plan", message: "\u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0430\u0440\u0438\u0444" });
   const u = req.user;
+  const whoLabel = u.tgId != null ? `${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})` : `${u.email || u.firstName} (\u043F\u043E\u0447\u0442\u0430)`;
+  const targetGrant = u.tgId != null ? String(u.tgId) : u.email || u.id;
   if (config.adminTgId > 0) {
     await notify(
       config.adminTgId,
-      pack ? `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u0442\u043E\u043A\u0435\u043D\u044B Fracs AI
-${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})
-\u041F\u0430\u043A\u0435\u0442: ${pack.title}, ${pack.priceRub} \u20BD
-
-\u0412\u044B\u0434\u0430\u0442\u044C: /grant-tokens ${u.tgId} ${pack.tokens}` : `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443
-${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})
+      pack ? `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u0442\u043E\u043A\u0435\u043D\u044B Fracs AI (\u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B)
+${whoLabel}
+\u041F\u0430\u043A\u0435\u0442: ${pack.title}, ${pack.priceRub} \u20BD` : `\u{1F9FE} \u0417\u0430\u044F\u0432\u043A\u0430 \u043D\u0430 \u043F\u043E\u0434\u043F\u0438\u0441\u043A\u0443 (\u0440\u0435\u043A\u0432\u0438\u0437\u0438\u0442\u044B)
+${whoLabel}
 \u0422\u0430\u0440\u0438\u0444: ${plan.title}, ${plan.priceRub} \u20BD
 
-\u0412\u044B\u0434\u0430\u0442\u044C: /grant ${u.tgId} ${plan.days}`
+\u0412\u044B\u0434\u0430\u0442\u044C: /grant ${targetGrant} ${plan.days} ${plan.id}`
     );
   }
   res.json({ ok: true });
 }));
 api.post("/payments/create", requireAuth, h4(async (req, res) => {
   if (!await rateLimit(`pay:${req.user.id}`, 10, 10 * 6e4)) return void res.status(429).json({ error: "rate_limited" });
+  const rawMethod = req.body?.method;
+  const method = rawMethod === "cryptobot" || rawMethod === "xrocket" ? rawMethod : void 0;
   try {
-    res.json(await createPayment(req.user, String(req.body?.planId || "")));
+    res.json(await createPayment(req.user, String(req.body?.planId || ""), method));
   } catch (e) {
     console.error("[pay]", e);
     res.status(e.status || 502).json({ error: "payment", message: e.status ? e.message : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u043F\u043B\u0430\u0442\u0451\u0436. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
@@ -3601,15 +4050,12 @@ var CSP = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'none'",
   "upgrade-insecure-requests"
 ].join("; ");
 function securityHeaders(_req, res, next) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   if (config.isProd) {
     res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
     res.setHeader("Content-Security-Policy", CSP);
@@ -3671,7 +4117,12 @@ function buildApp() {
     }
   });
   app.use("/api/app/demo", express.json({ limit: "1500kb" }));
-  app.use(express.json({ limit: "100kb" }));
+  app.use(express.json({
+    limit: "100kb",
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
   app.post("/api/bot/webhook", webhookHandler);
   app.get("/v/:id", demoPage);
   app.use("/api", noStoreApi, csrfGuard);

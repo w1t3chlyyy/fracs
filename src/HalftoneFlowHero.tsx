@@ -135,7 +135,8 @@ const CSS =
   ".hfh-field{position:relative;flex:1;min-width:0;height:100%}" +
   ".hfh-input{position:absolute;inset:0;width:100%;border:0;outline:0;background:transparent;color:inherit;font:inherit;font-size:16px}" +
   ".hfh-ph{position:absolute;inset:0;display:flex;align-items:center;font-size:16px;opacity:.55;pointer-events:none;white-space:nowrap;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 95%,transparent);mask-image:linear-gradient(90deg,#000 95%,transparent)}" +
-  ".hfh-caret{display:inline-block;width:2px;height:1.1em;margin-left:2px;background:var(--hfh-hot);animation:hfh-blink 1s steps(1) infinite}" +
+  ".hfh-ph-text{display:block;width:100%;text-align:left}" +
+  ".hfh-caret{display:inline-block;width:2px;height:1.1em;margin-left:2px;vertical-align:-.18em;background:var(--hfh-hot);animation:hfh-blink 1s steps(1) infinite}" +
   ".hfh-go{flex:none;display:inline-flex;align-items:center;gap:8px;height:100%;padding:0 20px;border:0;border-radius:999px;cursor:pointer;font:inherit;font-size:15px;font-weight:600;" +
   "color:#fff;background:var(--hfh-hot);transition:transform .4s cubic-bezier(.3,1.5,.5,1),background-color .25s}" +
   ".hfh-go:hover{transform:translateX(-2px)}" +
@@ -149,7 +150,7 @@ const CSS =
   ".hfh-av:first-child{margin-left:0}" +
   ".hfh-av:nth-child(2){background:#ff8a4c}.hfh-av:nth-child(3){background:var(--hfh-flow);color:var(--hfh-text)}" +
   "@keyframes hfh-blink{50%{opacity:0}}" +
-  "@media (max-width:560px){.hfh-go span{display:none}.hfh-go{padding:0 16px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}.hfh-ph,.hfh-input{font-size:14.5px}}" +
+  "@media (max-width:560px){.hfh-inner{padding:24px 12px}.hfh-form{padding:6px 6px 6px 14px;gap:6px}.hfh-spark{width:16px;height:16px}.hfh-go span{display:none}.hfh-go{padding:0 15px}.hfh-root{padding:8px}.hfh-card{border-radius:22px}.hfh-ph{white-space:normal;font-size:13px;line-height:1.25;-webkit-mask-image:none;mask-image:none;overflow:visible}.hfh-input{font-size:16px}}" +
   "@media (prefers-reduced-motion:reduce){.hfh-caret{animation:none}.hfh-card,.hfh-w,.hfh-fade,.hfh-go,.hfh-go svg{transition:none}}"
 
 function compile(gl: WebGLRenderingContext, type: number, src: string) {
@@ -431,8 +432,10 @@ export default function HalftoneFlowHero({
               />
               {!value ? (
                 <span className="hfh-ph" aria-hidden="true">
-                  {current.slice(0, typed.shown)}
-                  <span className="hfh-caret" />
+                  <span className="hfh-ph-text">
+                    {current.slice(0, typed.shown)}
+                    <span className="hfh-caret" />
+                  </span>
                 </span>
               ) : null}
             </label>
