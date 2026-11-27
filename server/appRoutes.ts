@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { config, loadTokenPacks } from './config.ts';
-import { getUser, getActiveFeatures, getTraining, isSubscribed, rateLimit, consumeBudgetWindow, getBudgetWindow, refundBudgetWindow, aiUsageToday, aiUsageAdd, aiTokensGet, aiTokensSpend, demoCreate, demoGet, demoCounts } from './db.ts';
+import { getUser, isAdminTg, getActiveFeatures, getTraining, isSubscribed, rateLimit, consumeBudgetWindow, getBudgetWindow, refundBudgetWindow, aiUsageToday, aiUsageAdd, aiTokensGet, aiTokensSpend, demoCreate, demoGet, demoCounts } from './db.ts';
 import { requireAuth } from './auth.ts';
 import { searchTg } from './providers.ts';
 import { cleanText } from './util.ts';
@@ -392,11 +392,17 @@ function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: num
 }
 
 appRouter.post('/ai', h(async (req, res) => {
-  if (!(await rateLimit(`app-ai:${req.ip}`, 360, 10 * 60_000, true))) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !(await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  const isAdmin = isAdminTg(gate.user.tgId);
+  if (!isAdmin && !(await rateLimit(`app-ai:${req.ip}`, 360, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  }
   if (!config.openrouterApiKey && !config.cohereApiKey) {
     return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
@@ -427,21 +433,27 @@ appRouter.post('/ai', h(async (req, res) => {
   }
   const totalInChars = inChars + designChars;
 
-  // 1) Анти-флуд (минута / час) + лимит по сложности задач за окно
-  if (!(await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 60_000, true))) {
-    return void res.status(429).json({ ok: false, error: 'quota_minute', resetAt: Date.now() + 60_000, message: 'Слишком частые запросы. Подождите минуту и повторите.' });
-  }
-  if (!(await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 3_600_000, true))) {
-    return void res.status(429).json({ ok: false, error: 'quota_hour', resetAt: Date.now() + 3_600_000, message: `Лимит Fracs AI: ${AI_LIMITS.perHour} обращений в час. Продолжите позже или подключите свой API-ключ — без лимитов.` });
+  // 1) Анти-флуд (минута / час) + лимит по сложности задач за окно (админу ADMIN_TG_ID — безлимит)
+  if (!isAdmin) {
+    if (!(await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 60_000, true))) {
+      return void res.status(429).json({ ok: false, error: 'quota_minute', resetAt: Date.now() + 60_000, message: 'Слишком частые запросы. Подождите минуту и повторите.' });
+    }
+    if (!(await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 3_600_000, true))) {
+      return void res.status(429).json({ ok: false, error: 'quota_hour', resetAt: Date.now() + 3_600_000, message: `Лимит Fracs AI: ${AI_LIMITS.perHour} обращений в час. Продолжите позже или подключите свой API-ключ — без лимитов.` });
+    }
   }
 
   let balance = 0;
-  let usage;
-  try {
-    [usage, balance] = await Promise.all([aiUsageToday(uid), aiTokensGet(uid)]);
-  } catch (e) {
-    console.error('[ai] usage/tokens read failed — запрос отклонён (предохранитель):', e);
-    return void res.status(503).json({ ok: false, error: 'budget_unavailable', message: 'Fracs AI временно недоступен. Попробуйте позже или используйте свой API-ключ.' });
+  let usage: Awaited<ReturnType<typeof aiUsageToday>> = { userRequests: 0, userCostUsd: 0, userTokens: 0, totalRequests: 0, totalCostUsd: 0, totalTokens: 0 };
+  if (isAdmin) {
+    [usage, balance] = await Promise.all([aiUsageToday(uid).catch(() => usage), aiTokensGet(uid).catch(() => 0)]);
+  } else {
+    try {
+      [usage, balance] = await Promise.all([aiUsageToday(uid), aiTokensGet(uid)]);
+    } catch (e) {
+      console.error('[ai] usage/tokens read failed — запрос отклонён (предохранитель):', e);
+      return void res.status(503).json({ ok: false, error: 'budget_unavailable', message: 'Fracs AI временно недоступен. Попробуйте позже или используйте свой API-ключ.' });
+    }
   }
 
   const cxKey = isPhraseGen ? `ai-phrase-day:${uid}` : `ai-cx-day:${uid}`;
@@ -450,7 +462,7 @@ appRouter.post('/ai', h(async (req, res) => {
   let cxUsed = 0;
   let cxConsumed = false;
   let cxResetAt = 0;
-  if (balance <= 0) {
+  if (!isAdmin && balance <= 0) {
     const cx = await consumeBudgetWindow(cxKey, cxCost, cxLimit, AI_LIMITS.perDayWindowMs, true);
     cxUsed = cx.used;
     cxResetAt = cx.resetAt || (Date.now() + AI_LIMITS.perDayWindowMs);
@@ -475,7 +487,7 @@ appRouter.post('/ai', h(async (req, res) => {
   // 2) Лимит по токенам: включённая дневная квота + купленные пакеты (пакеты не истекают).
   const worstTokens = Math.round(totalInChars / 3.5) + complexity.reserveOutputTokens;
   const tokensAllowed = AI_LIMITS.dailyTokens + balance;
-  if (usage.userTokens + worstTokens > tokensAllowed) {
+  if (!isAdmin && usage.userTokens + worstTokens > tokensAllowed) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const left = Math.max(0, tokensAllowed - usage.userTokens);
     const nextUtcMidnight = new Date();
@@ -493,11 +505,11 @@ appRouter.post('/ai', h(async (req, res) => {
   // 3) Бюджет в долларах: по пользователю и общий (предохранители от дорогих моделей).
   const [pin, pout] = priceOf(body.model);
   const worstUsd = (totalInChars / 3.5) * pin / 1e6 + complexity.reserveOutputTokens * pout / 1e6;
-  if (usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
+  if (!isAdmin && usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     return void res.status(503).json({ ok: false, error: 'daily_budget', message: 'Общий лимит Fracs AI на сегодня исчерпан — он обновится завтра. Со своим API-ключом можно работать без ограничений.' });
   }
-  if (balance <= 0 && usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
+  if (!isAdmin && balance <= 0 && usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const nextUtcMidnight = new Date();
     nextUtcMidnight.setUTCHours(24, 0, 0, 0);
@@ -535,11 +547,13 @@ appRouter.post('/ai', h(async (req, res) => {
         const cost = Number(u.cost) > 0 ? Number(u.cost)
           : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
-        // Списание с купленного баланса: только дельта, на которую текущий запрос вышел за дневную квоту.
-        const prevOver = Math.max(0, usage.userTokens - AI_LIMITS.dailyTokens);
-        const nextOver = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
-        const over = Math.max(0, nextOver - prevOver);
-        if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error('[ai] tokens spend failed:', e));
+        if (!isAdmin) {
+          // Списание с купленного баланса: только дельта, на которую текущий запрос вышел за дневную квоту.
+          const prevOver = Math.max(0, usage.userTokens - AI_LIMITS.dailyTokens);
+          const nextOver = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
+          const over = Math.max(0, nextOver - prevOver);
+          if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error('[ai] tokens spend failed:', e));
+        }
         // Скрываем имя реальной модели в ответе прокси
         if (parsed && typeof parsed === 'object') {
           parsed.model = 'fracs-ai';
@@ -556,10 +570,10 @@ appRouter.post('/ai', h(async (req, res) => {
     }
     res.setHeader('X-Fracs-Complexity-Tier', complexity.tier);
     res.setHeader('X-Fracs-Complexity-Cost', String(cxCost));
-    if (balance <= 0 && !isPhraseGen) {
+    if (!isAdmin && balance <= 0 && !isPhraseGen) {
       res.setHeader('X-Fracs-Complexity-Left', String(Math.max(0, cxLimit - cxUsed)));
     }
-    if (cxResetAt > 0) {
+    if (!isAdmin && cxResetAt > 0) {
       res.setHeader('X-Fracs-Reset-At', String(cxResetAt));
     }
     res.status(upstream.status).type('application/json').send(safeBody);
@@ -570,11 +584,16 @@ appRouter.post('/ai', h(async (req, res) => {
 }));
 
 appRouter.get('/ai/models', h(async (req, res) => {
-  if (!(await rateLimit(`app-ai-models:${req.ip}`, 120, 10 * 60_000, true))) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !(await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  if (!isAdminTg(gate.user.tgId) && !(await rateLimit(`app-ai-models:${req.ip}`, 120, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  }
   if (!config.openrouterApiKey && !config.cohereApiKey) {
     return void res.status(503).json({ ok: false, error: 'not_configured' });
   }
@@ -587,38 +606,46 @@ appRouter.get('/ai/models', h(async (req, res) => {
 }));
 
 /** Остаток токенов Fracs AI: включённая дневная квота + купленный баланс + пакеты к покупке.
- *  Программа и кабинет показывают это в интерфейсе AI-агента. */
+ *  Программа и кабинет показывают это в интерфейсе AI-агента. Для ADMIN_TG_ID — безлимит. */
 appRouter.get('/ai/usage', h(async (req, res) => {
-  if (!(await rateLimit(`app-ai-usage:${req.ip}`, 120, 10 * 60_000, true))) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !(await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  const isAdmin = isAdminTg(gate.user.tgId);
+  if (!isAdmin && !(await rateLimit(`app-ai-usage:${req.ip}`, 120, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  }
   try {
     const uid = String(gate.user.id);
+    const emptyUsage = { userRequests: 0, userCostUsd: 0, userTokens: 0, totalRequests: 0, totalCostUsd: 0, totalTokens: 0 };
     const [usage, balance, cx, px] = await Promise.all([
-      aiUsageToday(uid),
-      aiTokensGet(uid),
-      getBudgetWindow(`ai-cx-day:${uid}`),
-      getBudgetWindow(`ai-phrase-day:${uid}`),
+      isAdmin ? aiUsageToday(uid).catch(() => emptyUsage) : aiUsageToday(uid),
+      isAdmin ? aiTokensGet(uid).catch(() => 0) : aiTokensGet(uid),
+      getBudgetWindow(`ai-cx-day:${uid}`).catch(() => ({ used: 0, resetAt: 0 })),
+      getBudgetWindow(`ai-phrase-day:${uid}`).catch(() => ({ used: 0, resetAt: 0 })),
     ]);
     const allowed = AI_LIMITS.dailyTokens + balance;
     res.json({
       ok: true,
       now: Date.now(),
-      dailyIncluded: AI_LIMITS.dailyTokens,
+      unlimited: isAdmin,
+      dailyIncluded: isAdmin ? null : AI_LIMITS.dailyTokens,
       usedToday: usage.userTokens,
       requestsToday: usage.userRequests,
       balance,
-      tokensLeft: Math.max(0, allowed - usage.userTokens),
-      dailyComplexityLimit: AI_LIMITS.dailyComplexity,
+      tokensLeft: isAdmin ? null : Math.max(0, allowed - usage.userTokens),
+      dailyComplexityLimit: isAdmin ? null : AI_LIMITS.dailyComplexity,
       complexityUsed: cx.used,
-      complexityLeft: Math.max(0, AI_LIMITS.dailyComplexity - cx.used),
-      complexityResetAt: cx.resetAt || null,
-      dailyPhrasesLimit: AI_LIMITS.dailyPhrases,
+      complexityLeft: isAdmin ? null : Math.max(0, AI_LIMITS.dailyComplexity - cx.used),
+      complexityResetAt: isAdmin ? null : (cx.resetAt || null),
+      dailyPhrasesLimit: isAdmin ? null : AI_LIMITS.dailyPhrases,
       phrasesUsed: px.used,
-      phrasesLeft: Math.max(0, AI_LIMITS.dailyPhrases - px.used),
-      phrasesResetAt: px.resetAt || null,
+      phrasesLeft: isAdmin ? null : Math.max(0, AI_LIMITS.dailyPhrases - px.used),
+      phrasesResetAt: isAdmin ? null : (px.resetAt || null),
       packs: loadTokenPacks(),
       paymentMethods: {
         cryptobot: Boolean(config.cryptobotToken),
@@ -688,11 +715,16 @@ appRouter.post('/ai/buy', h(async (req, res) => {
  *  и положить в system-сообщение — тогда сервер не будет дублировать промт
  *  (маркер DESIGN_SYSTEM_VERSION: в первой строке). Обновляется без пересборки приложения. */
 appRouter.get('/ai/design', h(async (req, res) => {
-  if (!(await rateLimit(`app-ai-design:${req.ip}`, 60, 10 * 60_000, true))) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !(await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
   const gate = await fracsAiGate(req);
   if ('error' in gate) return void res.status(gate.error[0]).json(gate.error[1]);
+  if (!isAdminTg(gate.user.tgId) && !(await rateLimit(`app-ai-design:${req.ip}`, 60, 10 * 60_000, true))) {
+    return void res.status(429).json({ ok: false, reason: 'rate_limited' });
+  }
   res.json({
     ok: true,
     version: DESIGN_VERSION,
@@ -713,12 +745,17 @@ const DEMO_MAX_ACTIVE = envNum('DEMO_MAX_ACTIVE', 300);
 const DEMO_MARK = 'data-fracs-review="1"';
 
 appRouter.post('/demo', h(async (req, res) => {
-  if (!(await rateLimit(`app-demo:${req.ip}`, 60, 3_600_000, true))) {
+  const rawKey = orAuthKey(req);
+  const uid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!uid && !(await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, error: 'rate_limited', message: 'Слишком часто. Повторите позже.' });
   }
-  const uid = parseKey(orAuthKey(req));
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, reason: 'invalid' });
+  const isAdmin = isAdminTg(user.tgId);
+  if (!isAdmin && !(await rateLimit(`app-demo:${req.ip}`, 60, 3_600_000, true))) {
+    return void res.status(429).json({ ok: false, error: 'rate_limited', message: 'Слишком часто. Повторите позже.' });
+  }
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: 'expired' });
   if (!(await checkChannelSubs(user.tgId))) {
     return void res.status(403).json({ ok: false, error: 'channels_required', message: 'Подпишитесь на обязательные каналы в боте Fracs.' });
@@ -732,9 +769,11 @@ appRouter.post('/demo', h(async (req, res) => {
   if (Buffer.byteLength(html) > DEMO_MAX_BYTES) {
     return void res.status(413).json({ ok: false, error: 'too_big', message: 'Страница слишком большая (лимит 1,2 МБ) — уберите из сайта тяжёлые встроенные картинки.' });
   }
-  const c = await demoCounts(user.id);
-  if (c.day >= DEMO_PER_DAY) return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит публикаций демо: ${DEMO_PER_DAY} в сутки.` });
-  if (c.total >= DEMO_MAX_ACTIVE) return void res.status(429).json({ ok: false, error: 'quota_total', message: 'Слишком много активных демо — старые удаляются через 45 дней.' });
+  if (!isAdmin) {
+    const c = await demoCounts(user.id);
+    if (c.day >= DEMO_PER_DAY) return void res.status(429).json({ ok: false, error: 'quota_day', message: `Лимит публикаций демо: ${DEMO_PER_DAY} в сутки.` });
+    if (c.total >= DEMO_MAX_ACTIVE) return void res.status(429).json({ ok: false, error: 'quota_total', message: 'Слишком много активных демо — старые удаляются через 45 дней.' });
+  }
   const id = await demoCreate(user.id, html);
   res.json({ ok: true, id, url: `${config.appUrl}/v/${id}` });
 }));

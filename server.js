@@ -3392,11 +3392,17 @@ function sanitizeAiBody(raw) {
   };
 }
 appRouter.post("/ai", h2(async (req, res) => {
-  if (!await rateLimit(`app-ai:${req.ip}`, 360, 10 * 6e4, true)) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 6e4, true)) {
     return void res.status(429).json({ ok: false, reason: "rate_limited" });
   }
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  const isAdmin = isAdminTg(gate2.user.tgId);
+  if (!isAdmin && !await rateLimit(`app-ai:${req.ip}`, 360, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  }
   if (!config.openrouterApiKey && !config.cohereApiKey) {
     return void res.status(503).json({ ok: false, error: "not_configured", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
@@ -3420,19 +3426,25 @@ appRouter.post("/ai", h2(async (req, res) => {
     designChars = sys.length;
   }
   const totalInChars = inChars + designChars;
-  if (!await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 6e4, true)) {
-    return void res.status(429).json({ ok: false, error: "quota_minute", resetAt: Date.now() + 6e4, message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u044B\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u044B. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435." });
-  }
-  if (!await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 36e5, true)) {
-    return void res.status(429).json({ ok: false, error: "quota_hour", resetAt: Date.now() + 36e5, message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI: ${AI_LIMITS.perHour} \u043E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0439 \u0432 \u0447\u0430\u0441. \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447 \u2014 \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u043E\u0432.` });
+  if (!isAdmin) {
+    if (!await rateLimit(`ai-u-min:${uid}`, AI_LIMITS.perMinute, 6e4, true)) {
+      return void res.status(429).json({ ok: false, error: "quota_minute", resetAt: Date.now() + 6e4, message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u044B\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u044B. \u041F\u043E\u0434\u043E\u0436\u0434\u0438\u0442\u0435 \u043C\u0438\u043D\u0443\u0442\u0443 \u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435." });
+    }
+    if (!await rateLimit(`ai-u-hr:${uid}`, AI_LIMITS.perHour, 36e5, true)) {
+      return void res.status(429).json({ ok: false, error: "quota_hour", resetAt: Date.now() + 36e5, message: `\u041B\u0438\u043C\u0438\u0442 Fracs AI: ${AI_LIMITS.perHour} \u043E\u0431\u0440\u0430\u0449\u0435\u043D\u0438\u0439 \u0432 \u0447\u0430\u0441. \u041F\u0440\u043E\u0434\u043E\u043B\u0436\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447 \u2014 \u0431\u0435\u0437 \u043B\u0438\u043C\u0438\u0442\u043E\u0432.` });
+    }
   }
   let balance = 0;
-  let usage;
-  try {
-    [usage, balance] = await Promise.all([aiUsageToday(uid), aiTokensGet(uid)]);
-  } catch (e) {
-    console.error("[ai] usage/tokens read failed \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043E\u0442\u043A\u043B\u043E\u043D\u0451\u043D (\u043F\u0440\u0435\u0434\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435\u043B\u044C):", e);
-    return void res.status(503).json({ ok: false, error: "budget_unavailable", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447." });
+  let usage = { userRequests: 0, userCostUsd: 0, userTokens: 0, totalRequests: 0, totalCostUsd: 0, totalTokens: 0 };
+  if (isAdmin) {
+    [usage, balance] = await Promise.all([aiUsageToday(uid).catch(() => usage), aiTokensGet(uid).catch(() => 0)]);
+  } else {
+    try {
+      [usage, balance] = await Promise.all([aiUsageToday(uid), aiTokensGet(uid)]);
+    } catch (e) {
+      console.error("[ai] usage/tokens read failed \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043E\u0442\u043A\u043B\u043E\u043D\u0451\u043D (\u043F\u0440\u0435\u0434\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u0435\u043B\u044C):", e);
+      return void res.status(503).json({ ok: false, error: "budget_unavailable", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435 \u0438\u043B\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0439\u0442\u0435 \u0441\u0432\u043E\u0439 API-\u043A\u043B\u044E\u0447." });
+    }
   }
   const cxKey = isPhraseGen ? `ai-phrase-day:${uid}` : `ai-cx-day:${uid}`;
   const cxCost = isPhraseGen ? 1 : complexity.points;
@@ -3440,7 +3452,7 @@ appRouter.post("/ai", h2(async (req, res) => {
   let cxUsed = 0;
   let cxConsumed = false;
   let cxResetAt = 0;
-  if (balance <= 0) {
+  if (!isAdmin && balance <= 0) {
     const cx = await consumeBudgetWindow(cxKey, cxCost, cxLimit, AI_LIMITS.perDayWindowMs, true);
     cxUsed = cx.used;
     cxResetAt = cx.resetAt || Date.now() + AI_LIMITS.perDayWindowMs;
@@ -3461,7 +3473,7 @@ appRouter.post("/ai", h2(async (req, res) => {
   }
   const worstTokens = Math.round(totalInChars / 3.5) + complexity.reserveOutputTokens;
   const tokensAllowed = AI_LIMITS.dailyTokens + balance;
-  if (usage.userTokens + worstTokens > tokensAllowed) {
+  if (!isAdmin && usage.userTokens + worstTokens > tokensAllowed) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const left = Math.max(0, tokensAllowed - usage.userTokens);
     const nextUtcMidnight = /* @__PURE__ */ new Date();
@@ -3477,11 +3489,11 @@ appRouter.post("/ai", h2(async (req, res) => {
   }
   const [pin, pout] = priceOf(body.model);
   const worstUsd = totalInChars / 3.5 * pin / 1e6 + complexity.reserveOutputTokens * pout / 1e6;
-  if (usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
+  if (!isAdmin && usage.totalCostUsd + worstUsd > AI_LIMITS.globalDailyUsd) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     return void res.status(503).json({ ok: false, error: "daily_budget", message: "\u041E\u0431\u0449\u0438\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043D\u0430 \u0441\u0435\u0433\u043E\u0434\u043D\u044F \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D \u2014 \u043E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430. \u0421\u043E \u0441\u0432\u043E\u0438\u043C API-\u043A\u043B\u044E\u0447\u043E\u043C \u043C\u043E\u0436\u043D\u043E \u0440\u0430\u0431\u043E\u0442\u0430\u0442\u044C \u0431\u0435\u0437 \u043E\u0433\u0440\u0430\u043D\u0438\u0447\u0435\u043D\u0438\u0439." });
   }
-  if (balance <= 0 && usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
+  if (!isAdmin && balance <= 0 && usage.userCostUsd + worstUsd > AI_LIMITS.userDailyUsd) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
     const nextUtcMidnight = /* @__PURE__ */ new Date();
     nextUtcMidnight.setUTCHours(24, 0, 0, 0);
@@ -3516,10 +3528,12 @@ appRouter.post("/ai", h2(async (req, res) => {
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
         const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * pout) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
-        const prevOver = Math.max(0, usage.userTokens - AI_LIMITS.dailyTokens);
-        const nextOver = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
-        const over = Math.max(0, nextOver - prevOver);
-        if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error("[ai] tokens spend failed:", e));
+        if (!isAdmin) {
+          const prevOver = Math.max(0, usage.userTokens - AI_LIMITS.dailyTokens);
+          const nextOver = Math.max(0, usage.userTokens + tokens - AI_LIMITS.dailyTokens);
+          const over = Math.max(0, nextOver - prevOver);
+          if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error("[ai] tokens spend failed:", e));
+        }
         if (parsed && typeof parsed === "object") {
           parsed.model = "fracs-ai";
           if ("provider" in parsed) delete parsed.provider;
@@ -3537,10 +3551,10 @@ appRouter.post("/ai", h2(async (req, res) => {
     }
     res.setHeader("X-Fracs-Complexity-Tier", complexity.tier);
     res.setHeader("X-Fracs-Complexity-Cost", String(cxCost));
-    if (balance <= 0 && !isPhraseGen) {
+    if (!isAdmin && balance <= 0 && !isPhraseGen) {
       res.setHeader("X-Fracs-Complexity-Left", String(Math.max(0, cxLimit - cxUsed)));
     }
-    if (cxResetAt > 0) {
+    if (!isAdmin && cxResetAt > 0) {
       res.setHeader("X-Fracs-Reset-At", String(cxResetAt));
     }
     res.status(upstream.status).type("application/json").send(safeBody);
@@ -3550,11 +3564,16 @@ appRouter.post("/ai", h2(async (req, res) => {
   }
 }));
 appRouter.get("/ai/models", h2(async (req, res) => {
-  if (!await rateLimit(`app-ai-models:${req.ip}`, 120, 10 * 6e4, true)) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 6e4, true)) {
     return void res.status(429).json({ ok: false, reason: "rate_limited" });
   }
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  if (!isAdminTg(gate2.user.tgId) && !await rateLimit(`app-ai-models:${req.ip}`, 120, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  }
   if (!config.openrouterApiKey && !config.cohereApiKey) {
     return void res.status(503).json({ ok: false, error: "not_configured" });
   }
@@ -3565,36 +3584,44 @@ appRouter.get("/ai/models", h2(async (req, res) => {
   });
 }));
 appRouter.get("/ai/usage", h2(async (req, res) => {
-  if (!await rateLimit(`app-ai-usage:${req.ip}`, 120, 10 * 6e4, true)) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 6e4, true)) {
     return void res.status(429).json({ ok: false, reason: "rate_limited" });
   }
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  const isAdmin = isAdminTg(gate2.user.tgId);
+  if (!isAdmin && !await rateLimit(`app-ai-usage:${req.ip}`, 120, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  }
   try {
     const uid = String(gate2.user.id);
+    const emptyUsage = { userRequests: 0, userCostUsd: 0, userTokens: 0, totalRequests: 0, totalCostUsd: 0, totalTokens: 0 };
     const [usage, balance, cx, px] = await Promise.all([
-      aiUsageToday(uid),
-      aiTokensGet(uid),
-      getBudgetWindow(`ai-cx-day:${uid}`),
-      getBudgetWindow(`ai-phrase-day:${uid}`)
+      isAdmin ? aiUsageToday(uid).catch(() => emptyUsage) : aiUsageToday(uid),
+      isAdmin ? aiTokensGet(uid).catch(() => 0) : aiTokensGet(uid),
+      getBudgetWindow(`ai-cx-day:${uid}`).catch(() => ({ used: 0, resetAt: 0 })),
+      getBudgetWindow(`ai-phrase-day:${uid}`).catch(() => ({ used: 0, resetAt: 0 }))
     ]);
     const allowed2 = AI_LIMITS.dailyTokens + balance;
     res.json({
       ok: true,
       now: Date.now(),
-      dailyIncluded: AI_LIMITS.dailyTokens,
+      unlimited: isAdmin,
+      dailyIncluded: isAdmin ? null : AI_LIMITS.dailyTokens,
       usedToday: usage.userTokens,
       requestsToday: usage.userRequests,
       balance,
-      tokensLeft: Math.max(0, allowed2 - usage.userTokens),
-      dailyComplexityLimit: AI_LIMITS.dailyComplexity,
+      tokensLeft: isAdmin ? null : Math.max(0, allowed2 - usage.userTokens),
+      dailyComplexityLimit: isAdmin ? null : AI_LIMITS.dailyComplexity,
       complexityUsed: cx.used,
-      complexityLeft: Math.max(0, AI_LIMITS.dailyComplexity - cx.used),
-      complexityResetAt: cx.resetAt || null,
-      dailyPhrasesLimit: AI_LIMITS.dailyPhrases,
+      complexityLeft: isAdmin ? null : Math.max(0, AI_LIMITS.dailyComplexity - cx.used),
+      complexityResetAt: isAdmin ? null : cx.resetAt || null,
+      dailyPhrasesLimit: isAdmin ? null : AI_LIMITS.dailyPhrases,
       phrasesUsed: px.used,
-      phrasesLeft: Math.max(0, AI_LIMITS.dailyPhrases - px.used),
-      phrasesResetAt: px.resetAt || null,
+      phrasesLeft: isAdmin ? null : Math.max(0, AI_LIMITS.dailyPhrases - px.used),
+      phrasesResetAt: isAdmin ? null : px.resetAt || null,
       packs: loadTokenPacks(),
       paymentMethods: {
         cryptobot: Boolean(config.cryptobotToken),
@@ -3660,11 +3687,16 @@ ${whoLabel}
   }
 }));
 appRouter.get("/ai/design", h2(async (req, res) => {
-  if (!await rateLimit(`app-ai-design:${req.ip}`, 60, 10 * 6e4, true)) {
+  const rawKey = orAuthKey(req);
+  const preUid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!preUid && !await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 6e4, true)) {
     return void res.status(429).json({ ok: false, reason: "rate_limited" });
   }
   const gate2 = await fracsAiGate(req);
   if ("error" in gate2) return void res.status(gate2.error[0]).json(gate2.error[1]);
+  if (!isAdminTg(gate2.user.tgId) && !await rateLimit(`app-ai-design:${req.ip}`, 60, 10 * 6e4, true)) {
+    return void res.status(429).json({ ok: false, reason: "rate_limited" });
+  }
   res.json({
     ok: true,
     version: DESIGN_VERSION,
@@ -3678,12 +3710,17 @@ var DEMO_PER_DAY = envNum("DEMO_PER_DAY", 20);
 var DEMO_MAX_ACTIVE = envNum("DEMO_MAX_ACTIVE", 300);
 var DEMO_MARK = 'data-fracs-review="1"';
 appRouter.post("/demo", h2(async (req, res) => {
-  if (!await rateLimit(`app-demo:${req.ip}`, 60, 36e5, true)) {
+  const rawKey = orAuthKey(req);
+  const uid = rawKey.length <= 256 ? parseKey(rawKey) : null;
+  if (!uid && !await rateLimit(`app-ai-bad:${req.ip}`, 60, 10 * 6e4, true)) {
     return void res.status(429).json({ ok: false, error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
-  const uid = parseKey(orAuthKey(req));
   const user = uid ? await getUser(uid) : null;
   if (!user) return void res.status(401).json({ ok: false, reason: "invalid" });
+  const isAdmin = isAdminTg(user.tgId);
+  if (!isAdmin && !await rateLimit(`app-demo:${req.ip}`, 60, 36e5, true)) {
+    return void res.status(429).json({ ok: false, error: "rate_limited", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u0447\u0430\u0441\u0442\u043E. \u041F\u043E\u0432\u0442\u043E\u0440\u0438\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
+  }
   if (!isSubscribed(user)) return void res.status(402).json({ ok: false, reason: "expired" });
   if (!await checkChannelSubs(user.tgId)) {
     return void res.status(403).json({ ok: false, error: "channels_required", message: "\u041F\u043E\u0434\u043F\u0438\u0448\u0438\u0442\u0435\u0441\u044C \u043D\u0430 \u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0435 \u043A\u0430\u043D\u0430\u043B\u044B \u0432 \u0431\u043E\u0442\u0435 Fracs." });
@@ -3697,9 +3734,11 @@ appRouter.post("/demo", h2(async (req, res) => {
   if (Buffer.byteLength(html) > DEMO_MAX_BYTES) {
     return void res.status(413).json({ ok: false, error: "too_big", message: "\u0421\u0442\u0440\u0430\u043D\u0438\u0446\u0430 \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u0430\u044F (\u043B\u0438\u043C\u0438\u0442 1,2 \u041C\u0411) \u2014 \u0443\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u0437 \u0441\u0430\u0439\u0442\u0430 \u0442\u044F\u0436\u0451\u043B\u044B\u0435 \u0432\u0441\u0442\u0440\u043E\u0435\u043D\u043D\u044B\u0435 \u043A\u0430\u0440\u0442\u0438\u043D\u043A\u0438." });
   }
-  const c = await demoCounts(user.id);
-  if (c.day >= DEMO_PER_DAY) return void res.status(429).json({ ok: false, error: "quota_day", message: `\u041B\u0438\u043C\u0438\u0442 \u043F\u0443\u0431\u043B\u0438\u043A\u0430\u0446\u0438\u0439 \u0434\u0435\u043C\u043E: ${DEMO_PER_DAY} \u0432 \u0441\u0443\u0442\u043A\u0438.` });
-  if (c.total >= DEMO_MAX_ACTIVE) return void res.status(429).json({ ok: false, error: "quota_total", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0434\u0435\u043C\u043E \u2014 \u0441\u0442\u0430\u0440\u044B\u0435 \u0443\u0434\u0430\u043B\u044F\u044E\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 45 \u0434\u043D\u0435\u0439." });
+  if (!isAdmin) {
+    const c = await demoCounts(user.id);
+    if (c.day >= DEMO_PER_DAY) return void res.status(429).json({ ok: false, error: "quota_day", message: `\u041B\u0438\u043C\u0438\u0442 \u043F\u0443\u0431\u043B\u0438\u043A\u0430\u0446\u0438\u0439 \u0434\u0435\u043C\u043E: ${DEMO_PER_DAY} \u0432 \u0441\u0443\u0442\u043A\u0438.` });
+    if (c.total >= DEMO_MAX_ACTIVE) return void res.status(429).json({ ok: false, error: "quota_total", message: "\u0421\u043B\u0438\u0448\u043A\u043E\u043C \u043C\u043D\u043E\u0433\u043E \u0430\u043A\u0442\u0438\u0432\u043D\u044B\u0445 \u0434\u0435\u043C\u043E \u2014 \u0441\u0442\u0430\u0440\u044B\u0435 \u0443\u0434\u0430\u043B\u044F\u044E\u0442\u0441\u044F \u0447\u0435\u0440\u0435\u0437 45 \u0434\u043D\u0435\u0439." });
+  }
   const id = await demoCreate(user.id, html);
   res.json({ ok: true, id, url: `${config.appUrl}/v/${id}` });
 }));

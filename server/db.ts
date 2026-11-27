@@ -100,7 +100,7 @@ export const newId = () => crypto.randomUUID();
 
 const ADMIN_UNTIL = '2099-12-31T00:00:00.000Z';
 
-const isAdminTg = (tgId: number | null) => config.adminTgId > 0 && tgId === config.adminTgId;
+export const isAdminTg = (tgId: number | null) => config.adminTgId > 0 && tgId === config.adminTgId;
 
 /** Админу (ADMIN_TG_ID) подписка не нужна: считаем её вечной. В базу это не пишется. */
 function withAdmin(u: User): User {

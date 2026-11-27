@@ -2062,9 +2062,13 @@
     var cxLeft=Number(lastUsage.complexityLeft||0), cxLim=Number(lastUsage.dailyComplexityLimit||0);
     var phLeft=Number(lastUsage.phrasesLeft||0), phLim=Number(lastUsage.dailyPhrasesLimit||0);
     if(stat){
-      stat.innerHTML='Баланс токенов: <b>'+esc(bal.toLocaleString('ru-RU'))+'</b> · '+
-        'Сайты: <b>'+cxLeft+' / '+cxLim+'</b> ед. · '+
-        'Фразы TG: <b>'+phLeft+' / '+phLim+'</b>';
+      if(lastUsage.unlimited){
+        stat.innerHTML='Режим администратора: <b>без лимитов</b>';
+      }else{
+        stat.innerHTML='Баланс токенов: <b>'+esc(bal.toLocaleString('ru-RU'))+'</b> · '+
+          'Сайты: <b>'+cxLeft+' / '+cxLim+'</b> ед. · '+
+          'Фразы TG: <b>'+phLeft+' / '+phLim+'</b>';
+      }
     }
     var packs=lastUsage.packs||[];
     if(!selectedPackId&&packs.length)selectedPackId=packs[0].id;
@@ -2191,7 +2195,7 @@
         lbl.textContent=(currentProvider||'AI-агент')+(shortModel?(' · '+shortModel):'');
       }
     }
-    if(buyBtn)buyBtn.style.display=(currentProvider==='Fracs AI')?'':'none';
+    if(buyBtn)buyBtn.style.display=(currentProvider==='Fracs AI' && !(lastUsage && lastUsage.unlimited))?'':'none';
     refreshAiUsage();
   }
   function refreshAiUsage(reRenderModal){
@@ -2205,19 +2209,28 @@
     fetch('/api/ai/usage').then(function(r){return r.json()}).then(function(d){
       if(d&&d.ok){
         lastUsage=d;
-        var skew=typeof d.now==='number'?(Date.now()-d.now):0;
-        var rst=d.complexityResetAt?(d.complexityResetAt+skew):0;
-        if(d.balance>0){
-          q.textContent='Баланс: '+d.balance.toLocaleString('ru-RU')+' ток.';
+        var buyBtn=$('aiBuyBtn');
+        if(d.unlimited){
+          q.textContent='Безлимит';
           if(banner)banner.hidden=true;
           quotaResetAt=0;
-        }else if(typeof d.complexityLeft==='number'&&typeof d.dailyComplexityLimit==='number'){
-          if(d.complexityLeft<=0){
-            startQuotaCountdown(rst,'Дневной лимит Fracs AI исчерпан');
-          }else{
-            var phTxt=(typeof d.phrasesLeft==='number')?(' · Фразы: '+d.phrasesLeft+'/'+d.dailyPhrasesLimit):'';
-            q.textContent='Сложность: '+d.complexityLeft+' / '+d.dailyComplexityLimit+' ед.'+phTxt;
-            if(banner&&!quotaResetAt)banner.hidden=true;
+          if(buyBtn)buyBtn.style.display='none';
+        }else{
+          if(buyBtn&&currentProvider==='Fracs AI')buyBtn.style.display='';
+          var skew=typeof d.now==='number'?(Date.now()-d.now):0;
+          var rst=d.complexityResetAt?(d.complexityResetAt+skew):0;
+          if(d.balance>0){
+            q.textContent='Баланс: '+d.balance.toLocaleString('ru-RU')+' ток.';
+            if(banner)banner.hidden=true;
+            quotaResetAt=0;
+          }else if(typeof d.complexityLeft==='number'&&typeof d.dailyComplexityLimit==='number'){
+            if(d.complexityLeft<=0){
+              startQuotaCountdown(rst,'Дневной лимит Fracs AI исчерпан');
+            }else{
+              var phTxt=(typeof d.phrasesLeft==='number')?(' · Фразы: '+d.phrasesLeft+'/'+d.dailyPhrasesLimit):'';
+              q.textContent='Сложность: '+d.complexityLeft+' / '+d.dailyComplexityLimit+' ед.'+phTxt;
+              if(banner&&!quotaResetAt)banner.hidden=true;
+            }
           }
         }
         if(reRenderModal)renderBuyModalState();
