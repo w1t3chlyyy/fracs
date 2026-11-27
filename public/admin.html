@@ -68,6 +68,13 @@
     #toast.show { opacity: 1; }
     .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
     @media (max-width: 420px) { .row > * { flex: 1 1 100%; } }
+    /* На узких экранах вкладки не сжимаются, а прокручиваются горизонтально —
+       иначе «Пользователи» / «Промокоды» не влезают в одну строку. */
+    @media (max-width: 600px) {
+      .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex-wrap: nowrap; }
+      .tabs::-webkit-scrollbar { display: none; }
+      .tab { flex: 0 0 auto; min-width: max-content; white-space: nowrap; padding: 9px 12px; }
+    }
   </style>
 </head>
 <body>

@@ -48,6 +48,8 @@
     t.addEventListener('click', function () {
       tabs.forEach(function (x) { x.classList.toggle('active', x === t); });
       panels.forEach(function (p) { p.classList.toggle('active', p.id === 'tab-' + t.dataset.tab); });
+      // На мобилке вкладки прокручиваются горизонтально — покажем активную.
+      if (t.scrollIntoView) t.scrollIntoView({ inline: 'nearest', block: 'nearest' });
     });
   });
 
