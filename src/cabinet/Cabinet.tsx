@@ -221,7 +221,7 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
         </div>
       </div>
 
-      {/* Правая половина: ASCII-цветок — распускается из «0» и крутится по кругу */}
+      {/* Правая половина: ASCII-цветок по референсу — распускание ~7 с, затем бесконечное вращение */}
       <div className="hidden lg:flex flex-1 items-center justify-center overflow-hidden">
         <AsciiFlower />
       </div>
