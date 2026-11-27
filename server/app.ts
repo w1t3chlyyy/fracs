@@ -1,6 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { attachUser } from './auth.ts';
-import { webhookHandler } from './bot.ts';
+import { webhookHandler, ensureWebhook } from './bot.ts';
 import { appRouter, demoPage } from './appRoutes.ts';
 import { adminRouter } from './adminRoutes.ts';
 import { api } from './routes.ts';
@@ -43,5 +43,10 @@ export function buildApp() {
     console.error(err);
     res.status(500).json({ error: 'server_error' });
   });
+
+  // Самовосстановление Telegram webhook при холодном старте (после деплоя он
+  // мог пропасть — из-за этого «ломается» вход через Telegram). Fire-and-forget.
+  void ensureWebhook();
+
   return app;
 }

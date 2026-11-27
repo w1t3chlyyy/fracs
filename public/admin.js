@@ -126,16 +126,19 @@
     var q = (document.getElementById('u-search').value || '').trim().toLowerCase();
     var list = USERS.filter(function (u) {
       if (!q) return true;
-      return String(u.tgId).includes(q) || (u.username || '').toLowerCase().includes(q) ||
-        (u.firstName || '').toLowerCase().includes(q);
+      return String(u.tgId || '').includes(q) || (u.username || '').toLowerCase().includes(q) ||
+        (u.firstName || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
     });
     var box = document.getElementById('u-list');
-    if (!list.length) { box.innerHTML = '<div class="empty">Никого не найдено. Пользователь должен сначала войти в кабинет через бота.</div>'; return; }
+    if (!list.length) { box.innerHTML = '<div class="empty">Никого не найдено. Пользователь должен сначала войти в кабинет (бот или код с почты).</div>'; return; }
     box.innerHTML = list.map(function (u) {
       var on = u.active;
-      return '<div class="card" data-tg="' + u.tgId + '">' +
-        '<div class="uhead"><span class="name">' + esc(u.firstName || 'без имени') + '</span>' +
-        '<span class="sub">@' + esc(u.username || '—') + ' <span class="pill">id ' + u.tgId + '</span></span></div>' +
+      var isEmail = u.tgId == null || u.tgId === 0;
+      var ident = isEmail
+        ? '<span class="sub"><span class="pill">почта</span> ' + esc(u.email || '—') + '</span>'
+        : '<span class="sub">@' + esc(u.username || '—') + ' <span class="pill">id ' + u.tgId + '</span></span>';
+      return '<div class="card" data-uid="' + esc(u.id) + '">' +
+        '<div class="uhead"><span class="name">' + esc(u.firstName || 'без имени') + '</span>' + ident + '</div>' +
         '<div class="ustatus ' + (on ? 'on' : 'off') + '">' +
         (on ? IC.ok + '<span>Подписка до ' + fmt(u.subscriptionUntil) + (u.planId ? ' · ' + esc(u.planId) : '') + '</span>' : IC.none + '<span>нет подписки</span>') + '</div>' +
         '<div class="grid2">' +
@@ -150,21 +153,20 @@
   document.getElementById('u-list').addEventListener('click', async function (e) {
     var b = e.target.closest('[data-act]');
     if (!b) return;
-    var card = b.closest('[data-tg]');
-    var tgId = Number(card.getAttribute('data-tg'));
+    var card = b.closest('[data-uid]');
+    var uid = card.getAttribute('data-uid');
+    var idx = USERS.findIndex(function (u) { return u.id === uid; });
     b.disabled = true;
     try {
       if (b.dataset.act === 'g') {
-        var data = await api('/grant', { tgId: tgId, days: Number(b.dataset.days), planId: b.dataset.plan });
-        var idx = USERS.findIndex(function (u) { return u.tgId === tgId; });
+        var data = await api('/grant', { id: uid, days: Number(b.dataset.days), planId: b.dataset.plan });
         if (idx >= 0) USERS[idx] = data.user;
         renderUsers();
         toast('Выдано ' + b.dataset.plan.toUpperCase() + ' ' + b.dataset.days + ' дн.');
       } else if (b.dataset.act === 'r') {
         if (!confirm('Снять подписку у этого пользователя?')) return;
-        var d2 = await api('/revoke', { tgId: tgId });
-        var i2 = USERS.findIndex(function (u) { return u.tgId === tgId; });
-        if (i2 >= 0) USERS[i2] = d2.user;
+        var d2 = await api('/revoke', { id: uid });
+        if (idx >= 0) USERS[idx] = d2.user;
         renderUsers();
         toast('Подписка снята');
       }
@@ -172,17 +174,20 @@
     finally { b.disabled = false; }
   });
 
-  // Выдача по Telegram ID (форма)
+  // Выдача по Telegram ID или email (форма)
   document.getElementById('g-go').addEventListener('click', async function () {
-    var tgId = Number(document.getElementById('g-tgid').value);
+    var who = (document.getElementById('g-who').value || '').trim();
     var days = Number(document.getElementById('g-days').value);
     var planId = document.getElementById('g-plan').value;
-    if (!Number.isInteger(tgId) || tgId <= 0) { toast('Введите числовой Telegram ID', true); return; }
+    var isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(who.toLowerCase());
+    var isTg = /^\d+$/.test(who) && Number(who) > 0;
+    if (!isEmail && !isTg) { toast('Введите числовой Telegram ID или адрес эл. почты', true); return; }
     if (!(days > 0 && days <= 3650)) { toast('Дней: 1–3650', true); return; }
     var b = this; b.disabled = true;
     try {
-      var data = await api('/grant', { tgId: tgId, days: days, planId: planId });
-      var idx = USERS.findIndex(function (u) { return u.tgId === tgId; });
+      var body = isEmail ? { email: who.toLowerCase(), days: days, planId: planId } : { tgId: Number(who), days: days, planId: planId };
+      var data = await api('/grant', body);
+      var idx = USERS.findIndex(function (u) { return u.id === data.user.id; });
       if (idx >= 0) USERS[idx] = data.user; else await loadUsers();
       renderUsers();
       toast('Выдано ' + planId.toUpperCase() + ' ' + days + ' дн. до ' + fmt(data.user.subscriptionUntil));

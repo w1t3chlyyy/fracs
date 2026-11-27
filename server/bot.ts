@@ -183,8 +183,10 @@ function docsMarkup(includeCabinet = true) {
 /* ── админ-панель ── */
 
 const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('ru-RU') : '—');
-const who = (u: { firstName: string; username: string | null; tgId: number | null }) =>
-  `${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})`;
+const who = (u: { firstName: string; username: string | null; tgId: number | null; email?: string | null }) =>
+  u.tgId == null
+    ? `${u.username ? '@' + u.username : u.firstName} (вход по почте${u.email ? ': ' + u.email : ''})`
+    : `${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})`;
 
 const ADMIN_HELP = `Админ-панель Fracs
 
@@ -783,6 +785,31 @@ async function poll() {
   }
 }
 
+let webhookEnsured = false;
+
+/** Самовосстановление webhook после деплоя/сброса (webhook пропадает, например,
+ *  если где-то поднимался polling-инстанс или после пересоздания функции).
+ *  Вызывается fire-and-forget при холодном старте сервера; идемпотентно. */
+export async function ensureWebhook() {
+  if (webhookEnsured || !config.botToken || config.botMode !== 'webhook') return;
+  webhookEnsured = true;
+  try {
+    if (!config.webhookSecret) throw new Error('Для webhook-режима задайте TELEGRAM_WEBHOOK_SECRET');
+    const me = await tg('getMe');
+    if (!me.ok) throw new Error(`Telegram getMe: ${me.description}`);
+    if (!botUsername) botUsername = me.result.username;
+    const r = await tg('setWebhook', {
+      url: `${config.appUrl}/api/bot/webhook`,
+      secret_token: config.webhookSecret,
+      allowed_updates: ['message', 'callback_query'],
+    });
+    if (!r.ok) throw new Error(`setWebhook: ${r.description}`);
+    console.log(`[bot] webhook проверен/восстановлен: ${config.appUrl}/api/bot/webhook`);
+  } catch (e: any) {
+    console.error('[bot] ensureWebhook:', e?.message || e);
+  }
+}
+
 export async function startBot() {
   if (!config.botToken) {
     console.log('[bot] TELEGRAM_BOT_TOKEN не задан — вход через бота отключён' + (config.devLogin ? ' (доступен dev-вход)' : ''));
@@ -814,6 +841,7 @@ export async function startBot() {
     if (!config.webhookSecret) throw new Error('Для webhook-режима задайте TELEGRAM_WEBHOOK_SECRET');
     const r = await tg('setWebhook', { url: `${config.appUrl}/api/bot/webhook`, secret_token: config.webhookSecret, allowed_updates: ['message', 'callback_query'] });
     if (!r.ok) throw new Error(`setWebhook: ${r.description}`);
+    webhookEnsured = true;
   } else {
     await tg('deleteWebhook');
     poll();

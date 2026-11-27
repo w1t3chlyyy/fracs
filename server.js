@@ -252,14 +252,15 @@ async function findUser(q) {
   const s = q.trim().replace(/^@/, "");
   if (!s) return null;
   const byId = /^\d+$/.test(s);
+  const byEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.toLowerCase());
   if (useSupabase) {
     const base = sb().from("users").select("*");
-    const r = byId ? await base.eq("tg_id", Number(s)).maybeSingle() : await base.ilike("username", s.replace(/[%_]/g, "\\$&")).limit(1).maybeSingle();
+    const r = byId ? await base.eq("tg_id", Number(s)).maybeSingle() : byEmail ? await base.eq("email", s.toLowerCase()).maybeSingle() : await base.ilike("username", s.replace(/[%_]/g, "\\$&")).limit(1).maybeSingle();
     const row = check(r, "findUser");
     return row ? userOf(row) : null;
   }
   for (const u of memUsers.values()) {
-    if (byId ? String(u.tgId) === s : (u.username || "").toLowerCase() === s.toLowerCase()) return withAdmin({ ...u });
+    if (byId ? String(u.tgId) === s : byEmail ? (u.email || "").toLowerCase() === s.toLowerCase() : (u.username || "").toLowerCase() === s.toLowerCase()) return withAdmin({ ...u });
   }
   return null;
 }
@@ -1063,7 +1064,7 @@ function docsMarkup(includeCabinet = true) {
   return { inline_keyboard: rows };
 }
 var fmt = (iso) => iso ? new Date(iso).toLocaleDateString("ru-RU") : "\u2014";
-var who = (u) => `${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})`;
+var who = (u) => u.tgId == null ? `${u.username ? "@" + u.username : u.firstName} (\u0432\u0445\u043E\u0434 \u043F\u043E \u043F\u043E\u0447\u0442\u0435${u.email ? ": " + u.email : ""})` : `${u.username ? "@" + u.username : u.firstName} (id ${u.tgId})`;
 var ADMIN_HELP = `\u0410\u0434\u043C\u0438\u043D-\u043F\u0430\u043D\u0435\u043B\u044C Fracs
 
 \u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u0438:
@@ -1652,6 +1653,26 @@ async function poll() {
     }
   }
 }
+var webhookEnsured = false;
+async function ensureWebhook() {
+  if (webhookEnsured || !config.botToken || config.botMode !== "webhook") return;
+  webhookEnsured = true;
+  try {
+    if (!config.webhookSecret) throw new Error("\u0414\u043B\u044F webhook-\u0440\u0435\u0436\u0438\u043C\u0430 \u0437\u0430\u0434\u0430\u0439\u0442\u0435 TELEGRAM_WEBHOOK_SECRET");
+    const me = await tg("getMe");
+    if (!me.ok) throw new Error(`Telegram getMe: ${me.description}`);
+    if (!botUsername) botUsername = me.result.username;
+    const r = await tg("setWebhook", {
+      url: `${config.appUrl}/api/bot/webhook`,
+      secret_token: config.webhookSecret,
+      allowed_updates: ["message", "callback_query"]
+    });
+    if (!r.ok) throw new Error(`setWebhook: ${r.description}`);
+    console.log(`[bot] webhook \u043F\u0440\u043E\u0432\u0435\u0440\u0435\u043D/\u0432\u043E\u0441\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D: ${config.appUrl}/api/bot/webhook`);
+  } catch (e) {
+    console.error("[bot] ensureWebhook:", e?.message || e);
+  }
+}
 async function startBot() {
   if (!config.botToken) {
     console.log("[bot] TELEGRAM_BOT_TOKEN \u043D\u0435 \u0437\u0430\u0434\u0430\u043D \u2014 \u0432\u0445\u043E\u0434 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430 \u043E\u0442\u043A\u043B\u044E\u0447\u0451\u043D" + (config.devLogin ? " (\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D dev-\u0432\u0445\u043E\u0434)" : ""));
@@ -1681,6 +1702,7 @@ async function startBot() {
     if (!config.webhookSecret) throw new Error("\u0414\u043B\u044F webhook-\u0440\u0435\u0436\u0438\u043C\u0430 \u0437\u0430\u0434\u0430\u0439\u0442\u0435 TELEGRAM_WEBHOOK_SECRET");
     const r = await tg("setWebhook", { url: `${config.appUrl}/api/bot/webhook`, secret_token: config.webhookSecret, allowed_updates: ["message", "callback_query"] });
     if (!r.ok) throw new Error(`setWebhook: ${r.description}`);
+    webhookEnsured = true;
   } else {
     await tg("deleteWebhook");
     poll();
@@ -1761,7 +1783,7 @@ var authRouter = Router();
 authRouter.post("/start", h(async (req, res) => {
   if (!await rateLimit(`auth:${req.ip}`, 20, 10 * 6e4, true)) return void res.status(429).json({ error: "rate_limited" });
   const username = await getBotUsername();
-  if (!username) return void res.status(503).json({ error: "bot_not_configured", message: "\u0411\u043E\u0442 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D" });
+  if (!username) return void res.status(503).json({ error: "bot_not_configured", message: "\u0411\u043E\u0442 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D \u043D\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0435: \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 TELEGRAM_BOT_TOKEN \u0438 TELEGRAM_BOT_USERNAME (\u0438\u043B\u0438 \u0447\u0442\u043E \u0431\u043E\u0442 \u0437\u0430\u043F\u0443\u0449\u0435\u043D \u0432 webhook-\u0440\u0435\u0436\u0438\u043C\u0435)" });
   const token = randomToken(24);
   await createLoginToken(token);
   res.json({ token, url: `https://t.me/${username}?start=${token}` });
@@ -2885,6 +2907,7 @@ adminRouter.use(requireAdmin);
 var publicUser = (u) => ({
   id: u.id,
   tgId: u.tgId,
+  email: u.email,
   username: u.username,
   firstName: u.firstName,
   createdAt: u.createdAt,
@@ -2901,19 +2924,26 @@ adminRouter.get("/users", h3(async (req, res) => {
   const users = await listRecentUsers(limit2);
   res.json({ users: users.map(publicUser) });
 }));
+async function locateUser(body) {
+  const id = typeof body?.id === "string" ? body.id.trim() : "";
+  if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return await getUser(id);
+  const tgId = Number(body?.tgId);
+  if (Number.isInteger(tgId) && tgId > 0) return await findUser(String(tgId));
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (email) return await findUser(email);
+  return null;
+}
 adminRouter.post("/grant", h3(async (req, res) => {
-  const tgId = Number(req.body?.tgId);
   const days = Math.round(Number(req.body?.days));
   const planId = req.body?.planId || void 0;
-  if (!Number.isInteger(tgId) || tgId <= 0) return void res.status(400).json({ error: "bad_tg_id" });
   if (!(days > 0 && days <= 3650)) return void res.status(400).json({ error: "bad_days", message: "\u0414\u043D\u0435\u0439: 1\u20133650." });
   const plans = await getPlans();
   if (planId && !plans.some((p) => p.id === planId)) {
     return void res.status(400).json({ error: "bad_plan", message: `\u0422\u0430\u0440\u0438\u0444 ${planId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D.` });
   }
-  const user = await findUser(String(tgId));
+  const user = await locateUser(req.body);
   if (!user) {
-    return void res.status(404).json({ error: "user_not_found", message: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u2014 \u043F\u0443\u0441\u0442\u044C \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0451\u0442 \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 \u0431\u043E\u0442\u0430." });
+    return void res.status(404).json({ error: "user_not_found", message: "\u041F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D \u2014 \u043F\u0443\u0441\u0442\u044C \u0441\u043D\u0430\u0447\u0430\u043B\u0430 \u0432\u043E\u0439\u0434\u0451\u0442 \u0432 \u043A\u0430\u0431\u0438\u043D\u0435\u0442 (Telegram \u0438\u043B\u0438 \u043A\u043E\u0434 \u0441 \u043F\u043E\u0447\u0442\u044B)." });
   }
   const updated = await extendSubscription(user.id, days, planId);
   try {
@@ -2923,9 +2953,7 @@ adminRouter.post("/grant", h3(async (req, res) => {
   res.json({ user: publicUser(updated) });
 }));
 adminRouter.post("/revoke", h3(async (req, res) => {
-  const tgId = Number(req.body?.tgId);
-  if (!Number.isInteger(tgId) || tgId <= 0) return void res.status(400).json({ error: "bad_tg_id" });
-  const user = await findUser(String(tgId));
+  const user = await locateUser(req.body);
   if (!user) return void res.status(404).json({ error: "user_not_found" });
   const updated = await setSubscription(user.id, null);
   res.json({ user: publicUser(updated) });
@@ -3658,6 +3686,7 @@ function buildApp() {
     console.error(err);
     res.status(500).json({ error: "server_error" });
   });
+  void ensureWebhook();
   return app;
 }
 

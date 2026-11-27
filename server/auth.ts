@@ -111,7 +111,7 @@ authRouter.post('/start', h(async (req, res) => {
   // failClosed=true: при сбое Supabase не пропускаем перебор токенов входа.
   if (!(await rateLimit(`auth:${req.ip}`, 20, 10 * 60_000, true))) return void res.status(429).json({ error: 'rate_limited' });
   const username = await getBotUsername();
-  if (!username) return void res.status(503).json({ error: 'bot_not_configured', message: 'Бот не настроен' });
+  if (!username) return void res.status(503).json({ error: 'bot_not_configured', message: 'Бот не настроен на сервере: проверьте TELEGRAM_BOT_TOKEN и TELEGRAM_BOT_USERNAME (или что бот запущен в webhook-режиме)' });
   const token = randomToken(24);
   await createLoginToken(token);
   res.json({ token, url: `https://t.me/${username}?start=${token}` });

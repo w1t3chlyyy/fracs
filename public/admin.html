@@ -87,18 +87,18 @@
     <!-- Пользователи -->
     <section id="tab-users" class="panel active">
       <div class="card">
-        <h3>Выдать подписку по Telegram ID</h3>
+        <h3>Выдать подписку по Telegram ID или email</h3>
         <div class="row">
-          <input id="g-tgid" type="number" inputmode="numeric" placeholder="Telegram ID (число)">
+          <input id="g-who" type="text" placeholder="Telegram ID (число) или эл. почта">
           <select id="g-plan"></select>
           <input id="g-days" type="number" inputmode="numeric" value="30" min="1" max="3650">
           <button class="btn primary" id="g-go">Выдать</button>
         </div>
-        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">ID можно посмотреть в карточке пользователя ниже или у самого пользователя через @userinfobot.</p>
+        <p style="font-size:12px;color:var(--muted);margin:8px 0 0">ID — в карточке пользователя ниже или через @userinfobot. Почта — та, с которой пользователь входил кодом. У email-аккаунтов уведомление в Telegram не отправляется.</p>
       </div>
       <div class="card">
         <h3>Пользователи</h3>
-        <input id="u-search" placeholder="Поиск по имени, @username или ID…" style="margin-bottom:10px">
+        <input id="u-search" placeholder="Поиск по имени, @username, ID или эл. почте…" style="margin-bottom:10px">
         <div id="u-list"></div>
       </div>
     </section>

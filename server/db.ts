@@ -247,16 +247,19 @@ export async function findUser(q: string): Promise<User | null> {
   const s = q.trim().replace(/^@/, '');
   if (!s) return null;
   const byId = /^\d+$/.test(s);
+  const byEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(s.toLowerCase());
   if (useSupabase) {
     const base = sb().from('users').select('*');
     const r = byId
       ? await base.eq('tg_id', Number(s)).maybeSingle()
-      : await base.ilike('username', s.replace(/[%_]/g, '\\$&')).limit(1).maybeSingle();
+      : byEmail
+        ? await base.eq('email', s.toLowerCase()).maybeSingle()
+        : await base.ilike('username', s.replace(/[%_]/g, '\\$&')).limit(1).maybeSingle();
     const row = check(r as any, 'findUser');
     return row ? userOf(row) : null;
   }
   for (const u of memUsers.values()) {
-    if (byId ? String(u.tgId) === s : (u.username || '').toLowerCase() === s.toLowerCase()) return withAdmin({ ...u });
+    if (byId ? String(u.tgId) === s : byEmail ? (u.email || '').toLowerCase() === s.toLowerCase() : (u.username || '').toLowerCase() === s.toLowerCase()) return withAdmin({ ...u });
   }
   return null;
 }

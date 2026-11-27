@@ -3,7 +3,7 @@ import { config, type Plan } from './config.ts';
 import { isAdminInitData } from './webapp.ts';
 import { notify, resolveChannel } from './bot.ts';
 import {
-  extendSubscription, findUser, getPlans, getTraining, addLesson, updateLesson, deleteLesson,
+  extendSubscription, findUser, getUser, getPlans, getTraining, addLesson, updateLesson, deleteLesson,
   listRecentUsers, resetPlans, setSubscription, updatePlan, getRequiredChannels, setRequiredChannels, type User,
 } from './db.ts';
 
@@ -32,6 +32,7 @@ adminRouter.use(requireAdmin);
 const publicUser = (u: User) => ({
   id: u.id,
   tgId: u.tgId,
+  email: u.email,
   username: u.username,
   firstName: u.firstName,
   createdAt: u.createdAt,
@@ -52,22 +53,32 @@ adminRouter.get('/users', h(async (req, res) => {
   res.json({ users: users.map(publicUser) });
 }));
 
+/** Определяет пользователя по любому из идентификаторов: user-id (UUID), Telegram ID или email. */
+async function locateUser(body: any): Promise<User | null> {
+  const id = typeof body?.id === 'string' ? body.id.trim() : '';
+  if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return await getUser(id);
+  const tgId = Number(body?.tgId);
+  if (Number.isInteger(tgId) && tgId > 0) return await findUser(String(tgId));
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  if (email) return await findUser(email);
+  return null;
+}
+
 adminRouter.post('/grant', h(async (req, res) => {
-  const tgId = Number(req.body?.tgId);
   const days = Math.round(Number(req.body?.days));
   const planId: string | undefined = req.body?.planId || undefined;
-  if (!Number.isInteger(tgId) || tgId <= 0) return void res.status(400).json({ error: 'bad_tg_id' });
   if (!(days > 0 && days <= 3650)) return void res.status(400).json({ error: 'bad_days', message: 'Дней: 1–3650.' });
   const plans = await getPlans();
   if (planId && !plans.some((p) => p.id === planId)) {
     return void res.status(400).json({ error: 'bad_plan', message: `Тариф ${planId} не найден.` });
   }
-  const user = await findUser(String(tgId));
+  const user = await locateUser(req.body);
   if (!user) {
-    return void res.status(404).json({ error: 'user_not_found', message: 'Пользователь не найден — пусть сначала войдёт в кабинет через бота.' });
+    return void res.status(404).json({ error: 'user_not_found', message: 'Пользователь не найден — пусть сначала войдёт в кабинет (Telegram или код с почты).' });
   }
   const updated = await extendSubscription(user.id, days, planId);
   try {
+    // У email-аккаунта (tgId = null) уведомление в Telegram не уйдёт — notify молча пропустит.
     await notify(updated.tgId, `✅ Подписка Fracs активна до ${new Date(updated.subscriptionUntil!).toLocaleDateString('ru-RU')}. Кабинет: ${config.appUrl}/app`);
   } catch {
     /* уведомление не критично */
@@ -76,9 +87,7 @@ adminRouter.post('/grant', h(async (req, res) => {
 }));
 
 adminRouter.post('/revoke', h(async (req, res) => {
-  const tgId = Number(req.body?.tgId);
-  if (!Number.isInteger(tgId) || tgId <= 0) return void res.status(400).json({ error: 'bad_tg_id' });
-  const user = await findUser(String(tgId));
+  const user = await locateUser(req.body);
   if (!user) return void res.status(404).json({ error: 'user_not_found' });
   const updated = await setSubscription(user.id, null);
   res.json({ user: publicUser(updated) });
