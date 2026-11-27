@@ -12,16 +12,13 @@ const CSP = [
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
-  "frame-ancestors 'none'",
   'upgrade-insecure-requests',
 ].join('; ');
 
 export function securityHeaders(_req: Request, res: Response, next: NextFunction) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   if (config.isProd) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains');
     res.setHeader('Content-Security-Policy', CSP);
@@ -34,7 +31,7 @@ export const noStoreApi = (_req: Request, res: Response, next: NextFunction) => 
   next();
 };
 
-/** CSRF: изменяющие запросы принимаем только со своего origin. Вебхуки (Telegram, ЮKassa, cron, программа) Origin не шлют. */
+/** CSRF: изменяющие запросы принимаем только со своего origin. Вебхуки (Telegram, CryptoBot, xRocket, cron, программа) Origin не шлют. */
 const SAFE = new Set(['GET', 'HEAD', 'OPTIONS']);
 const allowed = new Set(
   [config.appUrl, ...(process.env.EXTRA_ORIGINS || '').split(',')].map((s) => s.trim()).filter(Boolean).map((u) => { try { return new URL(u).origin; } catch { return ''; } }),

@@ -24,7 +24,10 @@ export function buildApp() {
   });
   // /api/app/demo принимает страницу видеообзора (до 1,2 МБ) — свой лимит тела, до общего парсера.
   app.use('/api/app/demo', express.json({ limit: '1500kb' }));
-  app.use(express.json({ limit: '100kb' }));
+  app.use(express.json({
+    limit: '100kb',
+    verify: (req: any, _res, buf) => { req.rawBody = buf; },
+  }));
 
   app.post('/api/bot/webhook', webhookHandler);
   app.get('/v/:id', demoPage);   // публичная ссылка из QR на открытке

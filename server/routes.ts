@@ -10,7 +10,7 @@ import { notify, checkChannelSubs } from './bot.ts';
 import { findCity, searchCities } from './cities.ts';
 import { getRows, headRows, searchMaps, searchTg, summarize } from './providers.ts';
 import type { MapsRow, TgRow } from './providers.ts';
-import { createPayment, handleYookassaWebhook } from './payments.ts';
+import { createPayment, handleCryptoBotWebhook, handleXRocketWebhook, type PaymentMethod } from './payments.ts';
 import { cronHandler } from './cron.ts';
 import { cleanText, norm } from './util.ts';
 
@@ -53,8 +53,13 @@ api.get('/health', h(async (_req, res) => {
 
 api.get('/config', h(async (_req, res) => {
   res.json({
-    devLogin: config.devLogin,
     payment: config.paymentProvider,
+    paymentMethods: {
+      cryptobot: Boolean(config.cryptobotToken),
+      xrocket: Boolean(config.xrocketKey),
+      requisites: true,
+    },
+    supportUsername: config.supportUsername,
     plans: await getPlans(),
     tokenPacks: TOKEN_PACKS,
     demo: { maps: false, tg: false },
@@ -72,14 +77,26 @@ api.get('/cities', (req, res) => {
   res.json({ items: searchCities(String(req.query.q || '').slice(0, 40), 8) });
 });
 
-api.post('/payments/yookassa/webhook', h(async (req, res) => {
-  if (config.paymentProvider === 'yookassa') {
-    try {
-      await handleYookassaWebhook(req.body);
-    } catch (e) {
-      console.error('[yookassa]', e);
-      return void res.sendStatus(500);
-    }
+api.post('/payments/cryptobot/webhook', h(async (req, res) => {
+  try {
+    await handleCryptoBotWebhook(req.body, (req as any).rawBody, req.get('crypto-pay-api-signature') || '');
+  } catch (e) {
+    console.error('[cryptobot]', e);
+    return void res.sendStatus(500);
+  }
+  res.sendStatus(200);
+}));
+
+api.post('/payments/xrocket/webhook', h(async (req, res) => {
+  try {
+    await handleXRocketWebhook(req.body, (req as any).rawBody, {
+      legacySig: req.get('rocket-pay-signature') || '',
+      signature: req.get('signature') || '',
+      timestamp: req.get('signature-timestamp') || '',
+    });
+  } catch (e) {
+    console.error('[xrocket]', e);
+    return void res.sendStatus(500);
   }
   res.sendStatus(200);
 }));
@@ -467,7 +484,7 @@ api.get('/search/:id/export.csv', requireAuth, h(async (req, res) => {
   res.send(csv);
 }));
 
-/** Заявка на подписку или пакет токенов: уведомляем админа в Telegram, клиент затем сам открывает чат с ним. */
+/** Заявка на подписку или пакет токенов по реквизитам: уведомляем админа в Telegram, клиент переходит в @HelpManage. */
 api.post('/payments/request', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`payreq:${req.user!.id}`, 5, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited', message: 'Слишком часто. Подождите немного.' });
   const pack = TOKEN_PACKS.find((t) => t.id === String(req.body?.planId || ''));
@@ -475,12 +492,16 @@ api.post('/payments/request', requireAuth, h(async (req, res) => {
   const plan = pack ? undefined : plans.find((p) => p.id === String(req.body?.planId || ''));
   if (!pack && !plan) return void res.status(400).json({ error: 'bad_plan', message: 'Неизвестный тариф' });
   const u = req.user!;
+  const whoLabel = u.tgId != null
+    ? `${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})`
+    : `${u.email || u.firstName} (почта)`;
+  const targetGrant = u.tgId != null ? String(u.tgId) : (u.email || u.id);
   if (config.adminTgId > 0) {
     await notify(
       config.adminTgId,
       pack
-        ? `🧾 Заявка на токены Fracs AI\n${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})\nПакет: ${pack.title}, ${pack.priceRub} ₽\n\nВыдать: /grant-tokens ${u.tgId} ${pack.tokens}`
-        : `🧾 Заявка на подписку\n${u.username ? '@' + u.username : u.firstName} (id ${u.tgId})\nТариф: ${plan!.title}, ${plan!.priceRub} ₽\n\nВыдать: /grant ${u.tgId} ${plan!.days}`,
+        ? `🧾 Заявка на токены Fracs AI (реквизиты)\n${whoLabel}\nПакет: ${pack.title}, ${pack.priceRub} ₽`
+        : `🧾 Заявка на подписку (реквизиты)\n${whoLabel}\nТариф: ${plan!.title}, ${plan!.priceRub} ₽\n\nВыдать: /grant ${targetGrant} ${plan!.days} ${plan!.id}`,
     );
   }
   res.json({ ok: true });
@@ -488,8 +509,11 @@ api.post('/payments/request', requireAuth, h(async (req, res) => {
 
 api.post('/payments/create', requireAuth, h(async (req, res) => {
   if (!(await rateLimit(`pay:${req.user!.id}`, 10, 10 * 60_000))) return void res.status(429).json({ error: 'rate_limited' });
+  const rawMethod = req.body?.method;
+  const method: PaymentMethod | undefined =
+    rawMethod === 'cryptobot' || rawMethod === 'xrocket' ? rawMethod : undefined;
   try {
-    res.json(await createPayment(req.user!, String(req.body?.planId || '')));
+    res.json(await createPayment(req.user!, String(req.body?.planId || ''), method));
   } catch (e: any) {
     console.error('[pay]', e);
     res.status(e.status || 502).json({ error: 'payment', message: e.status ? e.message : 'Не удалось создать платёж. Попробуйте позже.' });

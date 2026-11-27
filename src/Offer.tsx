@@ -238,13 +238,8 @@ export default function Offer() {
           </section>
 
           <section className="space-y-2 border-t border-white/10 pt-6">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">10. Реквизиты Исполнителя</h2>
-            <p><strong>Полное наименование:</strong> Самозанятый Бенаи Тимур Рустамович</p>
-            <p><strong>ИНН:</strong> 920159216794</p>
-            <p>
-              <strong>Контактный телефон:</strong>{' '}
-              <a href="tel:+79944821648" className="text-white hover:text-[#F26522]">+7 994 482-16-48</a>
-            </p>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">10. Контакты Исполнителя</h2>
+            <p><strong>Сервис:</strong> Fracs</p>
             <p>
               <strong>Контактный e-mail:</strong>{' '}
               <a href="mailto:w1t3chlyyy@gmail.com" className="text-[#F26522] hover:underline">w1t3chlyyy@gmail.com</a>

@@ -82,10 +82,10 @@ const SOURCES: { icon: React.ElementType; tag: string; badge: string; title: str
 
 function Sources() {
   return (
-    <section id="sources" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="sources" className="fx-section py-24 lg:py-36 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Источники" line1="Два источника клиентов" line2="в одном кабинете" aside="Пример выдачи — так результаты выглядят в кабинете до оплаты." />
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:gap-8 lg:grid-cols-2">
           {SOURCES.map(({ icon: Icon, tag, badge, title, text, rows, cta, dark }) => (
             <article key={tag} className="fx-card min-w-0 rounded-[32px] lg:rounded-[40px] p-6 sm:p-9 flex flex-col">
               <div className="flex items-center justify-between gap-3">
@@ -132,7 +132,7 @@ function HowItWorks() {
   const cur = STEPS[step];
   const nav = 'w-12 h-12 sm:w-[54px] sm:h-[54px] rounded-full flex items-center justify-center transition-colors disabled:opacity-35 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F26522]';
   return (
-    <section id="how" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="how" className="fx-section py-24 lg:py-36 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Как это работает" line1="От запроса до сделки —" line2="три шага">
           <div className="flex gap-3">
@@ -207,7 +207,7 @@ const STATS: [string, string][] = [
 
 function Stats() {
   return (
-    <section className="px-5 sm:px-8 lg:px-12 py-6 lg:py-10">
+    <section className="px-5 sm:px-8 lg:px-12 py-16 lg:py-24">
       <div className="max-w-[1320px] mx-auto grid grid-cols-2 lg:grid-cols-4 border-y border-white/8">
         {STATS.map(([big, small], i) => (
           <div key={big} className={`py-9 lg:py-12 px-5 sm:px-8 lg:px-10 border-white/8 ${i % 2 === 1 ? 'border-l' : ''} ${i > 1 ? 'border-t lg:border-t-0' : ''} ${i > 0 ? 'lg:border-l' : ''}`}>
@@ -254,7 +254,7 @@ function Calculator() {
   const deals = (answered * close) / 100;
   const dealsRound = Math.round(deals);
   return (
-    <section id="calc" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="calc" className="fx-section py-24 lg:py-36 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Расчёт" line1="Сколько сделок" line2="дадут контакты" aside="Подставьте цифры своего отдела продаж — арифметика, а не обещания." />
         <div className="fx-card overflow-hidden rounded-[32px] lg:rounded-[40px] grid grid-cols-1 lg:grid-cols-[1.35fr_1fr]">
@@ -322,10 +322,10 @@ function Pricing() {
       .catch(() => setState('error'));
   }, []);
   return (
-    <section id="pricing" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="pricing" className="fx-section py-24 lg:py-36 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto">
         <SectionHead eyebrow="Тарифы" line1="Одна подписка —" line2="все контакты" aside="Цены и состав — те же, что в личном кабинете." />
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3 items-stretch">
+        <div className="grid grid-cols-1 gap-6 lg:gap-8 md:grid-cols-3 items-stretch">
           {plans.map((p, i) => {
             const hot = p.id === 'pro';
             const sub = PLAN_SUB[p.id] ?? p.badge ?? '';
@@ -367,7 +367,7 @@ function Pricing() {
 const FAQ: [string, string][] = [
   ['Откуда берутся данные?', 'Карточки компаний — из каталога 2ГИС через официальный API. Сообщения людей — из публичных Telegram-чатов. Мы ничего не выдумываем: если источник не отвечает, вы увидите ошибку, а не пустые цифры.'],
   ['Что я увижу без подписки?', 'Количество найденных компаний или людей и три строки с замаскированными данными. Контакты и выгрузка CSV открываются после оплаты.'],
-  ['Как быстро открывается доступ после оплаты?', 'Оплата проходит через ЮKassa. Как только платёж подтверждён, подписка включается автоматически, а в Telegram приходит уведомление. Обычно это занимает меньше минуты.'],
+  ['Как быстро открывается доступ после оплаты?', 'Оплата проходит через CryptoBot, xRocket или по реквизитам через поддержку @HelpManage. Как только платёж подтверждён, подписка включается автоматически, а в Telegram приходит уведомление.'],
   ['Как проверяется, что сайта нет?', 'Мы берём контакты из карточки 2ГИС и отбрасываем компании, у которых указан сайт. Если сайт есть, но не указан в карточке, компания может попасть в выдачу — проверяйте перед звонком.'],
   ['Сколько запросов можно делать?', 'Лимит — несколько десятков запросов в сутки. Повторный запрос с теми же параметрами за 24 часа берётся из истории и лимит не тратит.'],
 ];
@@ -375,7 +375,7 @@ const FAQ: [string, string][] = [
 function Faq() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="fx-section py-16 lg:py-28 px-5 sm:px-8 lg:px-12">
+    <section id="faq" className="fx-section py-24 lg:py-36 px-5 sm:px-8 lg:px-12">
       <div className="max-w-[1320px] mx-auto grid grid-cols-1 gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20">
         <div>
           <Eyebrow>Вопросы</Eyebrow>
@@ -418,7 +418,7 @@ function Faq() {
 
 function Closing() {
   return (
-    <section className="fx-section px-5 sm:px-8 lg:px-12 py-10 lg:py-0">
+    <section className="fx-section px-5 sm:px-8 lg:px-12 py-20 lg:py-28">
       <div className="w-full max-w-[1320px] mx-auto fx-final rounded-[32px] lg:rounded-[40px] p-8 sm:p-12 lg:p-16 grid grid-cols-1 gap-10 lg:grid-cols-[1.6fr_1fr] lg:items-end">
         <h2 className="font-heading font-medium text-white">
           Клиенты уже ищут&nbsp;вас.
@@ -440,7 +440,7 @@ function Closing() {
 function Footer() {
   const link = 'text-[#7a7a7a] hover:text-white transition-colors';
   return (
-    <footer className="w-full max-w-[1320px] mx-auto mt-8 lg:mt-10 border-t border-white/8 pt-8 text-[13px]">
+    <footer className="w-full max-w-[1320px] mx-auto mt-16 lg:mt-20 border-t border-white/8 pt-10 pb-4 text-[13px]">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-[#7a7a7a]">© 2026 Fracs</p>
         <nav aria-label="Документы" className="flex flex-wrap items-center gap-x-5 gap-y-2">
@@ -450,7 +450,6 @@ function Footer() {
           <a href="https://t.me/HelpManage" target="_blank" rel="noreferrer" className={link}>Telegram</a>
         </nav>
       </div>
-      <p className="mt-5 text-[12px] text-[#555]">Самозанятый Бенаи Тимур Рустамович · ИНН 920159216794</p>
     </footer>
   );
 }

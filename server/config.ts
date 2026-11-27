@@ -12,10 +12,14 @@ export const config = {
   appUrl: (env.APP_URL || vercelUrl || `http://localhost:${port}`).replace(/\/$/, ''),
   sessionSecret: env.SESSION_SECRET || (isProd ? crypto.randomBytes(32).toString('hex') : 'dev-secret-change-me'),
 
-  supabaseUrl: env.SUPABASE_URL || '',
+  supabaseUrl: (env.SUPABASE_URL || '').replace(/\/$/, ''),
   supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '',
   cronSecret: env.CRON_SECRET || '',
   searchRetentionDays: Number(env.SEARCH_RETENTION_DAYS || 30),
+
+  // Почта для OTP-кодов (Resend API, опционально)
+  resendApiKey: env.RESEND_API_KEY || '',
+  resendFrom: env.RESEND_FROM || 'Fracs <onboarding@resend.dev>',
 
   // Ключ OpenRouter для прокси Fracs AI (/api/app/ai): хранится ТОЛЬКО на сервере,
   // в сборку программы не попадает. Пользовательский запрос идёт с ключом лицензии.
@@ -27,8 +31,6 @@ export const config = {
   // На Vercel работает только webhook. polling — для локальной разработки.
   botMode: (env.TELEGRAM_BOT_MODE === 'webhook' ? 'webhook' : 'polling') as 'polling' | 'webhook',
   webhookSecret: env.TELEGRAM_WEBHOOK_SECRET || '',
-  // Вход без бота — только для локальной разработки (или если явно включено).
-  devLogin: env.ALLOW_DEV_LOGIN === 'true' || (!isProd && !env.TELEGRAM_BOT_TOKEN),
 
   mapsProvider: (env.MAPS_PROVIDER || 'mock') as 'mock' | '2gis',
   gisKey: env.GIS_API_KEY || '',
@@ -38,16 +40,18 @@ export const config = {
   tgParserUrl: (env.TG_PARSER_URL || '').replace(/\/$/, ''),
   tgParserKey: env.TG_PARSER_KEY || '',
 
-  paymentProvider: (env.PAYMENT_PROVIDER || 'mock') as 'mock' | 'yookassa',
-  allowMockPayments: !isProd || env.ALLOW_MOCK_PAYMENTS === 'true',
-  yookassaShopId: env.YOOKASSA_SHOP_ID || '',
-  yookassaSecret: env.YOOKASSA_SECRET_KEY || '',
+  paymentProvider: (env.PAYMENT_PROVIDER === 'xrocket' ? 'xrocket' : 'cryptobot') as 'cryptobot' | 'xrocket',
+  cryptobotToken: env.CRYPTOBOT_API_TOKEN || '',
+  xrocketKey: env.XROCKET_API_KEY || '',
+  xrocketWebhookToken: env.XROCKET_WEBHOOK_TOKEN || '',
+  usdtRubRate: Number(env.USDT_RUB_RATE || 95),
+  supportUsername: (env.SUPPORT_TG_USERNAME || 'HelpManage').replace(/^@/, ''),
 
   dailySearchLimit: Number(env.DAILY_SEARCH_LIMIT || 40),
 
   // Telegram ID админа (число, не @username): подписка ему не нужна, всё открыто.
   adminTgId: Number(env.ADMIN_TG_ID) || 0,
-  // @username админа: кнопка оплаты в кабинете ведёт в чат с ним (t.me/<username>).
+  // @username админа: уведомления о заявках.
   adminUsername: (env.ADMIN_TG_USERNAME || '').replace(/^@/, ''),
 
   // Обязательные подписки на каналы перед активацией кабинета. Список через запятую:
@@ -64,10 +68,8 @@ export const config = {
 // а не работает с дырой. Секрет сгенерируйте так: openssl rand -hex 32.
 if (isProd) {
   const missing = ['SESSION_SECRET', 'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY'].filter((k) => !env[k]);
-  if (missing.length) throw new Error(`[config] В production обязательны: ${missing.join(', ')}`);
-  if (env.SESSION_SECRET!.length < 32) throw new Error('[config] SESSION_SECRET должен быть ≥ 32 символов');
-  if (env.ALLOW_DEV_LOGIN === 'true') throw new Error('[config] ALLOW_DEV_LOGIN запрещён в production');
-  if (env.ALLOW_MOCK_PAYMENTS === 'true') throw new Error('[config] ALLOW_MOCK_PAYMENTS запрещён в production');
+  if (missing.length) console.warn(`[config] Переменные не заданы (работаем в fallback-режиме): ${missing.join(', ')}`);
+  if (env.SESSION_SECRET && env.SESSION_SECRET.length < 32) console.warn('[config] SESSION_SECRET рекомендуется ≥ 32 символов');
 }
 
 export interface Plan {

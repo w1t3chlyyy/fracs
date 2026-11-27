@@ -6,9 +6,10 @@ import PlansModal from './PlansModal';
 import AsciiFlower from './AsciiFlower';
 import type { AppConfig, Me } from './types';
 
-function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void }) {
+function LoginScreen({ onDone }: { onDone: () => void }) {
   // Telegram: создали ссылку — ждём подтверждения в боте (опрос /auth/status).
   const [link, setLink] = useState<{ token: string; url: string } | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
   // Email: шаг «форма» (адрес) → шаг «код» (6 цифр из письма).
   const [step, setStep] = useState<'form' | 'code'>('form');
   const [email, setEmail] = useState('');
@@ -47,15 +48,24 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
   const startTg = async () => {
     setBusy(true);
     setError('');
+    setCopiedLink(false);
     try {
       const r = await api.authStart();
       setLink(r);
-      window.open(r.url, '_blank', 'noopener');
     } catch (e: any) {
       setError(e.message || 'Не удалось начать вход');
     } finally {
       setBusy(false);
     }
+  };
+
+  const copyTgUrl = async () => {
+    if (!link?.url) return;
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 1800);
+    } catch { /* ignore */ }
   };
 
   const sendCode = async () => {
@@ -86,8 +96,6 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
     }
   };
 
-  const dev = async () => { await api.devLogin(); onDone(); };
-
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Левая половина: форма входа (по макету — прижата к левому краю) */}
@@ -102,21 +110,29 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
 
           {link ? (
             /* Ожидание подтверждения в Telegram */
-            <div className="mt-8">
+            <div className="mt-8 space-y-3">
               <a
                 href={link.url}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="flex items-center justify-center gap-3 w-full h-12 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] text-white text-[15px] font-medium transition-colors"
               >
-                <Send className="w-5 h-5" /> Открыть бота
+                <Send className="w-5 h-5" /> Открыть бота в Telegram
               </a>
-              <p className="mt-4 text-[14px] text-[#888888] flex items-center justify-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" /> Нажмите «Start» в Telegram — вход произойдёт сам
+              <button
+                type="button"
+                onClick={copyTgUrl}
+                className="flex items-center justify-center w-full h-10 rounded-xl border border-[rgba(255,255,255,0.14)] bg-[#111111] hover:bg-[#1a1a1a] text-[13px] text-[#cccccc] transition-colors cursor-pointer"
+              >
+                {copiedLink ? 'Ссылка скопирована' : 'Скопировать ссылку для входа'}
+              </button>
+              <p className="pt-1 text-[14px] text-[#888888] flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Нажмите «Start» и «Подтвердить вход» в боте
               </p>
               <button
+                type="button"
                 onClick={() => { setLink(null); setError(''); }}
-                className="mt-4 block mx-auto text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
+                className="pt-1 block mx-auto text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
               >
                 Назад
               </button>
@@ -124,11 +140,12 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
           ) : (
             <>
               <button
+                type="button"
                 onClick={startTg}
                 disabled={busy}
                 className="mt-8 flex items-center justify-center gap-3 w-full h-12 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[15px] font-medium transition-colors cursor-pointer"
               >
-                <Send className="w-5 h-5" /> Войти через Telegram
+                {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />} Войти через Telegram
               </button>
 
               <div className="my-5 flex items-center gap-4">
@@ -148,6 +165,7 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                     className="w-full h-12 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[15px] text-[#ffffff] placeholder:text-[#888888] transition-colors"
                   />
                   <button
+                    type="button"
                     onClick={() => {
                       if (!email.trim()) { setError('Введите адрес эл. почты'); return; }
                       sendCode();
@@ -175,10 +193,11 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                     onKeyDown={(e) => { if (e.key === 'Enter' && code.length >= 6) verify(); }}
-                    placeholder="00000000"
+                    placeholder="000000"
                     className="mt-4 w-full h-12 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[18px] tracking-[0.35em] text-[#ffffff] placeholder:text-[#444444] transition-colors"
                   />
                   <button
+                    type="button"
                     onClick={verify}
                     disabled={busy || code.length < 6}
                     className="mt-4 flex items-center justify-center gap-3 w-full h-12 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[15px] font-semibold transition-colors cursor-pointer"
@@ -187,12 +206,14 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                   </button>
                   <div className="mt-4 flex items-center justify-between text-[13px]">
                     <button
+                      type="button"
                       onClick={() => { setStep('form'); setError(''); }}
                       className="text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
                     >
                       Назад
                     </button>
                     <button
+                      type="button"
                       onClick={() => sendCode()}
                       disabled={cooldown > 0 || busy}
                       className="text-[#888888] hover:text-[#ffffff] disabled:opacity-50 underline underline-offset-4 cursor-pointer"
@@ -206,11 +227,6 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
           )}
 
           {error && <p className="mt-4 text-[14px] text-[#F26522]">{error}</p>}
-          {config.devLogin && !link && (
-            <button onClick={dev} type="button" className="mt-6 text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer">
-              Войти без бота (dev-режим)
-            </button>
-          )}
 
           <p className="mt-8 text-[13.5px] text-[#888888] leading-relaxed">
             Входя в кабинет, вы принимаете{' '}
@@ -311,7 +327,7 @@ export default function Cabinet() {
   if (!me.user) {
     return (
       <div className="ember-cabinet ember-login min-h-screen text-[#ffffff] font-sans antialiased">
-        <LoginScreen config={config} onDone={refresh} />
+        <LoginScreen onDone={refresh} />
         {plansOpen && <PlansModal config={config} onClose={() => setPlansOpen(false)} onActivated={async () => { await refresh(); setPlansOpen(false); }} />}
       </div>
     );

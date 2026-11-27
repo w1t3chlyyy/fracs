@@ -50,7 +50,7 @@ export default function Terms() {
           <section className="space-y-3">
             <h2 className="font-heading text-lg sm:text-xl font-semibold text-white">1. Общие положения</h2>
             <p>
-              1.1. Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между самозанятым Бенаи Тимуром Рустамовичем, ИНН 920159216794 (далее — «Исполнитель» / «Администрация»), и физическим или юридическим лицом, использующим веб-сайт{' '}
+              1.1. Настоящее Пользовательское соглашение (далее — «Соглашение») регулирует отношения между администрацией сервиса Fracs (далее — «Исполнитель» / «Администрация»), и физическим или юридическим лицом, использующим веб-сайт{' '}
               <a href="https://fracs.cc.cd" target="_blank" rel="noreferrer" className="text-[#F26522] hover:underline">https://fracs.cc.cd</a>, личный кабинет, Telegram-бот и программу Fracs Parser (далее — «Пользователь» / «Заказчик» и «Сервис» соответственно).
             </p>
             <p>
@@ -106,7 +106,7 @@ export default function Terms() {
               4.1. Стоимость подписки определяется тарифами, опубликованными на сайте и в личном кабинете Сервиса на момент оформления заказа.
             </p>
             <p>
-              4.2. Оплата производится в безналичном порядке через подключённые в Сервисе платёжные инструменты (в том числе ЮKassa) либо по согласованной заявке через администратора.
+              4.2. Оплата производится в безналичном порядке через подключённые в Сервисе платёжные инструменты (в том числе CryptoBot, xRocket) либо по реквизитам через службу поддержки (@HelpManage).
             </p>
             <p>
               4.3. Возврат денежных средств осуществляется в соответствии с законодательством Российской Федерации и условиями{' '}
@@ -203,13 +203,8 @@ export default function Terms() {
           </section>
 
           <section className="space-y-2 border-t border-white/10 pt-6">
-            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">11. Контакты и реквизиты Исполнителя</h2>
-            <p><strong>Полное наименование:</strong> Самозанятый Бенаи Тимур Рустамович</p>
-            <p><strong>ИНН:</strong> 920159216794</p>
-            <p>
-              <strong>Контактный телефон:</strong>{' '}
-              <a href="tel:+79944821648" className="text-white hover:text-[#F26522]">+7 994 482-16-48</a>
-            </p>
+            <h2 className="font-heading text-lg sm:text-xl font-semibold text-white mb-3">11. Контакты Исполнителя</h2>
+            <p><strong>Сервис:</strong> Fracs</p>
             <p>
               <strong>Контактный e-mail:</strong>{' '}
               <a href="mailto:w1t3chlyyy@gmail.com" className="text-[#F26522] hover:underline">w1t3chlyyy@gmail.com</a>

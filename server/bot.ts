@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { config } from './config.ts';
 import {
-  bindLoginToken, createLoginToken, upsertTgUser, findUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
+  bindLoginToken, createLoginToken, upsertTgUser, findUser, getUser, extendSubscription, setSubscription, listRecentUsers, isSubscribed,
   getPlans, updatePlan, resetPlans, getTraining, addLesson, updateLesson, deleteLesson, getRequiredChannels, type User,
 } from './db.ts';
 import { randomToken, safeEqual, sleep } from './util.ts';
@@ -318,7 +318,10 @@ async function handleAdminCallback(cb: any): Promise<boolean> {
       return true;
     }
     const rows = list.map((u) => [
-      { text: `${(u.username || u.firstName).slice(0, 20)}${isSubscribed(u) ? ' ✅' : ' ⬜'}`, callback_data: `adm:u:${u.tgId}` },
+      {
+        text: `${(u.username || u.firstName || u.email || 'Пользователь').slice(0, 20)}${isSubscribed(u) ? ' ✅' : ' ⬜'}`,
+        callback_data: u.tgId != null ? `adm:u:${u.tgId}` : `adm:uid:${u.id}`,
+      },
     ]);
     rows.push([{ text: '← Назад', callback_data: 'adm:home' }]);
     await editMsg(chatId, messageId, '👥 Последние пользователи\n\nТапните по строке, чтобы выдать или снять подписку:', { inline_keyboard: rows });
@@ -354,30 +357,59 @@ async function handleAdminCallback(cb: any): Promise<boolean> {
     return true;
   }
 
-  const g = data.match(/^adm:g:(\d+):(\w+):(\d+)$/);
+  const mUid = data.match(/^adm:uid:([0-9a-f-]+)$/i);
+  if (mUid) {
+    const u = await getUser(mUid[1]);
+    if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
+    const text =
+      `👤 ${who(u)}\n` +
+      `Подписка: ${isSubscribed(u) ? 'до ' + fmt(u.subscriptionUntil) : 'нет'}${u.planId ? ` (${u.planId})` : ''}\n` +
+      `Регистрация: ${fmt(u.createdAt)}`;
+    const kb = {
+      inline_keyboard: [
+        [{ text: 'Ultra 30 дней', callback_data: `adm:g:${u.id}:ultra:30` }, { text: 'PRO 30 дней', callback_data: `adm:g:${u.id}:pro:30` }],
+        [{ text: 'Start 30 дней', callback_data: `adm:g:${u.id}:start:30` }],
+        [{ text: '✕ Снять подписку', callback_data: `adm:r:${u.id}` }],
+        [{ text: '← К списку', callback_data: 'adm:users' }],
+      ],
+    };
+    await editMsg(chatId, messageId, text, kb);
+    await answerCb(cbId);
+    return true;
+  }
+
+  const g = data.match(/^adm:g:([^:]+):(\w+):(\d+)$/);
   if (g) {
-    const tgId = Number(g[1]);
+    const target = g[1];
     const planId = g[2];
     const days = Number(g[3]);
-    const u = await findUser(String(tgId));
+    const u = /^\d+$/.test(target) ? await findUser(target) : await getUser(target);
     if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
     const plans = await getPlans();
     if (!plans.some((p) => p.id === planId)) return answerCb(cbId, `Тариф ${planId} не найден`, true).then(() => true);
     const upd = await extendSubscription(u.id, days, planId);
     await answerCb(cbId, `✅ ${planId.toUpperCase()} ${days} дн. до ${fmt(upd.subscriptionUntil)}`);
     await notify(upd.tgId, `✅ Подписка Fracs активна до ${fmt(upd.subscriptionUntil)}. Кабинет: ${publicUrl()}/app`).catch(() => {});
-    await renderUserView(chatId, messageId, tgId);
+    if (upd.tgId != null) {
+      await renderUserView(chatId, messageId, upd.tgId);
+    } else {
+      await editMsg(chatId, messageId, `👤 ${who(upd)}\nПодписка: до ${fmt(upd.subscriptionUntil)} (${planId})`, backKb('adm:users'));
+    }
     return true;
   }
 
-  const r = data.match(/^adm:r:(\d+)$/);
+  const r = data.match(/^adm:r:([^:]+)$/);
   if (r) {
-    const tgId = Number(r[1]);
-    const u = await findUser(String(tgId));
+    const target = r[1];
+    const u = /^\d+$/.test(target) ? await findUser(target) : await getUser(target);
     if (!u) return answerCb(cbId, 'Пользователь не найден', true).then(() => true);
     await setSubscription(u.id, null);
     await answerCb(cbId, '🚫 Подписка снята');
-    await renderUserView(chatId, messageId, tgId);
+    if (u.tgId != null) {
+      await renderUserView(chatId, messageId, u.tgId);
+    } else {
+      await editMsg(chatId, messageId, `👤 ${who(u)}\nПодписка: нет`, backKb('adm:users'));
+    }
     return true;
   }
   return false;
@@ -590,6 +622,9 @@ async function handleLoginConfirm(cb: any) {
     return;
   }
   await finalizeStart(chatId, user, 'login', token);
+  if (cb.message?.message_id) {
+    await editMsg(chatId, cb.message.message_id, '✅ Вход подтверждён! Вернитесь в браузер.', { reply_markup: { inline_keyboard: [] } });
+  }
   await answerCb(cbId, 'Вход подтверждён');
 }
 
@@ -631,7 +666,8 @@ async function handleSubCallback(cb: any) {
 export async function handleUpdate(update: any) {
   const cb = update?.callback_query;
   if (cb) {
-    if (config.adminTgId > 0 && cb.from?.id === config.adminTgId) {
+    const cbData = String(cb.data || '');
+    if (config.adminTgId > 0 && cb.from?.id === config.adminTgId && cbData.startsWith('adm:')) {
       try {
         await handleAdminCallback(cb);
       } catch (e: any) {
@@ -812,7 +848,7 @@ export async function ensureWebhook() {
 
 export async function startBot() {
   if (!config.botToken) {
-    console.log('[bot] TELEGRAM_BOT_TOKEN не задан — вход через бота отключён' + (config.devLogin ? ' (доступен dev-вход)' : ''));
+    console.log('[bot] TELEGRAM_BOT_TOKEN не задан — вход через бота отключён');
     return;
   }
   const me = await tg('getMe');
