@@ -91,32 +91,32 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Левая половина: форма входа (по макету — прижата к левому краю) */}
-      <div className="flex-1 flex items-center px-5 sm:px-10 xl:px-[7vw] py-12">
-        <div className="w-full max-w-[473px]">
-          <h1 className="font-sans text-[40px] sm:text-[52px] leading-[1.08] font-bold tracking-[-0.02em] text-[#ffffff]">
+      <div className="flex-1 flex items-center px-5 sm:px-10 xl:px-[5vw] py-10">
+        <div className="w-full max-w-[420px]">
+          <h1 className="font-sans text-[34px] sm:text-[42px] leading-[1.08] font-bold tracking-[-0.02em] text-[#ffffff]">
             Личный кабинет
           </h1>
-          <p className="mt-6 text-[16px] sm:text-[18px] text-[#cccccc] leading-snug max-w-[420px]">
+          <p className="mt-4 text-[15px] sm:text-[16px] text-[#cccccc] leading-snug max-w-[420px]">
             Выберите удобный способ входа или регистрации аккаунта
           </p>
 
           {link ? (
             /* Ожидание подтверждения в Telegram */
-            <div className="mt-10">
+            <div className="mt-8">
               <a
                 href={link.url}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] text-white text-[16px] font-medium transition-colors"
+                className="flex items-center justify-center gap-3 w-full h-12 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] text-white text-[15px] font-medium transition-colors"
               >
                 <Send className="w-5 h-5" /> Открыть бота
               </a>
-              <p className="mt-5 text-[14px] text-[#888888] flex items-center justify-center gap-2">
+              <p className="mt-4 text-[14px] text-[#888888] flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin" /> Нажмите «Start» в Telegram — вход произойдёт сам
               </p>
               <button
                 onClick={() => { setLink(null); setError(''); }}
-                className="mt-5 block mx-auto text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
+                className="mt-4 block mx-auto text-[13px] text-[#888888] hover:text-[#ffffff] underline underline-offset-4 cursor-pointer"
               >
                 Назад
               </button>
@@ -126,12 +126,12 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
               <button
                 onClick={startTg}
                 disabled={busy}
-                className="mt-10 flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[16px] font-medium transition-colors cursor-pointer"
+                className="mt-8 flex items-center justify-center gap-3 w-full h-12 rounded-2xl bg-[#F26522] hover:bg-[#e05a1a] disabled:opacity-60 text-white text-[15px] font-medium transition-colors cursor-pointer"
               >
                 <Send className="w-5 h-5" /> Войти через Telegram
               </button>
 
-              <div className="my-7 flex items-center gap-4">
+              <div className="my-5 flex items-center gap-4">
                 <span className="mx-auto text-[14px] tracking-wide text-[#888888]">ИЛИ</span>
               </div>
 
@@ -145,7 +145,7 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                     onChange={(e) => setEmail(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && email) sendCode(); }}
                     placeholder="Адрес эл. почты"
-                    className="w-full h-14 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[16px] text-[#ffffff] placeholder:text-[#888888] transition-colors"
+                    className="w-full h-12 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[15px] text-[#ffffff] placeholder:text-[#888888] transition-colors"
                   />
                   <button
                     onClick={() => {
@@ -153,7 +153,7 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                       sendCode();
                     }}
                     disabled={busy}
-                    className="mt-4 flex items-center justify-center w-full h-14 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[16px] font-semibold transition-colors cursor-pointer"
+                    className="mt-4 flex items-center justify-center w-full h-12 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[15px] font-semibold transition-colors cursor-pointer"
                   >
                     {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Продолжить с почтой'}
                   </button>
@@ -176,12 +176,12 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
                     onKeyDown={(e) => { if (e.key === 'Enter' && code.length >= 6) verify(); }}
                     placeholder="00000000"
-                    className="mt-4 w-full h-14 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[20px] tracking-[0.35em] text-[#ffffff] placeholder:text-[#444444] transition-colors"
+                    className="mt-4 w-full h-12 rounded-2xl bg-[#0b0b0b] border border-[rgba(255,255,255,0.16)] focus:border-[rgba(255,255,255,0.4)] outline-none px-5 text-[18px] tracking-[0.35em] text-[#ffffff] placeholder:text-[#444444] transition-colors"
                   />
                   <button
                     onClick={verify}
                     disabled={busy || code.length < 6}
-                    className="mt-4 flex items-center justify-center gap-3 w-full h-14 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[16px] font-semibold transition-colors cursor-pointer"
+                    className="mt-4 flex items-center justify-center gap-3 w-full h-12 rounded-2xl bg-[#ffffff] hover:bg-[#f0f0f0] disabled:opacity-60 text-[#0a0a0a] text-[15px] font-semibold transition-colors cursor-pointer"
                   >
                     {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Подтвердить'}
                   </button>
@@ -212,7 +212,7 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
             </button>
           )}
 
-          <p className="mt-12 text-[14px] text-[#888888] leading-relaxed">
+          <p className="mt-8 text-[13.5px] text-[#888888] leading-relaxed">
             Входя в кабинет, вы принимаете{' '}
             <a href="/terms" className="text-[#cccccc] hover:text-[#ffffff] underline underline-offset-2">пользовательское соглашение</a>{' '}
             и{' '}
@@ -222,7 +222,7 @@ function LoginScreen({ config, onDone }: { config: AppConfig; onDone: () => void
       </div>
 
       {/* Правая половина: ASCII-цветок по референсу — распускание ~7 с, затем бесконечное вращение */}
-      <div className="hidden lg:flex flex-1 items-center justify-center overflow-hidden">
+      <div className="hidden lg:flex flex-[1.15] items-center justify-center overflow-hidden py-8 lg:-translate-x-[9vw]">
         <AsciiFlower />
       </div>
     </div>

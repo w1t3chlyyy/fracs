@@ -261,7 +261,7 @@ html { scroll-behavior: smooth; }
    полноэкранный блок. ── */
 @media (min-width: 1024px) {
   .fx-section {
-    padding-block: clamp(64px, 8vh, 104px);
+    padding-block: clamp(84px, 11vh, 132px);
   }
 
   /* Единая шкала вертикальных отступов (фиксированные значения — ритм
