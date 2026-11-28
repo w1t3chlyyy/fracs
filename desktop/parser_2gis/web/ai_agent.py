@@ -115,10 +115,9 @@ _FRACS_DOWN = 'Fracs AI временно недоступен. Попробуй�
 # Fracs AI сам подбирает модель под задачу — пользователю не нужно разбираться в моделях
 # OpenRouter и переключать их вручную. Премиум-кодинг-модель идёт на генерацию сайтов (главный
 # продукт, здесь качество критично), дешёвая — на лёгкие задачи (поисковые фразы, чат, ответы).
-# Актуальные ID и цены сверены с openrouter.ai/api/v1/models (2026-11).
-_BEST_CODE_MODEL = 'anthropic/claude-sonnet-5.5'        # топ для фронтенд-кода, ctx 1M, vision
-_CHEAP_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash-1017'  # дёшево и быстро для не-кодинга
-_FALLBACK_CODE_MODELS = ('deepseek/deepseek-v4-pro-0813', _CHEAP_CHAT_MODEL, 'openai/gpt-4o-mini')
+_BEST_CODE_MODEL = 'anthropic/claude-sonnet-4'           # топ для фронтенд-кода, vision
+_CHEAP_CHAT_MODEL = 'deepseek/deepseek-chat'             # дёшево и быстро для не-кодинга
+_FALLBACK_CODE_MODELS = ('anthropic/claude-3.5-sonnet', 'google/gemini-2.5-flash', _CHEAP_CHAT_MODEL, 'openai/gpt-4o-mini')
 _NO_TEMP_MODELS = {'anthropic/claude-sonnet-5.5', 'openai/gpt-5.6-terra-pro'}
 
 # Cohere Command A работает ВМЕСТЕ с OpenRouter: тексты/арт-дирекшн до сборки и вычитка после.
@@ -188,7 +187,7 @@ _PROVIDERS: dict[str, dict] = {
         'needs_key': True,
         'vision': True,
         'desc': 'Gemini от Google (OpenAI-совместимый режим)',
-        'default_models': ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro'],
+        'default_models': ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
     },
     'OpenRouter': {
         'shape': 'openai',
@@ -1239,9 +1238,9 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     started = time.time()
     cfg = _provider_cfg(provider)
     if provider == 'Fracs AI':
-        # Fracs AI — встроенная нейронка программы, под капотом OpenRouter.
+        # Fracs AI — встроенная нейронка программы, под капотом OpenRouter / Cohere.
         # Приоритет: прокси сайта Fracs → серверный ключ env (подписка) →
-        # ключ OpenRouter самого пользователя (вводит один раз, хранится в программе).
+        # локальный ключ OpenRouter (режим владельца / dev).
         proxy = _fracs_proxy()
         if proxy:
             api_key = proxy[1]
@@ -1261,11 +1260,13 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     if provider == 'Fracs AI':
         proxy = _fracs_proxy()
         if proxy:
-            url, via_proxy = proxy[0] + '/api/app/ai', True      # сервер сам выбирает Cohere/OpenRouter
+            url, via_proxy = proxy[0] + '/api/app/ai', True      # сервер сам выбирает провайдера
         elif task in _COHERE_TASKS and _COHERE_KEY:
             url, direct_cohere = _COHERE_URL + '/chat/completions', True
-        else:
+        elif _FRACS_AI_KEY:
             url = _OPENROUTER_URL + '/chat/completions'
+        else:
+            return {'ok': False, 'error': _FRACS_DOWN}
     else:
         url = _resolve_chat_url(provider, base_url)
     if not url:
@@ -1331,14 +1332,15 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
             if fb not in direct_candidates:
                 direct_candidates.append(fb)
 
+    req_timeout = 240 if via_proxy else 180
     r = None
     last_req_err: Exception | None = None
     for cand_idx, cand_model in enumerate(direct_candidates):
         body = _make_req_body(cand_model)
         try:
-            r = requests.post(url, headers=headers, json=body, timeout=180)
-            if r.status_code == 400 and not via_proxy and 'temperature' in body and 'temperature' in (r.text or '').lower():
-                r = requests.post(url, headers=headers, json=_make_req_body(cand_model, strip_temp=True), timeout=180)
+            r = requests.post(url, headers=headers, json=body, timeout=req_timeout)
+            if r.status_code == 400 and not via_proxy and 'temperature' in body:
+                r = requests.post(url, headers=headers, json=_make_req_body(cand_model, strip_temp=True), timeout=req_timeout)
         except requests.RequestException as e:
             last_req_err = e
             r = None

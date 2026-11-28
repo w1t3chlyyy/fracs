@@ -227,7 +227,7 @@ const AI_LIMITS = {
   userDailyUsd: envNum('AI_USER_DAILY_USD', 20),        // потолок расходов на бесплатной дневной квоте
   globalDailyUsd: envNum('AI_GLOBAL_DAILY_USD', 250),   // аварийный предохранитель: общий бюджет в сутки
   maxTokens: envNum('AI_MAX_TOKENS', 12000),            // потолок ответа модели
-  maxInputChars: envNum('AI_MAX_INPUT_CHARS', 60000),   // правка макета шлёт страницу целиком (до 34К знаков) + промт
+  maxInputChars: envNum('AI_MAX_INPUT_CHARS', 100000),  // правка макета шлёт страницу целиком + дизайн-промт + бриф
   maxImages: 3,
 };
 // Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
@@ -243,9 +243,11 @@ const isOllamaActive = (): boolean => (
 const hasAnyAiKey = (): boolean => Boolean(config.ollamaApiKey || config.openrouterApiKey || config.cohereApiKey);
 
 const COHERE_MODEL = 'command-a-03-2025';
-const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || (isOllamaActive() ? 'kimi-k2.7-code' : 'anthropic/claude-sonnet-5.5')).trim();
-const FRACS_FAST_MODEL = (process.env.FRACS_AI_FAST_MODEL || (isOllamaActive() ? 'deepseek-v4.1-flash:1017' : 'deepseek/deepseek-v4.1-flash-1017')).trim();
-const FRACS_EDIT_MODEL = (!isOllamaActive() || config.cohereApiKey) ? COHERE_MODEL : FRACS_FAST_MODEL;
+const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || (isOllamaActive() ? 'kimi-k2.7-code' : 'anthropic/claude-sonnet-4')).trim();
+const FRACS_FAST_MODEL = (process.env.FRACS_AI_FAST_MODEL || (isOllamaActive() ? 'deepseek-v4.1-flash:1017' : 'deepseek/deepseek-chat')).trim();
+const FRACS_EDIT_MODEL = (config.cohereApiKey || (config.openrouterApiKey && !isOllamaActive()))
+  ? COHERE_MODEL
+  : FRACS_FAST_MODEL;
 const FRACS_MODEL_ALIASES: Record<string, string> = {
   'fracs-ai': FRACS_BUILD_MODEL,
   'fracs-ai-build': FRACS_BUILD_MODEL,
@@ -259,7 +261,7 @@ const FRACS_MODEL_ALIASES: Record<string, string> = {
 // Белый список моделей Fracs AI (оставлен и для обратной совместимости со старыми версиями программы).
 // Расширять через env AI_ALLOWED_MODELS.
 const AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS ||
-  'kimi-k2.7-code,deepseek-v4-pro:0813,deepseek-v4.1-flash:1017,deepseek-v4.1-flash,glm-5.3,glm-5.3-flash,gemma4:31b,kimi-k3.1-pro,mistral-large-4,minimax-m3.1-flash,anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,command-a-03-2025')
+  'anthropic/claude-sonnet-4,anthropic/claude-3.5-sonnet,google/gemini-2.5-flash,kimi-k2.7-code,deepseek-v4-pro:0813,deepseek-v4.1-flash:1017,deepseek-v4.1-flash,glm-5.3,glm-5.3-flash,gemma4:31b,kimi-k3.1-pro,mistral-large-4,minimax-m3.1-flash,anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,command-a-03-2025')
   .split(',').map((s) => s.trim()).filter(Boolean));
 // $ за 1M токенов (вход, выход) — ПРИБЛИЗИТЕЛЬНО, нужно только для оценки «до запроса»
 // и если провайдер не вернул фактическую стоимость.
@@ -271,6 +273,8 @@ const AI_PRICE: Record<string, [number, number]> = {
   'gemma4:31b': [0.1, 0.3], 'kimi-k3.1-pro': [0.3, 1.2],
   'mistral-large-4': [0.3, 1.2], 'minimax-m3.1-flash': [0.1, 0.4],
   // премиум-кодинг (генерация сайтов, OpenRouter)
+  'anthropic/claude-sonnet-4': [3, 15], 'anthropic/claude-3.5-sonnet': [3, 15],
+  'google/gemini-2.5-flash': [0.15, 0.6],
   'anthropic/claude-sonnet-5.5': [2, 10], 'openai/gpt-5.6-terra-pro': [2, 12],
   'deepseek/deepseek-v4-pro-0813': [0.1, 5], 'deepseek/deepseek-v4.1-flash-1017': [0.15, 0.6],
   // бюджетные (чат/фразы)
@@ -291,6 +295,7 @@ const MODELS_NO_TEMP = new Set([
   'openai/gpt-5.6-terra-pro',
 ]);
 const MODELS_LOW_REASONING = new Set([
+  'anthropic/claude-sonnet-4',
   'anthropic/claude-sonnet-5.5',
   'openai/gpt-5.6-terra-pro',
 ]);
@@ -305,39 +310,36 @@ function prepareUpstreamBody(baseBody: any, targetModel: string, stripExtra = fa
     out.reasoning = { effort: 'low' };
   } else if (stripExtra) {
     delete out.reasoning;
+    delete out.usage;
   }
   return out;
 }
 
 function buildFallbackModels(primaryModel: string, imageCount: number): string[] {
+  const list: string[] = [primaryModel];
   if (isOllamaActive()) {
     if (primaryModel === COHERE_MODEL) {
-      return [COHERE_MODEL, FRACS_FAST_MODEL, 'glm-5.3-flash'];
-    }
-    if (primaryModel === FRACS_BUILD_MODEL) {
-      const fallbacks = imageCount > 0
+      list.push(FRACS_FAST_MODEL, 'glm-5.3-flash');
+    } else if (primaryModel === FRACS_BUILD_MODEL) {
+      list.push(...(imageCount > 0
         ? ['deepseek-v4.1-flash:1017', 'glm-5.3-flash', 'mistral-large-4']
-        : ['deepseek-v4-pro:0813', 'deepseek-v4.1-flash:1017', 'glm-5.3'];
-      return Array.from(new Set([primaryModel, ...fallbacks]));
+        : ['deepseek-v4-pro:0813', 'deepseek-v4.1-flash:1017', 'glm-5.3']));
+    } else if (primaryModel === FRACS_FAST_MODEL) {
+      list.push('glm-5.3-flash', 'gemma4:31b', 'minimax-m3.1-flash');
     }
-    if (primaryModel === FRACS_FAST_MODEL) {
-      return Array.from(new Set([primaryModel, 'glm-5.3-flash', 'gemma4:31b', 'minimax-m3.1-flash']));
+  }
+  if (config.openrouterApiKey) {
+    if (primaryModel === COHERE_MODEL) {
+      list.push('deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini');
+    } else if (primaryModel === FRACS_FAST_MODEL || primaryModel === 'deepseek/deepseek-chat') {
+      list.push('deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku');
+    } else {
+      list.push(...(imageCount > 0
+        ? ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini']
+        : ['anthropic/claude-sonnet-4', 'anthropic/claude-3.5-sonnet', 'deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini']));
     }
-    return [primaryModel];
   }
-  if (primaryModel === COHERE_MODEL) {
-    return [COHERE_MODEL, 'deepseek/deepseek-v4.1-flash-1017', 'openai/gpt-4o-mini'];
-  }
-  if (primaryModel === FRACS_BUILD_MODEL || primaryModel === 'anthropic/claude-sonnet-5.5') {
-    const fallbacks = imageCount > 0
-      ? ['google/gemini-2.0-flash-001', 'openai/gpt-4o-mini']
-      : ['deepseek/deepseek-v4-pro-0813', 'deepseek/deepseek-v4.1-flash-1017', 'openai/gpt-4o-mini'];
-    return Array.from(new Set([primaryModel, ...fallbacks]));
-  }
-  if (primaryModel === FRACS_FAST_MODEL) {
-    return Array.from(new Set([primaryModel, 'openai/gpt-4o-mini', 'google/gemini-2.0-flash-001']));
-  }
-  return [primaryModel];
+  return Array.from(new Set(list));
 }
 
 function hasNonEmptyCompletion(parsed: any): boolean {
@@ -365,11 +367,12 @@ function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: str
       orBody.max_tokens = Math.min(Number(orBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
       return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: orBody, via: 'openrouter', model: COHERE_VIA_OR };
     }
-    if (isOllamaActive() && config.ollamaApiKey) {
-      const olBody = prepareUpstreamBody(body, FRACS_FAST_MODEL, stripExtra);
+    if (config.ollamaApiKey) {
+      const olModel = isOllamaActive() ? FRACS_FAST_MODEL : 'deepseek-v4.1-flash:1017';
+      const olBody = prepareUpstreamBody(body, olModel, stripExtra);
       delete olBody.usage;
       olBody.max_tokens = Math.min(Number(olBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
-      return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: FRACS_FAST_MODEL };
+      return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: olModel };
     }
     return null;
   }
@@ -379,17 +382,17 @@ function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: str
     delete olBody.usage; // usage:{include} — расширение OpenRouter
     return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: target };
   }
-  if (!config.openrouterApiKey) {
-    if (config.ollamaApiKey) {
-      const fallbackOllamaModel = target.includes('/') ? FRACS_BUILD_MODEL : target;
-      const olBody = prepareUpstreamBody(body, fallbackOllamaModel, stripExtra);
-      delete olBody.usage;
-      return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: fallbackOllamaModel };
-    }
-    return null;
+  if (config.openrouterApiKey) {
+    const orBody = prepareUpstreamBody(body, target, stripExtra);
+    return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: orBody, via: 'openrouter', model: target };
   }
-  const orBody = prepareUpstreamBody(body, target, stripExtra);
-  return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: orBody, via: 'openrouter', model: target };
+  if (config.ollamaApiKey) {
+    const fallbackOllamaModel = target.includes('/') ? 'kimi-k2.7-code' : target;
+    const olBody = prepareUpstreamBody(body, fallbackOllamaModel, stripExtra);
+    delete olBody.usage;
+    return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: fallbackOllamaModel };
+  }
+  return null;
 }
 const FRACS_TASKS = new Set(['copy', 'critique', 'build']);
 const priceOf = (model: string): [number, number] => AI_PRICE[model] || [1, 4];
@@ -462,7 +465,7 @@ function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: num
   const model = FRACS_MODEL_ALIASES[rawModel] || rawModel;
   if (!FRACS_MODEL_ALIASES[rawModel] && !AI_MODELS.has(model)) return { err: aiErr(400, 'model_not_allowed', 'Эта модель недоступна во встроенном Fracs AI. Используйте встроенный режим Fracs AI или подключите свой API-ключ.') };
   const msgs = raw.messages;
-  if (!Array.isArray(msgs) || msgs.length < 1 || msgs.length > 6) return { err: aiErr(400, 'bad_request', 'Некорректный список сообщений.') };
+  if (!Array.isArray(msgs) || msgs.length < 1 || msgs.length > 12) return { err: aiErr(400, 'bad_request', 'Некорректный список сообщений.') };
   let chars = 0, images = 0;
   const messages: any[] = [];
   for (const m of msgs) {
@@ -638,12 +641,15 @@ appRouter.post('/ai', h(async (req, res) => {
     });
 
     const candidates = buildFallbackModels(body.model, imageCount);
+    const deadline = Date.now() + 160_000;
     let okUpstream: { status: number; parsed: any; model: string } | null = null;
     let lastStatus = 502;
 
     for (let idx = 0; idx < candidates.length; idx++) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 3_000) break;
       const candidate = candidates[idx];
-      const timeoutMs = idx === 0 ? 110_000 : 75_000;
+      const timeoutMs = Math.min(remaining, idx === 0 ? 70_000 : 45_000);
       const attempts: Upstream[] = [];
       const u1 = resolveUpstream(body, false, candidate, false);
       if (u1) attempts.push(u1);
@@ -656,11 +662,19 @@ appRouter.post('/ai', h(async (req, res) => {
         try {
           let r = await callUpstream(route, timeoutMs);
           let rawText = await r.text();
-          // Если модель не поддерживает temperature / reasoning (HTTP 400), повторяем без них.
-          if (r.status === 400 && /temperature|reasoning|unsupported/i.test(rawText)) {
+          // На HTTP 400 пробуем один раз без лишних параметров (temperature / reasoning / usage).
+          if (r.status === 400 && (route.body.temperature !== undefined || route.body.reasoning !== undefined || route.body.usage !== undefined)) {
             const stripped = resolveUpstream(body, route.via === 'openrouter' && candidate === COHERE_MODEL, candidate, true);
             if (stripped) {
               r = await callUpstream(stripped, timeoutMs);
+              rawText = await r.text();
+            }
+          }
+          // На HTTP 402 (нехватка кредитов под большой max_tokens) пробуем один раз с умеренным потолком.
+          if (r.status === 402 && (Number(route.body.max_tokens) || 0) > 4096) {
+            const capped = resolveUpstream({ ...body, max_tokens: 4096 }, route.via === 'openrouter' && candidate === COHERE_MODEL, candidate, true);
+            if (capped) {
+              r = await callUpstream(capped, timeoutMs);
               rawText = await r.text();
             }
           }
