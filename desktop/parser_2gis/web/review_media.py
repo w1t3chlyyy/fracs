@@ -79,38 +79,203 @@ def load_font(size: int, kind: str = 'display'):
 
 # ── Название и рубрика ────────────────────────────────────────────────────────
 
-def business_parts(prompt: str) -> tuple[str, str]:
-    """(название, рубрика) для открытки. Из карточки 2ГИС: «Название: …» и первая
-    рубрика из «Рубрики: …». Если рубрики нет, а название из нескольких слов —
-    первое слово становится названием, остальное — подписью (как раньше)."""
+_GREETING_RE = re.compile(
+    r'^(привет(ству[ею]м|ствую)?|здравствуй(те)?|добрый\s+(день|вечер|утро)|'
+    r'доброго\s+времени\s+суток|hi|hello|hey|здаров)\b[!,.\s]*$',
+    re.I,
+)
+_CMD_LEAD_RE = re.compile(
+    r'^(?:нужно\s+|хочу\s+|можно\s+)?'
+    r'(?:сделай(?:те)?|создай(?:те)?|собери(?:те)?|напиши(?:те)?|сверстай(?:те)?|'
+    r'разработай(?:те)?|сгенерируй(?:те)?|нужен|нужна|нужно|пожалуйста)'
+    r'(?:[\s,:-]+(?:мне|нам|пожалуйста))*[\s,:-]*',
+    re.I,
+)
+_SITE_NOUN_RE = re.compile(
+    r'^(?:(?:одностраничный|современный|стильный|красивый|простой|лаконичный|'
+    r'продающий|премиальный|минималистичный|лёгкий|легкий|быстрый|крутой|хороший|'
+    r'адаптивный|небольшой)\s+)*'
+    r'(?:сайт-визитку|сайт-визитка|сайт-лендинг|одностраничник|веб-сайт|'
+    r'сайт|лендинг|страницу|страничку|визитку|макет|промо-сайт)\b[\s,:-]*',
+    re.I,
+)
+_PREP_LEAD_RE = re.compile(
+    r'^(?:для|про|об?|по|под|на\s+тему|бизнеса|компании|фирмы|проекта)\b[\s,:-]*',
+    re.I,
+)
+_CITY_IN_RE = re.compile(
+    r'\b(?:в|г\.?)\s+([А-ЯЁ][а-яё-]+(?:-[А-ЯЁ]?[а-яё]+)?)\b'
+)
+_GENITIVE_CATS: tuple[tuple[str, tuple[str, str]], ...] = (
+    ('автосервис', ('Автосервис', 'ремонт и обслуживание')),
+    ('детейлинг', ('Детейлинг', 'уход за авто')),
+    ('шиномонтаж', ('Шиномонтаж', 'автоуслуги')),
+    ('автомойк', ('Автомойка', 'уход за авто')),
+    ('стоматолог', ('Стоматология', 'клиника и запись')),
+    ('ветклиник', ('Ветклиника', 'ветеринария')),
+    ('ветеринар', ('Ветклиника', 'ветеринария')),
+    ('медцентр', ('Медцентр', 'медицинские услуги')),
+    ('клиник', ('Клиника', 'медицина')),
+    ('косметолог', ('Косметология', 'эстетика и уход')),
+    ('кофейн', ('Кофейня', 'кофе и выпечка')),
+    ('пекарн', ('Пекарня', 'свежая выпечка')),
+    ('кондитерск', ('Кондитерская', 'десерты на заказ')),
+    ('ресторан', ('Ресторан', 'кухня и бронь')),
+    ('пиццери', ('Пиццерия', 'доставка и зал')),
+    ('суши', ('Суши-бар', 'доставка и зал')),
+    ('кафе', ('Кафе', 'меню и бронь')),
+    ('барбершоп', ('Барбершоп', 'стрижки и бритьё')),
+    ('салон красоты', ('Салон красоты', 'уход и запись')),
+    ('парикмахерск', ('Парикмахерская', 'стрижки и укладка')),
+    ('маникюр', ('Студия маникюра', 'ногтевой сервис')),
+    ('ногтев', ('Ногтевая студия', 'маникюр и уход')),
+    ('массаж', ('Студия массажа', 'оздоровление')),
+    ('спа', ('SPA-салон', 'отдых и уход')),
+    ('фитнес', ('Фитнес-клуб', 'тренировки')),
+    ('строительств', ('Строительство', 'проекты и смета')),
+    ('строительн', ('Стройкомпания', 'проекты и ремонт')),
+    ('ремонт', ('Ремонт', 'услуги и расчёт')),
+    ('мебел', ('Мебель', 'на заказ')),
+    ('недвижимост', ('Недвижимость', 'подбор и сделки')),
+    ('юридическ', ('Юридические услуги', 'консультации')),
+    ('юрист', ('Юридические услуги', 'консультации')),
+    ('адвокат', ('Адвокат', 'правовая помощь')),
+    ('фотостуди', ('Фотостудия', 'съёмка и аренда')),
+    ('типограф', ('Типография', 'печать и тиражи')),
+    ('химчистк', ('Химчистка', 'уход за вещами')),
+    ('ателье', ('Ателье', 'пошив и ремонт')),
+    ('доставк', ('Доставка', 'быстрый заказ')),
+    ('отел', ('Отель', 'бронирование')),
+    ('гостиниц', ('Гостиница', 'бронирование')),
+    ('школ', ('Школа', 'обучение')),
+    ('курс', ('Курсы', 'обучение')),
+    ('магазин', ('Магазин', 'каталог товаров')),
+    ('студи', ('Студия', 'услуги')),
+    ('салон', ('Салон', 'услуги и запись')),
+)
+_GENERIC_TITLES = {'сайт', 'главная', 'лендинг', 'демо', 'демо-макет', 'untitled', 'document'}
+
+
+def _strip_prompt_lead(text: str) -> str:
+    s = re.sub(r'\s+', ' ', (text or '')).strip()
+    for _ in range(4):
+        prev = s
+        s = _CMD_LEAD_RE.sub('', s)
+        s = _SITE_NOUN_RE.sub('', s)
+        s = _PREP_LEAD_RE.sub('', s)
+        if s == prev:
+            break
+    return s.strip(' .«»"\':,-')
+
+
+def _normalize_category_phrase(text: str) -> tuple[str, str]:
+    low = (text or '').lower()
+    for stem, pair in _GENITIVE_CATS:
+        if stem in low:
+            return pair
+    return '', ''
+
+
+def _clean_brand_from_html(html: str) -> str:
+    if not html:
+        return ''
+    m = re.search(r'<title[^>]*>([^<]{2,120})</title>', html, re.I)
+    if not m:
+        return ''
+    raw = re.sub(r'\s+', ' ', m.group(1)).strip()
+    qm = re.search(r'[«"]([^«"]{2,36})[»"]', raw)
+    if qm:
+        cand = qm.group(1).strip()
+        if cand.lower() not in _GENERIC_TITLES:
+            return cand
+    head = re.split(r'\s+[—–|-]\s+', raw, maxsplit=1)[0].strip(' «»"\'')
+    if head and head.lower() not in _GENERIC_TITLES and len(head) <= 36:
+        return head
+    return ''
+
+
+def business_parts(prompt: str, html: str = '', brief: dict | None = None) -> tuple[str, str]:
+    """(название, рубрика) для открытки и видеообзора."""
     prompt = prompt or ''
     m = re.search(r'^Название:\s*(.+)$', prompt, re.M)
-    name = m.group(1).strip() if m else ''
-    if not name:
-        # первую строку-приветствие пропускаем — это не название бизнеса
-        lines = [ln.strip() for ln in prompt.splitlines() if ln.strip()]
-        first = ''
-        for ln in lines:
-            if re.match(r'^(привет(ству[ею]м|ствую)?|здравствуй(те)?|добрый\s+(день|вечер|утро)|'
-                        r'доброго\s+времени\s+суток|hi|hello|hey|здаров)\b[!,.\s]*$', ln, re.I):
-                continue
-            first = ln
-            break
-        first = re.sub(r'^(сделай|сделайте|создай|создайте|нужен|нужно|сгенерируй|пожалуйста)'
-                       r'[\s,]+(мне\s+)?(сайт|лендинг|страницу|визитку)?[\s,]*', '', first, flags=re.I)
-        first = re.sub(r'^(сайт|лендинг|страница)\s+(для|про)\s+', '', first, flags=re.I)
-        name = first.strip(' .«»"\'') or 'Сайт'
-    name = name.strip(' «»"\'')
-    rub = ''
+    card_name = m.group(1).strip(' «»"\'') if m else ''
     r = re.search(r'^Рубрики:\s*(.+)$', prompt, re.M)
-    if r:
-        rub = r.group(1).split(',')[0].strip().lower()
-    if not rub and len(name.split()) > 1:
-        words = name.split()
-        name, rub = words[0], ' '.join(words[1:]).lower()
+    rub = r.group(1).split(',')[0].strip().lower() if r else ''
+    city_m = re.search(r'^Город:\s*(.+)$', prompt, re.M)
+    city = city_m.group(1).strip() if city_m else ''
+
+    if card_name:
+        name = card_name
+        if not rub and city:
+            rub = city.lower()
+        elif not rub and len(name) > 26 and len(name.split()) > 1:
+            words = name.split()
+            name, rub = words[0], ' '.join(words[1:]).lower()
+        if name and name[0].islower():
+            name = name[0].upper() + name[1:]
+        return name[:40], rub[:36]
+
+    lines = [ln.strip() for ln in prompt.splitlines() if ln.strip()]
+    first = ''
+    for ln in lines:
+        if _GREETING_RE.match(ln):
+            continue
+        first = ln
+        break
+
+    cleaned = _strip_prompt_lead(first)
+    quoted_m = re.search(r'[«"]([^«"]{2,36})[»"]', first)
+    cat_title, cat_sub = _normalize_category_phrase(cleaned or first)
+
+    if not city:
+        cm = _CITY_IN_RE.search(first)
+        if cm and cm.group(1).lower() not in ('стиле', 'тему', 'формате', 'цветах', 'тонах'):
+            city = cm.group(1)
+
+    if quoted_m:
+        name = quoted_m.group(1).strip()
+        if not rub:
+            rub = (cat_title.lower() if cat_title else '') or (city.lower() if city else '')
+    elif cat_title:
+        html_brand = _clean_brand_from_html(html)
+        if html_brand and cat_title.lower() not in html_brand.lower() and len(html_brand) <= 26:
+            name = html_brand
+            rub = cat_title.lower()
+        else:
+            name = cat_title
+            if city:
+                rub = f'{city.lower()} · {cat_sub}' if cat_sub and len(city) + len(cat_sub) <= 30 else city.lower()
+            elif 'прайс' in first.lower():
+                rub = 'прайс-лист и услуги'
+            else:
+                rub = cat_sub
+    else:
+        html_brand = _clean_brand_from_html(html)
+        core = re.split(
+            r'[,;]|\s+(?:с|со|без|в\s+стиле|под\s+ключ|чтобы|где|как|и\s+блоком|и\s+формой|и\s+прайсом)\b',
+            cleaned,
+            maxsplit=1,
+            flags=re.I,
+        )[0].strip(' .«»"\':,-')
+        words = core.split()
+        if html_brand:
+            name = html_brand
+            rub = (city.lower() if city else ' '.join(words[:3]).lower())
+        elif len(words) > 3:
+            name = ' '.join(words[:2])
+            rub = city.lower() if city else ' '.join(words[2:5]).lower()
+        else:
+            name = core or 'Сайт'
+            rub = city.lower() if city else ''
+
+    if not rub and isinstance(brief, dict):
+        eyebrow = str((brief.get('hero') or {}).get('eyebrow') or '').strip()
+        if eyebrow and len(eyebrow) <= 32 and eyebrow.lower() != name.lower():
+            rub = eyebrow.lower()
+
     if name and name[0].islower():
         name = name[0].upper() + name[1:]
-    return name[:40], rub[:40]
+    return name[:40], rub[:36]
 
 
 def _quoted(name: str) -> str:
@@ -209,33 +374,67 @@ def draw_postcard(png_path: str, target: str, title: str, subtitle: str = '') ->
     d = ImageDraw.Draw(img)
     tx = 780
     max_w = W - tx - 90
+
+    def _wrap_fit(text: str, start_sz: int, min_sz: int, kind: str, max_lines: int = 2) -> tuple[list[str], object, int]:
+        sz = start_sz
+        f = load_font(sz, kind)
+        while d.textlength(text, font=f) > max_w and sz > min_sz:
+            sz -= 4
+            f = load_font(sz, kind)
+        if d.textlength(text, font=f) <= max_w:
+            return [text], f, sz
+        wrapped, cur = [], ''
+        for w in text.split():
+            cand = (cur + ' ' + w).strip()
+            if d.textlength(cand, font=f) > max_w and cur:
+                wrapped.append(cur)
+                cur = w
+            else:
+                cur = cand
+        if cur:
+            wrapped.append(cur)
+        if len(wrapped) > max_lines:
+            wrapped = wrapped[:max_lines]
+            last = wrapped[-1]
+            while len(last) > 3 and d.textlength(last + '…', font=f) > max_w:
+                last = last[:-1].rstrip()
+            wrapped[-1] = last + '…'
+        return wrapped, f, sz
+
     t = _quoted(title or 'Сайт')
-    size = 124
-    f1 = load_font(size, 'display')
-    while d.textlength(t, font=f1) > max_w and size > 46:
-        size -= 4
-        f1 = load_font(size, 'display')
+    t_lines, f1, size = _wrap_fit(t, 124, 48, 'display', max_lines=2)
+    t_step = int(size * 1.12)
+
+    sub_lines, sub_f, sub_sz = ([], None, 0)
+    if subtitle:
+        sub_lines, sub_f, sub_sz = _wrap_fit(subtitle, max(40, min(58, int(size * 0.50))), 28, 'display', max_lines=2)
+    sub_step = int(sub_sz * 1.18) if sub_lines else 0
+
     cy = 442                                           # центр блока = центр QR
     desc_f = load_font(36, 'regular')
-    sub_f = load_font(max(44, int(size * 0.52)), 'display')
     desc = 'Чтобы посмотреть демо-макет сайта - отсканируйте QR-Код'
     lines, line = [], ''
     for w in desc.split():
         cand = (line + ' ' + w).strip()
-        if d.textlength(cand, font=desc_f) > max_w - 120 and line:
+        if d.textlength(cand, font=desc_f) > max_w - 80 and line:
             lines.append(line)
             line = w
         else:
             line = cand
     if line:
         lines.append(line)
-    block_h = size + 18 + (sub_f.size + 26 if subtitle else 14) + len(lines) * 44
+
+    block_h = len(t_lines) * t_step + 16 + (len(sub_lines) * sub_step + 24 if sub_lines else 14) + len(lines) * 44
     y = cy - block_h // 2
-    d.text((tx, y), t, font=f1, fill=WHITE)
-    y += size + 18
-    if subtitle:
-        d.text((tx + 3, y), subtitle, font=sub_f, fill=ORANGE)
-        y += sub_f.size + 26
+    for ln in t_lines:
+        d.text((tx, y), ln, font=f1, fill=WHITE)
+        y += t_step
+    y += 16
+    if sub_lines and sub_f is not None:
+        for ln in sub_lines:
+            d.text((tx + 3, y), ln, font=sub_f, fill=ORANGE)
+            y += sub_step
+        y += 24
     else:
         y += 14
     for ln in lines[:3]:
@@ -250,7 +449,12 @@ def render_review_html(title: str, subtitle: str, site_html: str, date_str: str 
     """Самодостаточная HTML-страница видеообзора. Сайт встраивается через srcdoc,
     поэтому страница работает и локально, и на любом статическом хостинге."""
     site_html = _inject_scroll_hook(site_html or '')
-    payload = json.dumps(site_html, ensure_ascii=False).replace('</', '<\\/').replace('<!--', '<\\!--')
+    payload = (
+        json.dumps(site_html, ensure_ascii=False)
+        .replace('<', '\\u003c')
+        .replace('>', '\\u003e')
+        .replace('&', '\\u0026')
+    )
     page = _REVIEW_TEMPLATE
     for k, v in (('__TITLE__', _html_esc(_quoted(title or 'Сайт'))),
                  ('__SUB__', _html_esc(subtitle or '')),
@@ -260,22 +464,44 @@ def render_review_html(title: str, subtitle: str, site_html: str, date_str: str 
     return page
 
 
-_SCROLL_HOOK = ('<script>(function(){function H(){var d=document;return Math.max('
-                'd.documentElement.scrollHeight,d.body?d.body.scrollHeight:0)}'
-                'addEventListener("message",function(e){var m=e.data;'
-                'if(m&&m.fracs==="scroll"){var y=Math.max(0,H()-innerHeight)*m.p;'
-                'window.scrollTo({top:y,behavior:"instant"});}});})();</script>')
+_SAFE_STORAGE_SHIM = (
+    '<script>(function(){'
+    'function mk(){var m={};return{getItem:function(k){return Object.prototype.hasOwnProperty.call(m,k)?m[k]:null},'
+    'setItem:function(k,v){m[k]=String(v)},removeItem:function(k){delete m[k]},clear:function(){m={}}};}'
+    'try{var x=window.localStorage;if(x)x.getItem("_");}catch(e){try{Object.defineProperty(window,"localStorage",{value:mk()})}catch(_){}}'
+    'try{var y=window.sessionStorage;if(y)y.getItem("_");}catch(e){try{Object.defineProperty(window,"sessionStorage",{value:mk()})}catch(_){}}'
+    '})();</script>'
+)
+
+_SCROLL_HOOK = (
+    '<script>(function(){'
+    'function H(){var d=document;return Math.max(d.documentElement.scrollHeight,d.body?d.body.scrollHeight:0)}'
+    'addEventListener("message",function(e){var m=e.data;'
+    'if(m&&m.fracs==="scroll"){var y=Math.max(0,H()-innerHeight)*m.p;'
+    'window.scrollTo({top:y,behavior:"instant"});}});'
+    'function showAll(){document.querySelectorAll(".r,.reveal,[data-reveal],[data-aos],section,main,.hero").forEach(function(el){'
+    'if(getComputedStyle(el).opacity==="0"){el.classList.add("in","visible","is-visible","aos-animate");el.style.opacity="1";el.style.transform="none";}});}'
+    'setTimeout(showAll,350);setTimeout(showAll,950);'
+    '})();</script>'
+)
 
 
 def _inject_scroll_hook(html: str) -> str:
     """Сайт показывается в iframe БЕЗ allow-same-origin (сгенерированный нейросетью JS
-    не должен достать до программы), поэтому прокруткой управляем через postMessage:
-    в сайт добавляется крошечный слушатель, который только скроллит окно."""
-    m = list(re.finditer(r'</body\s*>', html, flags=re.I))
+    не должен достать до программы), поэтому прокруткой управляем через postMessage,
+    а в <head> кладём мягкий полифилл storage от SecurityError в sandbox."""
+    out = html or ''
+    hm = re.search(r'<head[^>]*>', out, flags=re.I)
+    if hm:
+        pos = hm.end()
+        out = out[:pos] + _SAFE_STORAGE_SHIM + out[pos:]
+    else:
+        out = _SAFE_STORAGE_SHIM + out
+    m = list(re.finditer(r'</body\s*>', out, flags=re.I))
     if m:
         i = m[-1].start()
-        return html[:i] + _SCROLL_HOOK + html[i:]
-    return html + _SCROLL_HOOK
+        return out[:i] + _SCROLL_HOOK + out[i:]
+    return out + _SCROLL_HOOK
 
 
 def _html_esc(s: str) -> str:
@@ -305,10 +531,10 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
 .scene{position:absolute;inset:0;opacity:0;pointer-events:none;will-change:opacity,transform}
 /* интро и финал */
 .hero{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:0 8%}
-.hero .name{font-weight:500;letter-spacing:-.02em;line-height:1.02;will-change:transform,opacity}
-.land .hero .name{font-size:170px}.port .hero .name{font-size:128px}
-.hero .rub{color:var(--o);font-weight:500;margin-top:.2em;will-change:transform,opacity}
-.land .hero .rub{font-size:84px}.port .hero .rub{font-size:70px}
+.hero .name{font-weight:500;letter-spacing:-.02em;line-height:1.04;max-width:100%;word-break:break-word;will-change:transform,opacity}
+.land .hero .name{font-size:150px}.port .hero .name{font-size:112px}
+.hero .rub{color:var(--o);font-weight:500;margin-top:.22em;max-width:100%;will-change:transform,opacity}
+.land .hero .rub{font-size:74px}.port .hero .rub{font-size:58px}
 .hero .cap{color:#c3ada3;margin-top:44px;font-weight:400;letter-spacing:.01em}
 .land .hero .cap{font-size:38px}.port .hero .cap{font-size:34px}
 .hero .line{height:5px;background:var(--o);border-radius:3px;margin-bottom:46px;width:0}
@@ -321,9 +547,9 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
 .bar{height:56px;display:flex;align-items:center;gap:10px;padding:0 22px;background:#211a16}
 .bar i{width:14px;height:14px;border-radius:50%;background:#4a3d36}.bar i:nth-child(1){background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
 .bar b{margin-left:18px;flex:1;max-width:560px;height:30px;border-radius:15px;background:#0f0b09;color:#9b8579;font:500 15px/30px inherit;font-family:inherit;text-align:center}
-.view{position:relative;overflow:hidden;background:#fff}
+.view{position:relative;overflow:hidden;background:#111}
 .land .view{height:754px}.port .view{height:584px}
-.view iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#fff}
+.view iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#111}
 .phone{background:#0d0a09;border-radius:78px;padding:20px;box-shadow:0 60px 140px rgba(0,0,0,.7),0 0 0 3px #3a2f29,inset 0 0 0 2px #1d1612}
 .land .phone{width:390px;height:810px;margin:-500px 0 0 -195px}
 .port .phone{width:520px;height:1060px;margin:-560px 0 0 -260px}
@@ -332,12 +558,18 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
 .tag{position:absolute;left:0;right:0;text-align:center;color:#d8c3b8;font-weight:500;letter-spacing:.02em}
 .land .tag{bottom:64px;font-size:34px}.port .tag{bottom:90px;font-size:38px}
 .tag span{color:var(--o)}
-/* управление */
-#ui{position:fixed;left:0;right:0;bottom:0;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:14px;align-items:center;opacity:1;transition:opacity .4s;background:linear-gradient(transparent,rgba(0,0,0,.55))}
-#ui.hide{opacity:0}
-#pb{width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:18px;cursor:pointer}
-#track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.2);overflow:hidden}#fill{height:100%;width:0;background:var(--o)}
-.rec #ui{display:none}
+/* управление и интерактивный просмотр */
+#ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:12px;align-items:center;opacity:1;transition:opacity .4s;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+#ui.hide{opacity:0;pointer-events:none}
+#pb{width:44px;height:44px;flex:none;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:16px;cursor:pointer}
+#track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.22);overflow:hidden}#fill{height:100%;width:0;background:var(--o)}
+#open-site{flex:none;height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:var(--o);color:#fff;font:600 13px/1 inherit;cursor:pointer;white-space:nowrap}
+#live{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;background:#111}
+#live.open{display:flex}
+#live-bar{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#171311;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;color:#d8c3b8}
+#live-close{height:32px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);color:#fff;font:500 13px/1 inherit;cursor:pointer}
+#f-live{flex:1;width:100%;border:0;background:#111}
+.rec #ui,.rec #live{display:none!important}
 #s1{opacity:1}/* фолбэк: без JS интро видно статикой */
 </style></head>
 <body>
@@ -364,14 +596,18 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
     <div class="cap" id="o-cap">__TITLE__ __SUB__</div>
   </section>
 </div></div>
-<div id="ui"><button id="pb" aria-label="Пауза">❚❚</button><div id="track"><div id="fill"></div></div></div>
+<div id="ui"><button id="pb" aria-label="Пауза">❚❚</button><div id="track"><div id="fill"></div></div><button id="open-site" type="button">Открыть сайт</button></div>
+<div id="live" aria-hidden="true"><div id="live-bar"><span>Интерактивный просмотр макета</span><button id="live-close" type="button">← К видеообзору</button></div><iframe id="f-live" title="Интерактивный сайт"></iframe></div>
 <script id="site-data" type="application/json">__SITE_JSON__</script>
 <script>
 (function(){
 var q=new URLSearchParams(location.search), REC=q.has('record');
 var $=function(i){return document.getElementById(i)};
-var SITE="<div style='padding:60px;font:500 40px/1.3 Arial;color:#fff'>Демо-макет сайта</div>";
-try{SITE=JSON.parse($('site-data').textContent)}catch(e){}
+var SITE="<div style='min-height:100vh;display:flex;align-items:center;justify-content:center;padding:40px;background:#140d09;font:500 32px/1.3 sans-serif;color:#fff'>Демо-макет сайта</div>";
+try{
+  var parsed=JSON.parse($('site-data').textContent);
+  if(typeof parsed==='string'&&parsed.trim())SITE=parsed;
+}catch(e){}
 var wrap=$('wrap'),stage=$('stage');
 if(REC)document.documentElement.classList.add('rec');
 var port=false;
@@ -389,16 +625,29 @@ var D=[3.4,12,9.5,3.8],X=.6, TOTAL=D.reduce(function(a,b){return a+b},0);
 var starts=[0,D[0],D[0]+D[1],D[0]+D[1]+D[2]];
 function cl(x,a,b){return Math.max(a===undefined?0:a,Math.min(b===undefined?1:b,x))}
 function eo(t){return 1-Math.pow(1-t,3)}           // easeOutCubic
-function eio(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
 function sine(t){return .5-.5*Math.cos(Math.PI*t)}
-var fd=$('f-desk'),fp=$('f-phone'),loaded=0;
-function setup(f,w){f.setAttribute('sandbox','allow-scripts');f.srcdoc=SITE;f.addEventListener('load',function(){loaded++;layout();});}
+var fd=$('f-desk'),fp=$('f-phone'),fl=$('f-live'),loaded=0,liveInit=false;
+function setup(f){
+  f.setAttribute('sandbox','allow-scripts allow-forms allow-popups');
+  f.addEventListener('load',function(){loaded++;layout();});
+  f.srcdoc=SITE;
+}
 function layout(){
   // виртуальные вьюпорты: десктоп 1366 px шириной, телефон 390 px
   try{
     var vd=$('v-desk'),vp=$('v-phone');
-    var kd=vd.clientWidth/1366; fd.style.width='1366px'; fd.style.height=(vd.clientHeight/kd)+'px'; fd.style.transform='scale('+kd+')';
-    var kp=vp.clientWidth/390;  fp.style.width='390px';  fp.style.height=(vp.clientHeight/kp)+'px'; fp.style.transform='scale('+kp+')';
+    if(vd&&vd.clientWidth>0){
+      var kd=vd.clientWidth/1366;
+      fd.style.width='1366px';
+      fd.style.height=Math.max(600,vd.clientHeight/kd)+'px';
+      fd.style.transform='scale('+kd+')';
+    }
+    if(vp&&vp.clientWidth>0){
+      var kp=vp.clientWidth/390;
+      fp.style.width='390px';
+      fp.style.height=Math.max(500,vp.clientHeight/kp)+'px';
+      fp.style.transform='scale('+kp+')';
+    }
   }catch(e){}
 }
 function scrollTo(f,p){            // p 0..1 → плавная прокрутка с паузой в начале и конце
@@ -410,27 +659,32 @@ function render(t){
   var lt=t-starts[i], p=lt/D[i];
   for(var k=0;k<4;k++){
     var s=scenes[k], a=0;
-    if(k===i){ a=cl(lt/X)*(k===3?1:cl((D[k]-lt)/X)); }
-    else if(k===i-1){ a=0; }
+    if(k===i){
+      var fin=(k===0&&lt<X)?1:cl(lt/X);
+      var fout=(k===3?1:cl((D[k]-lt)/X));
+      a=fin*fout;
+    }
     s.style.opacity=a; s.style.visibility=a>0?'visible':'hidden';
   }
   var gl=$('glow'); gl.style.transform='translate3d('+(Math.sin(t*.35)*40)+'px,'+(Math.cos(t*.28)*24)+'px,0) scale('+(1.04+Math.sin(t*.2)*.02)+')';
   if(i===0){        // интро: линия, имя, рубрика, подпись по очереди
     $('i-line').style.width=(eo(cl(lt/.9))*(port?260:360))+'px';
-    var n=$('i-name');n.style.opacity=eo(cl((lt-.25)/.8));n.style.transform='translateY('+(50*(1-eo(cl((lt-.25)/.8))))+'px)';
-    var r=$('i-rub');r.style.opacity=eo(cl((lt-.7)/.8));r.style.transform='translateY('+(40*(1-eo(cl((lt-.7)/.8))))+'px)';
-    var c=$('i-cap');c.style.opacity=eo(cl((lt-1.3)/.8));
+    var n=$('i-name');n.style.opacity=eo(cl((lt-.1)/.65));n.style.transform='translateY('+(36*(1-eo(cl((lt-.1)/.65))))+'px)';
+    var r=$('i-rub');r.style.opacity=eo(cl((lt-.45)/.7));r.style.transform='translateY('+(28*(1-eo(cl((lt-.45)/.7))))+'px)';
+    var c=$('i-cap');c.style.opacity=eo(cl((lt-.95)/.7));
   }
-  if(i===1){        // окно браузера: наезд с лёгким 3D-наклоном
-    var e=eo(cl(lt/1.1)), b=$('d-browser'), z=.88+.12*e+p*.03;
-    b.style.transform='perspective(2200px) rotateX('+(9*(1-e))+'deg) translateY('+(70*(1-e))+'px) scale('+z+')';
+  if(i===1){        // окно браузера: плавный 2D-наезд без 3D-разрывов на мобильном WebKit
+    var e=eo(cl(lt/1.1)), b=$('d-browser'), z=.92+.08*e+p*.02;
+    if(!fd.style.width)layout();
+    b.style.transform='translateY('+(48*(1-e))+'px) scale('+z+')';
     b.style.opacity=e;
     var tg=$('t-desk');tg.style.opacity=eo(cl((lt-.8)/.8));
     scrollTo(fd,cl((lt-.9)/(D[1]-1.6)));
   }
   if(i===2){        // телефон: въезжает снизу и скроллит
     var e2=eo(cl(lt/1.0)), ph=$('d-phone');
-    ph.style.transform='translateY('+(140*(1-e2))+'px) rotate('+(-3*(1-e2))+'deg) scale('+(.94+.06*e2+p*.02)+')';
+    if(!fp.style.width)layout();
+    ph.style.transform='translateY('+(90*(1-e2))+'px) scale('+(.95+.05*e2+p*.015)+')';
     ph.style.opacity=e2;
     $('t-phone').style.opacity=eo(cl((lt-.7)/.8));
     scrollTo(fp,cl((lt-.8)/(D[2]-1.5)));
@@ -442,23 +696,38 @@ function render(t){
   }
   $('fill').style.width=(t/TOTAL*100)+'%';
 }
-var t=Math.max(0,parseFloat(q.get('t'))||0),playing=true,last=0,done=false,hideT=0;
+var t=Math.max(0,parseFloat(q.get('t'))||0),playing=true,last=0,done=false;
 function loop(now){
   if(!last)last=now;
   var dt=Math.min(.1,(now-last)/1000); last=now;
-  // не стартуем прокрутку, пока сайт не загрузился в оба окна
-  if(playing&&(loaded>=2||t<D[0]||now>8000))t+=dt;
+  // не стартуем прокрутку, пока сайт не загрузился в оба окна (таймаут 2.5с на случай медленных webview)
+  if(playing&&(loaded>=2||t<D[0]||now>2500))t+=dt;
   if(t>=TOTAL){ t=TOTAL; if(!done){done=true;window.__done=true;} if(!REC){ playing=false;$('pb').textContent='↻'; } }
   render(t); requestAnimationFrame(loop);
 }
 $('pb').addEventListener('click',function(ev){ev.stopPropagation();
   if(t>=TOTAL){t=0;done=false;playing=true;$('pb').textContent='❚❚';return;}
   playing=!playing;$('pb').textContent=playing?'❚❚':'▶';});
+$('open-site').addEventListener('click',function(ev){
+  ev.stopPropagation();
+  if(!liveInit){
+    fl.setAttribute('sandbox','allow-scripts allow-forms allow-popups');
+    fl.srcdoc=SITE;
+    liveInit=true;
+  }
+  playing=false;$('pb').textContent='▶';
+  $('live').classList.add('open');
+  $('live').setAttribute('aria-hidden','false');
+});
+$('live-close').addEventListener('click',function(){
+  $('live').classList.remove('open');
+  $('live').setAttribute('aria-hidden','true');
+});
 stage.addEventListener('click',function(){ $('ui').classList.toggle('hide'); });
 addEventListener('keydown',function(e){if(e.code==='Space'){e.preventDefault();$('pb').click();}});
 addEventListener('resize',fit);
-try{setup(fd);setup(fp);fit();}catch(e){}requestAnimationFrame(loop);
-setTimeout(function(){$('ui').classList.add('hide')},6000);
+try{setup(fd);setup(fp);fit();}catch(e){}
+setTimeout(function(){$('ui').classList.add('hide')},7000);
 requestAnimationFrame(loop);
 window.__total=TOTAL;
 })();

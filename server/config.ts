@@ -24,14 +24,19 @@ export const config = {
   resendApiKey: cleanToken(env.RESEND_API_KEY),
   resendFrom: env.RESEND_FROM || 'Fracs <onboarding@resend.dev>',
 
-  // Ключ OpenRouter для прокси Fracs AI (/api/app/ai): хранится ТОЛЬКО на сервере,
-  // в сборку программы не попадает. Пользовательский запрос идёт с ключом лицензии.
+  // Ключи провайдеров прокси Fracs AI (/api/app/ai): хранятся ТОЛЬКО на сервере,
+  // в сборку программы не попадают. Пользовательский запрос идёт с ключом лицензии.
+  ollamaApiKey: cleanToken(env.OLLAMA_API_KEY),
+  ollamaUrl: (cleanToken(env.OLLAMA_URL) || 'https://ollama.com/v1').replace(/\/$/, ''),
+  fracsAiBackend: (['ollama', 'openrouter'].includes(cleanToken(env.FRACS_AI_BACKEND).toLowerCase())
+    ? cleanToken(env.FRACS_AI_BACKEND).toLowerCase()
+    : 'auto') as 'auto' | 'ollama' | 'openrouter',
+
   openrouterApiKey: cleanToken(env.OPENROUTER_API_KEY),
   openrouterUrl: 'https://openrouter.ai/api/v1',
 
   // Cohere (Command A) работает ВМЕСТЕ с OpenRouter внутри Fracs AI: пишет тексты/арт-дирекшн и
-  // вычитывает готовый сайт, а вёрстку собирает модель OpenRouter. Ключ — только на сервере.
-  // Нет ключа → тот же Command A уходит через OpenRouter (cohere/command-a), ничего не ломается.
+  // вычитывает готовый сайт, а вёрстку собирает основная модель. Ключ — только на сервере.
   cohereApiKey: cleanToken(env.COHERE_API_KEY),
   cohereUrl: 'https://api.cohere.ai/compatibility/v1',
 

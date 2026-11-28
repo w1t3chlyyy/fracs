@@ -869,6 +869,7 @@
                     <a class="btn-clear" id="aiOpenPreview" style="display:none" href="#" target="_blank" rel="noopener">Открыть превью</a>
                     <button type="button" class="btn-export" id="aiApprove" style="display:none">Одобрить и собрать</button>
                     <button type="button" class="btn-export" id="aiEditLayout" style="display:none">Изменить макет</button>
+                    <button type="button" class="btn-clear" id="aiCancelEdit" style="display:none">Отменить правку</button>
                     <button type="button" class="btn-export" id="aiExport" style="display:none">Скачать ZIP</button>
                   </div>
                 </div>
@@ -2309,7 +2310,35 @@
 
   /* ── статус и опрос задачи ── */
   var currentJob=null, poller=null, seenLogs=0, previewShown=false, previewMsgShown=false, doneShown=false, approvingJob='';
+  var editMode=false;
   var chatHistory=[];
+
+  function setEditMode(on){
+    editMode=Boolean(on&&currentJob);
+    var ce=$('aiCancelEdit'); if(ce)ce.style.display=editMode?'':'none';
+    var ta=$('aiPrompt');
+    if(ta){
+      var curLang=document.documentElement.lang==='en'?'en':'ru';
+      ta.placeholder=editMode
+        ?'Опишите, что изменить в текущем макете…'
+        :(curLang==='en'?'Describe the business and site you want…':'Опишите бизнес и какой сайт нужен…');
+    }
+    syncComposerExtras();
+  }
+
+  function resetActiveBuildUi(){
+    if(poller){clearInterval(poller);poller=null;}
+    currentJob=null;approvingJob='';
+    seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
+    setEditMode(false);
+    setAgentFiles([]);
+    var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
+    var ap=$('aiApprove');if(ap){ap.style.display='none';ap.disabled=false;}
+    var op=$('aiOpenPreview');if(op)op.style.display='none';
+    var eb=$('aiEditLayout');if(eb)eb.style.display='none';
+    var ex=$('aiExport');if(ex)ex.style.display='none';
+    syncComposerExtras();
+  }
 
   function statusMsg(s){
     return {queued:'В очереди…',thinking:'Думаю над структурой…',running:'Генерируем сайт…',
@@ -2348,10 +2377,11 @@
 
   function enterEditMode(){
     if(!currentJob){addMsg('sys','Сначала соберите макет.');return;}
+    setEditMode(true);
     var inp=$('aiPrompt'); if(inp)inp.focus();
     var sv=ls('fracsAiStyle');
     var stName=sv?(STYLE_NAMES[sv]||('«'+sv+'»')):'авто по рубрике';
-    addMsg('bot','Режим правки: напишите, что изменить в макете (и при желании смените стиль в настройках — сейчас: '+stName+') и отправьте. Сайт обновится поверх текущей версии, а прежняя сохранится.',{who:(currentProvider||'Fracs AI')});
+    addMsg('bot','Режим правки: напишите, что изменить в текущем макете (и при желании смените стиль в настройках — сейчас: '+stName+') и отправьте. Чтобы собрать новый сайт с нуля — нажмите «Отменить правку».',{who:(currentProvider||'Fracs AI')});
   }
 
   function poll(){
@@ -2432,7 +2462,7 @@
   }
 
   var pendingCardMeta=null;
-  function startAgent(prompt,silent,cardMeta){
+  function startAgent(prompt,silent,cardMeta,isEditFlag){
     if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
     setAiStage('thinking','Думаю над задачей…');
     resolveReadyProvider(false).then(function(info){
@@ -2448,11 +2478,14 @@
       var cm=cardMeta||pendingCardMeta;
       if(cm&&!cardMeta&&cm.name&&String(prompt||'').indexOf(cm.name)===-1){cm=null;}
       pendingCardMeta=null;
+      var wantEdit=Boolean((isEditFlag===true||(isEditFlag==null&&editMode))&&currentJob&&!cm);
+      var prevJobId=wantEdit?(currentJob||''):'';
+      setEditMode(false);
       var model=currentModel();
       var extra=ls('fracsAiExtra');
       var style=ls('fracsAiStyle');
       var body={prompt:prompt||'',api_key:key,model:model,provider:currentProvider,extra:extra,
-        session_id:sessionId,prev_job:currentJob||'',style:style,
+        session_id:sessionId,prev_job:prevJobId,is_edit:wantEdit,style:style,
         photos:(cm&&Array.isArray(cm.photos))?cm.photos:[],
         card_url:(cm&&cm.card_url)||'',
         ymaps_url:(cm&&cm.ymaps_url)||'',
@@ -2470,6 +2503,7 @@
             return;}
           currentJob=d.job_id;approvingJob='';
           seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
+          if(!wantEdit){setAgentFiles([]);}
           setAiStage('thinking','Запускаю сборку…');
           var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
           var ap=$('aiApprove');if(ap){ap.style.display='none';ap.disabled=false;}
@@ -2482,8 +2516,8 @@
     });
   }
 
-  /* Отправка из чата: модель отвечает, а при маркере [BUILD] запускает сборку с контекстом диалога. */
-  function aiChatSend(v){
+  /* Отправка из чата: модель отвечает, а при маркере [BUILD] запускает сборку (новую или правку). */
+  function aiChatSend(v,forceNew){
     setAiStage('thinking','Думаю над ответом…');
     resolveReadyProvider(false).then(function(info){
       if(info.pro_only&&!info.allowed){
@@ -2494,21 +2528,29 @@
       var key=activeKey();
       if(info.pro_only&&info.configured===false){setAiStage(null);addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
       var model=currentModel();
+      var isEditingNow=Boolean(editMode&&currentJob&&!forceNew);
+      var hasActiveJob=Boolean(currentJob&&!forceNew);
+      var hist=isEditingNow?[{role:'user',content:v}]:(currentJob&&!forceNew?[]:chatHistory.slice(-8));
       fetch('/api/ai/chat',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({message:v,api_key:key,model:model,provider:currentProvider,
-          base_url:ls('fracsAiBaseUrl'),history:chatHistory.slice(-8)})})
+          base_url:ls('fracsAiBaseUrl'),history:hist,editing:isEditingNow,has_job:hasActiveJob})})
         .then(function(r){return r.json()})
         .then(function(d){
           refreshAiUsage();
           if(d&&d.ok){
             var reply=d.reply||'…';
             addMsg('bot',reply,{who:(currentProvider||'Fracs AI'),trace:d.build?'Думаю → Собираю':'Думаю'});
-            var fullBrief=buildPromptFromThread(v);
-            chatHistory.push({role:'user',content:v});
-            chatHistory.push({role:'assistant',content:reply});
             if(d.build){
-              startAgent(fullBrief,true);
+              var wantEdit=Boolean(!forceNew&&currentJob&&(isEditingNow||d.is_edit===true));
+              var fullBrief=wantEdit?v:(currentJob?v:buildPromptFromThread(v));
+              if(!wantEdit){
+                chatHistory=[{role:'user',content:v},{role:'assistant',content:reply}];
+              }else{
+                chatHistory.push({role:'user',content:v},{role:'assistant',content:reply});
+              }
+              startAgent(fullBrief,true,null,wantEdit);
             }else{
+              chatHistory.push({role:'user',content:v},{role:'assistant',content:reply});
               setAiStage(null);
             }
             return;
@@ -2523,7 +2565,9 @@
           }
           /* модель недоступна → фолбэк: по ключевым словам решаем, строить или ответить */
           if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
-            startAgent(buildPromptFromThread(v),true);
+            var fbEdit=Boolean(isEditingNow&&currentJob&&!/сайт\s+(для|под)\s+|лендинг\s+(для|под)\s+|новый сайт/i.test(v));
+            var fbPrompt=fbEdit?v:(currentJob||forceNew?v:buildPromptFromThread(v));
+            startAgent(fbPrompt,true,null,fbEdit);
             return;
           }
           addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни в Москве» — и я соберу демо.',{who:(currentProvider||'Fracs AI')});
@@ -2531,7 +2575,9 @@
         .catch(function(e){
           setAiStage(null);
           if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
-            startAgent(buildPromptFromThread(v),true);
+            var fbEdit=Boolean(isEditingNow&&currentJob&&!/сайт\s+(для|под)\s+|лендинг\s+(для|под)\s+|новый сайт/i.test(v));
+            var fbPrompt=fbEdit?v:(currentJob||forceNew?v:buildPromptFromThread(v));
+            startAgent(fbPrompt,true,null,fbEdit);
             return;
           }
           addMsg('sys','Нет связи с бэкендом: '+e);
@@ -2551,7 +2597,7 @@
     inp.value='';
     autoResizePrompt();
     addMsg('user',p);
-    aiChatSend(p);
+    aiChatSend(p,false);
   }
   $('aiSend').addEventListener('click',sendFromInput);
   $('aiPrompt').addEventListener('input',autoResizePrompt);
@@ -2574,12 +2620,21 @@
       var b=e.target.closest('.ai-starter'); if(!b)return;
       var p=b.getAttribute('data-prompt')||b.textContent||'';
       if(!p)return;
+      setEditMode(false);
+      chatHistory=[];
       addMsg('user',p);
-      aiChatSend(p);
+      aiChatSend(p,true);
     });
   }
   $('aiApprove').addEventListener('click',function(){approveCurrentJob(this);});
   $('aiEditLayout').addEventListener('click',enterEditMode);
+  var ceBtn=$('aiCancelEdit');
+  if(ceBtn){
+    ceBtn.addEventListener('click',function(){
+      setEditMode(false);
+      addMsg('sys','Режим правки отменён — следующее сообщение или карточка соберёт новый сайт с нуля.');
+    });
+  }
   $('aiExport').addEventListener('click',function(){
     if(!currentJob){addMsg('sys','Сначала запустите генерацию.');return;}
     addMsg('bot','Скачиваю ZIP со всем сайтом…',{who:(currentProvider||'Fracs AI')});
@@ -2601,6 +2656,8 @@
   window.aiRunFromCard=function(rec){
     try{
       if(window.setTab)window.setTab('ai');
+      resetActiveBuildUi();
+      chatHistory=[];
       var c=rec.contacts||{}, ow=rec.owner||{};
       var cardPhotos=Array.isArray(rec.photos)?rec.photos.filter(Boolean):[];
       var cardMeta={name:rec.name||'',photos:cardPhotos,card_url:rec.url||'',ymaps_url:rec.ymaps||''};
@@ -2629,7 +2686,7 @@
           addMsg('sys','Карточка «'+(rec.name||'')+'» прочитана. Откройте «Настроить →», вставьте API-ключ и вернитесь — отправьте сообщение, и макет соберётся по данным карточки.');
           return;
         }
-        startAgent(prompt,false,cardMeta);
+        startAgent(prompt,false,cardMeta,false);
       });
     }catch(e){addMsg('sys','Не удалось передать карточку агенту: '+e);}
   };

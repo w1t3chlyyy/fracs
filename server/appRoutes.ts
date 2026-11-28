@@ -233,9 +233,19 @@ const AI_LIMITS = {
 // Маркер дизайн-системы: если программа прислала system с этим маркером — свой не дублируем.
 const DESIGN_MARKER = 'DESIGN_SYSTEM_VERSION:';
 // Публичные псевдонимы Fracs AI → внутренние модели (чтобы клиент не знал и не показывал базовые модели).
-const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || 'anthropic/claude-sonnet-5.5').trim();
-const FRACS_FAST_MODEL = (process.env.FRACS_AI_FAST_MODEL || 'deepseek/deepseek-v4.1-flash-1017').trim();
+const isOllamaActive = (): boolean => (
+  config.fracsAiBackend === 'ollama'
+    ? Boolean(config.ollamaApiKey)
+    : config.fracsAiBackend === 'openrouter'
+      ? false
+      : Boolean(config.ollamaApiKey)
+);
+const hasAnyAiKey = (): boolean => Boolean(config.ollamaApiKey || config.openrouterApiKey || config.cohereApiKey);
+
 const COHERE_MODEL = 'command-a-03-2025';
+const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || (isOllamaActive() ? 'kimi-k2.7-code' : 'anthropic/claude-sonnet-5.5')).trim();
+const FRACS_FAST_MODEL = (process.env.FRACS_AI_FAST_MODEL || (isOllamaActive() ? 'deepseek-v4.1-flash:1017' : 'deepseek/deepseek-v4.1-flash-1017')).trim();
+const FRACS_EDIT_MODEL = (!isOllamaActive() || config.cohereApiKey) ? COHERE_MODEL : FRACS_FAST_MODEL;
 const FRACS_MODEL_ALIASES: Record<string, string> = {
   'fracs-ai': FRACS_BUILD_MODEL,
   'fracs-ai-build': FRACS_BUILD_MODEL,
@@ -243,18 +253,24 @@ const FRACS_MODEL_ALIASES: Record<string, string> = {
   auto: FRACS_BUILD_MODEL,
   'fracs-ai-fast': FRACS_FAST_MODEL,
   'fracs-ai-chat': FRACS_FAST_MODEL,
-  'fracs-ai-edit': COHERE_MODEL,
-  'fracs-ai-copy': COHERE_MODEL,
+  'fracs-ai-edit': FRACS_EDIT_MODEL,
+  'fracs-ai-copy': FRACS_EDIT_MODEL,
 };
 // Белый список моделей Fracs AI (оставлен и для обратной совместимости со старыми версиями программы).
 // Расширять через env AI_ALLOWED_MODELS.
 const AI_MODELS = new Set((process.env.AI_ALLOWED_MODELS ||
-  'anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,command-a-03-2025')
+  'kimi-k2.7-code,deepseek-v4-pro:0813,deepseek-v4.1-flash:1017,deepseek-v4.1-flash,glm-5.3,glm-5.3-flash,gemma4:31b,kimi-k3.1-pro,mistral-large-4,minimax-m3.1-flash,anthropic/claude-sonnet-5.5,openai/gpt-5.6-terra-pro,deepseek/deepseek-v4-pro-0813,deepseek/deepseek-v4.1-flash-1017,openai/gpt-4o-mini,anthropic/claude-3.5-haiku,google/gemini-2.0-flash-001,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat,qwen/qwen-2.5-72b-instruct,command-a-03-2025')
   .split(',').map((s) => s.trim()).filter(Boolean));
 // $ за 1M токенов (вход, выход) — ПРИБЛИЗИТЕЛЬНО, нужно только для оценки «до запроса»
-// и если OpenRouter не вернул фактическую стоимость. Сверяйте с openrouter.ai/models.
+// и если провайдер не вернул фактическую стоимость.
 const AI_PRICE: Record<string, [number, number]> = {
-  // премиум-кодинг (генерация сайтов)
+  // Ollama Cloud (для внутреннего учёта квот)
+  'kimi-k2.7-code': [0.3, 1.2], 'deepseek-v4-pro:0813': [0.15, 0.8],
+  'deepseek-v4.1-flash:1017': [0.1, 0.4], 'deepseek-v4.1-flash': [0.1, 0.4],
+  'glm-5.3': [0.2, 0.8], 'glm-5.3-flash': [0.1, 0.4],
+  'gemma4:31b': [0.1, 0.3], 'kimi-k3.1-pro': [0.3, 1.2],
+  'mistral-large-4': [0.3, 1.2], 'minimax-m3.1-flash': [0.1, 0.4],
+  // премиум-кодинг (генерация сайтов, OpenRouter)
   'anthropic/claude-sonnet-5.5': [2, 10], 'openai/gpt-5.6-terra-pro': [2, 12],
   'deepseek/deepseek-v4-pro-0813': [0.1, 5], 'deepseek/deepseek-v4.1-flash-1017': [0.15, 0.6],
   // бюджетные (чат/фразы)
@@ -265,10 +281,9 @@ const AI_PRICE: Record<string, [number, number]> = {
   'command-a-03-2025': [2.5, 10],
 };
 
-// ── Cohere работает ВМЕСТЕ с OpenRouter ──────────────────────────────────────
+// ── Cohere работает ВМЕСТЕ с OpenRouter / Ollama ─────────────────────────────
 // Command A пишет тексты/арт-дирекшн и вычитывает готовый сайт (задачи copy / critique),
-// вёрстку собирает модель OpenRouter. Прямой ключ Cohere — приоритет; нет ключа или Cohere
-// лёг → тот же Command A идёт через OpenRouter (cohere/command-a).
+// вёрстку собирает основная модель. Прямой ключ Cohere — приоритет.
 const COHERE_VIA_OR = 'cohere/command-a';
 const COHERE_MAX_OUT = 8000;
 const MODELS_NO_TEMP = new Set([
@@ -279,7 +294,7 @@ const MODELS_LOW_REASONING = new Set([
   'anthropic/claude-sonnet-5.5',
   'openai/gpt-5.6-terra-pro',
 ]);
-type Upstream = { url: string; key: string; body: any; via: 'cohere' | 'openrouter'; model: string };
+type Upstream = { url: string; key: string; body: any; via: 'cohere' | 'openrouter' | 'ollama'; model: string };
 
 function prepareUpstreamBody(baseBody: any, targetModel: string, stripExtra = false): any {
   const out: any = { ...baseBody, model: targetModel };
@@ -295,6 +310,21 @@ function prepareUpstreamBody(baseBody: any, targetModel: string, stripExtra = fa
 }
 
 function buildFallbackModels(primaryModel: string, imageCount: number): string[] {
+  if (isOllamaActive()) {
+    if (primaryModel === COHERE_MODEL) {
+      return [COHERE_MODEL, FRACS_FAST_MODEL, 'glm-5.3-flash'];
+    }
+    if (primaryModel === FRACS_BUILD_MODEL) {
+      const fallbacks = imageCount > 0
+        ? ['deepseek-v4.1-flash:1017', 'glm-5.3-flash', 'mistral-large-4']
+        : ['deepseek-v4-pro:0813', 'deepseek-v4.1-flash:1017', 'glm-5.3'];
+      return Array.from(new Set([primaryModel, ...fallbacks]));
+    }
+    if (primaryModel === FRACS_FAST_MODEL) {
+      return Array.from(new Set([primaryModel, 'glm-5.3-flash', 'gemma4:31b', 'minimax-m3.1-flash']));
+    }
+    return [primaryModel];
+  }
   if (primaryModel === COHERE_MODEL) {
     return [COHERE_MODEL, 'deepseek/deepseek-v4.1-flash-1017', 'openai/gpt-4o-mini'];
   }
@@ -330,12 +360,34 @@ function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: str
       direct.max_tokens = Math.min(Number(direct.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
       return { url: config.cohereUrl + '/chat/completions', key: config.cohereApiKey, body: direct, via: 'cohere', model: COHERE_MODEL };
     }
-    if (!config.openrouterApiKey) return null;
-    const orBody = prepareUpstreamBody(body, COHERE_VIA_OR, stripExtra);
-    orBody.max_tokens = Math.min(Number(orBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
-    return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: orBody, via: 'openrouter', model: COHERE_VIA_OR };
+    if (config.openrouterApiKey) {
+      const orBody = prepareUpstreamBody(body, COHERE_VIA_OR, stripExtra);
+      orBody.max_tokens = Math.min(Number(orBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
+      return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: orBody, via: 'openrouter', model: COHERE_VIA_OR };
+    }
+    if (isOllamaActive() && config.ollamaApiKey) {
+      const olBody = prepareUpstreamBody(body, FRACS_FAST_MODEL, stripExtra);
+      delete olBody.usage;
+      olBody.max_tokens = Math.min(Number(olBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
+      return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: FRACS_FAST_MODEL };
+    }
+    return null;
   }
-  if (!config.openrouterApiKey) return null;
+  const preferOllama = isOllamaActive() || (!config.openrouterApiKey && Boolean(config.ollamaApiKey));
+  if (preferOllama && config.ollamaApiKey && !target.includes('/')) {
+    const olBody = prepareUpstreamBody(body, target, stripExtra);
+    delete olBody.usage; // usage:{include} — расширение OpenRouter
+    return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: target };
+  }
+  if (!config.openrouterApiKey) {
+    if (config.ollamaApiKey) {
+      const fallbackOllamaModel = target.includes('/') ? FRACS_BUILD_MODEL : target;
+      const olBody = prepareUpstreamBody(body, fallbackOllamaModel, stripExtra);
+      delete olBody.usage;
+      return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: fallbackOllamaModel };
+    }
+    return null;
+  }
   const orBody = prepareUpstreamBody(body, target, stripExtra);
   return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: orBody, via: 'openrouter', model: target };
 }
@@ -356,7 +408,7 @@ function detectSiteBuild(messages: any[], maxTokens: number, imageCount: number)
     const txt = typeof m?.content === 'string'
       ? m.content
       : Array.isArray(m?.content) ? m.content.map((p: any) => p?.text || '').join('\n') : '';
-    if (/DESIGN_SYSTEM_VERSION:|СТИЛЕВОЙ РЕЦЕПТ|ТИПОГРАФИКА|текущая-версия-сайта\.html|<!DOCTYPE|<html/i.test(txt)) {
+    if (/DESIGN_SYSTEM_VERSION:|СТИЛЕВОЙ РЕЦЕПТ|СТИЛЕВОЕ НАПРАВЛЕНИЕ|ТИПОГРАФИКА|текущая-версия-сайта\.html|<!DOCTYPE|<html/i.test(txt)) {
       return true;
     }
   }
@@ -404,7 +456,7 @@ function assessAiComplexity(maxTokens: number, inChars: number, imageCount: numb
 }
 
 /** Чистим тело запроса: только модель из белого списка (или псевдоним Fracs AI), без stream/tools/plugins. */
-function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: number; task: string } | { err: [number, any] } {
+function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: number; task: string; rawModel: string } | { err: [number, any] } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { err: aiErr(400, 'bad_request', 'Ожидается тело chat/completions.') };
   const rawModel = String(raw.model || '').trim() || 'fracs-ai';
   const model = FRACS_MODEL_ALIASES[rawModel] || rawModel;
@@ -446,6 +498,7 @@ function sanitizeAiBody(raw: any): { body: any; inChars: number; imageCount: num
     imageCount: images,
     body: outBody,
     task: FRACS_TASKS.has(String(raw.fracs_task)) ? String(raw.fracs_task) : '',
+    rawModel,
   };
 }
 
@@ -461,7 +514,7 @@ appRouter.post('/ai', h(async (req, res) => {
   if (!isAdmin && !(await rateLimit(`app-ai:${req.ip}`, 360, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
-  if (!config.openrouterApiKey && !config.cohereApiKey) {
+  if (!hasAnyAiKey()) {
     return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
   const uid = String(gate.user.id);
@@ -471,9 +524,11 @@ appRouter.post('/ai', h(async (req, res) => {
   if (!resolveUpstream(body)) {
     return void res.status(503).json({ ok: false, error: 'not_configured', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
   }
-  // copy/critique — дешёвые текстовые задачи Cohere (тексты и вычитка). Верим метке ТОЛЬКО для
-  // Command A: клиенту нельзя доверять, а у этой модели потолок 8000 токенов, без картинок.
-  const cheapTask = (clean.task === 'copy' || clean.task === 'critique') && body.model === COHERE_MODEL;
+  // copy/critique — лёгкие текстовые задачи (тексты и вычитка) с потолком 8000 токенов и без картинок.
+  const cheapTask = (clean.task === 'copy' || clean.task === 'critique')
+    && imageCount === 0
+    && body.max_tokens <= COHERE_MAX_OUT
+    && (body.model === COHERE_MODEL || clean.rawModel === 'fracs-ai-edit' || clean.rawModel === 'fracs-ai-copy');
   const isSiteBuild = cheapTask ? false : detectSiteBuild(body.messages, body.max_tokens, imageCount);
   const isPhraseGen = detectPhraseGen(body.messages, body.max_tokens, inChars, isSiteBuild);
   const complexity: AiComplexity = cheapTask
@@ -693,10 +748,10 @@ appRouter.get('/ai/models', h(async (req, res) => {
   if (!isAdminTg(gate.user.tgId) && !(await rateLimit(`app-ai-models:${req.ip}`, 120, 10 * 60_000, true))) {
     return void res.status(429).json({ ok: false, reason: 'rate_limited' });
   }
-  if (!config.openrouterApiKey && !config.cohereApiKey) {
+  if (!hasAnyAiKey()) {
     return void res.status(503).json({ ok: false, error: 'not_configured' });
   }
-  // Не раскрываем внутренние модели OpenRouter/Anthropic/Cohere — отдаём единый брендированный профиль Fracs AI.
+  // Не раскрываем внутренние модели — отдаём единый брендированный профиль Fracs AI.
   res.json({
     data: [
       { id: 'fracs-ai', name: 'Fracs AI', context_length: 256000 },
@@ -883,14 +938,19 @@ export const demoPage: RequestHandler = async (req, res) => {
     const id = String(req.params.id || '');
     if (!/^[A-Za-z0-9_-]{8,24}$/.test(id)) return void res.status(404).type('text/plain').send('Не найдено');
     if (!(await rateLimit(`demo-view:${req.ip}`, 120, 60_000, false))) return void res.status(429).type('text/plain').send('Слишком часто');
-    const html = await demoGet(id);
-    if (!html) return void res.status(404).type('text/plain; charset=utf-8').send('Демо не найдено или срок хранения истёк.');
+    const rawHtml = await demoGet(id);
+    if (!rawHtml) return void res.status(404).type('text/plain; charset=utf-8').send('Демо не найдено или срок хранения истёк.');
+    // Лечим ранее сохранённые review.html, где `<!--` экранировался невалидным для JSON `<\!--`
+    const html = rawHtml.replace(
+      /(<script[^>]+id=["']site-data["'][^>]*>)([\s\S]*?)(<\/script>)/i,
+      (_m, open, jsonBody, close) => `${open}${String(jsonBody).replace(/<\\!--/g, '\\u003c!--')}${close}`,
+    );
     res.set({
       'Content-Type': 'text/html; charset=utf-8',
       // sandbox: страница живёт в «чужом» origin. allow-same-origin нужен самому review.html
       // (его JS читает <script type="application/json"> и грузит srcdoc iframe); сгенерированный
-      // сайт при этом остаётся изолированным — у внутреннего iframe выставлен свой sandbox.
-      'Content-Security-Policy': 'sandbox allow-scripts allow-popups allow-same-origin',
+      // сайт при этом остаётся изолированным — у внутреннего iframe выставлен свой sandbox без allow-same-origin.
+      'Content-Security-Policy': 'sandbox allow-scripts allow-forms allow-popups allow-same-origin',
       'X-Robots-Tag': 'noindex, nofollow',
       'Referrer-Policy': 'no-referrer',
       'Cache-Control': 'public, max-age=300',
