@@ -40,6 +40,12 @@ export const config = {
   cohereApiKey: cleanToken(env.COHERE_API_KEY),
   cohereUrl: 'https://api.cohere.ai/compatibility/v1',
 
+  // Qwen (Alibaba Cloud Model Studio, OpenAI-совместимый режим) — ещё один запасной движок Fracs AI.
+  // QWEN_BASE_URL — адрес вашего рабочего пространства (openAiCompatible из консоли Model Studio).
+  qwenApiKey: cleanToken(env.QWEN_API_KEY),
+  qwenUrl: (cleanToken(env.QWEN_BASE_URL) || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/$/, ''),
+  qwenModel: cleanToken(env.QWEN_MODEL) || 'qwen-plus-character',
+
   botToken: cleanToken(env.TELEGRAM_BOT_TOKEN),
   botUsername: cleanToken(env.TELEGRAM_BOT_USERNAME).replace(/^@/, ''),
   // На Vercel работает только webhook. polling — для локальной разработки.

@@ -1458,16 +1458,67 @@ def _build_user_content(provider: str, cfg: dict, prompt: str,
     return content
 
 
+_CONTINUE_PROMPT = (
+    'Твой ответ оборвался. Продолжи HTML-документ РОВНО с того места, где он закончился: '
+    'не повторяй уже написанное, не добавляй пояснений и markdown-ограждений, не открывай документ заново. '
+    'Закрой все открытые теги и заверши документом </html>.'
+)
+
+_REASON_RU = {
+    'auth': 'ключ провайдера отклонён',
+    'billing': 'на счёте провайдера нет средств',
+    'rate': 'провайдер перегружен',
+    'server': 'ошибка на стороне провайдера',
+    'timeout': 'таймаут',
+    'empty': 'пустой ответ модели',
+    'network': 'нет связи с сервером Fracs',
+    'rejected': 'запрос отклонён',
+}
+# Коды ответа прокси, при которых смена движка бессмысленна (лимиты, подписка) — их показываем как есть.
+_NO_FAILOVER_CODES = ('quota_', 'daily_budget', 'fracs_ai_required', 'channels_required', 'expired',
+                      'invalid', 'model_not_allowed', 'input_too_long', 'rate_limited', 'bad_request')
+
+
+def _reasons_text(res: dict) -> str:
+    rs = [r for r in (res.get('reasons') or []) if r]
+    return ', '.join(_REASON_RU.get(r, r) for r in dict.fromkeys(rs))
+
+
+def _can_failover(res: dict) -> bool:
+    """Смена движка имеет смысл только при сбое провайдеров, а не при лимитах и подписке."""
+    code = str(res.get('error_code') or '')
+    return not any(code.startswith(c) for c in _NO_FAILOVER_CODES)
+
+
+def _html_complete(text: str) -> bool:
+    return '</html>' in (text or '').lower()
+
+
+def _join_continuation(base: str, cont: str) -> str:
+    """Склеивает начало и продолжение: срезает ограждения ``` и повтор хвоста (модели любят повторять)."""
+    cont = re.sub(r'^\s*```(?:html)?\s*', '', cont or '')
+    cont = re.sub(r'\s*```\s*$', '', cont)
+    for k in range(min(400, len(cont), len(base)), 19, -1):
+        if base.endswith(cont[:k]):
+            cont = cont[k:]
+            break
+    return base + cont
+
+
 def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str = '',
               base_url: str = '', uploads: list[dict] | None = None,
               temperature: float = 0.7, max_tokens: int = 4096,
               system: str | None = None, style: str = '',
               task: str = '', brief_block: str = '',
-              creative_recipe: str = '', req_timeout: int | None = None) -> dict:
+              creative_recipe: str = '', req_timeout: int | None = None,
+              alias: str = '', continue_from: str = '') -> dict:
     """Вызов LLM. Возвращает {ok, text, error, ms}. system=None → общий промт сборщика сайтов.
 
     task: 'copy' | 'critique' — задачи Cohere внутри Fracs AI; 'build' — сборка сайта.
-    brief_block: арт-дирекшн и тексты от Cohere (добавляется в системный промт сборщика)."""
+    brief_block: арт-дирекшн и тексты от Cohere (добавляется в системный промт сборщика).
+
+    alias: принудительный алиас модели для прокси (например 'fracs-ai-fast' — запасной движок).
+    continue_from: уже полученная часть документа — модель допишет остаток («продолжи»)."""
     started = time.time()
     cfg = _provider_cfg(provider)
     if provider == 'Fracs AI':
@@ -1521,6 +1572,8 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
                 model = 'fracs-ai'
             else:
                 model = 'fracs-ai-fast'
+            if alias:
+                model = alias
         else:
             if task in _COHERE_TASKS:
                 model = _COHERE_MODEL if direct_cohere else _COHERE_OR_MODEL
@@ -1544,13 +1597,21 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
 
     def _make_req_body(target_model: str, strip_temp: bool = False) -> dict:
         if cfg['shape'] == 'anthropic':
+            am = [{'role': 'user', 'content': user_content}]
+            if continue_from:
+                am += [{'role': 'assistant', 'content': continue_from},
+                       {'role': 'user', 'content': _CONTINUE_PROMPT}]
             return {'model': target_model, 'max_tokens': int(max_tokens or 4096),
-                    'system': system, 'messages': [{'role': 'user', 'content': user_content}]}
+                    'system': system, 'messages': am}
+        msgs: list[dict] = [{'role': 'system', 'content': system},
+                            {'role': 'user', 'content': user_content}]
+        if continue_from:
+            msgs += [{'role': 'assistant', 'content': continue_from},
+                     {'role': 'user', 'content': _CONTINUE_PROMPT}]
         b: dict[str, Any] = {
             'model': target_model,
             'max_tokens': int(max_tokens or 4096),
-            'messages': [{'role': 'system', 'content': system},
-                         {'role': 'user', 'content': user_content}],
+            'messages': msgs,
         }
         if not strip_temp and target_model not in _NO_TEMP_MODELS:
             b['temperature'] = float(temperature if temperature is not None else 0.7)
@@ -1596,7 +1657,8 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
                 if cand_idx + 1 < len(direct_candidates):
                     break
                 if provider == 'Fracs AI':
-                    return {'ok': False, 'error': _FRACS_DOWN, 'ms': _ms(started), 'skipped_images': skipped}
+                    return {'ok': False, 'error': _FRACS_DOWN, 'reasons': ['network'], 'ms': _ms(started),
+                            'skipped_images': skipped}
                 return {'ok': False, 'error': f'network: {e}', 'ms': _ms(started), 'skipped_images': skipped}
             if r.status_code >= 500 and via_proxy and proxy_try + 1 < max_proxy_tries and _ms(attempt_started) < 18000:
                 time.sleep(0.8)
@@ -1616,8 +1678,11 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
         err_code = ''
         buy_url = ''
         reset_at = 0
+        reasons: list[str] = []
         try:
             err = r.json()
+            if isinstance(err, dict) and isinstance(err.get('reasons'), list):
+                reasons = [str(x) for x in err['reasons'][:6]]
             if isinstance(err, dict) and err.get('ok') is False and isinstance(err.get('message'), str):
                 msg = err['message']
                 err_code = str(err.get('error') or '')
@@ -1631,7 +1696,7 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
             except Exception:
                 reset_at = 0
         return {'ok': False, 'error': msg, 'error_code': err_code, 'buy_url': buy_url,
-                'reset_at': reset_at, 'ms': _ms(started), 'skipped_images': skipped}
+                'reset_at': reset_at, 'reasons': reasons, 'ms': _ms(started), 'skipped_images': skipped}
     if r.status_code >= 400:
         try:
             err = r.json()
@@ -2971,7 +3036,7 @@ class AiAgentManager:
                     for note in br.get('notes', []):
                         self._log(job, 'Редактор: ' + note)
                 else:
-                    self._log(job, 'Редактор недоступен (' + str(br.get('error') or 'ошибка')
+                    self._log(job, 'Редактор недоступен (' + (_reasons_text(br) or str(br.get('error') or 'ошибка'))
                               + ') — собираю по дизайн-рецепту.')
             elif job.is_edit and job.brief:
                 brief_block = _brief_block(job.brief)
@@ -2983,6 +3048,44 @@ class AiAgentManager:
                             style=style, brief_block=brief_block,
                             creative_recipe=creative_recipe,
                             task='build' if job.provider == 'Fracs AI' else '')
+            # Запасной движок: сервер уже перебирает провайдеров внутри одного запроса, но если он целиком
+            # не ответил (таймаут, ключ, баланс) — сразу пробуем ещё раз через быстрый профиль. Упавшие
+            # провайдеры сервер к этому моменту уже пометил и пропустит, так что ожидания почти нет.
+            if not res.get('ok') and job.provider == 'Fracs AI' and _can_failover(res):
+                why = _reasons_text(res)
+                self._log(job, 'Основной движок не ответил' + (f' ({why})' if why else '')
+                          + ' — переключаюсь на запасной…')
+                res2 = _call_llm(job.provider, api_key, job.model, llm_prompt, extra,
+                                 base_url=base_url, uploads=job.uploads,
+                                 temperature=temperature, max_tokens=min(int(max_tokens or 8000), 8000),
+                                 style=style, brief_block=brief_block,
+                                 creative_recipe=creative_recipe, task='build', alias='fracs-ai-fast')
+                if res2.get('ok'):
+                    res = res2
+                else:
+                    res['reasons'] = list(res.get('reasons') or []) + list(res2.get('reasons') or [])
+            # Дописываем оборванную страницу: serverless-лимит и лимит токенов короче целой страницы.
+            cont_try = 0
+            while (res.get('ok') and cont_try < 6
+                   and (res.get('truncated') or not _html_complete(res.get('text', '')))):
+                cont_try += 1
+                self._log(job, f'Страница оборвалась на {len(res["text"])} симв. — дописываю остаток ({cont_try}/6)…')
+                cont = _call_llm(job.provider, api_key, job.model, llm_prompt, extra,
+                                 base_url=base_url, uploads=job.uploads,
+                                 temperature=temperature, max_tokens=max_tokens,
+                                 style=style, brief_block=brief_block,
+                                 creative_recipe=creative_recipe,
+                                 task='build' if job.provider == 'Fracs AI' else '',
+                                 continue_from=res['text'])
+                if not cont.get('ok'):
+                    self._log(job, 'Дописать не удалось: ' + (_reasons_text(cont) or str(cont.get('error'))) + '.')
+                    break
+                joined = _join_continuation(res['text'], cont.get('text', ''))
+                if len(joined) <= len(res['text']) + 20:
+                    break
+                res = dict(res, text=joined, truncated=bool(cont.get('truncated')) and not _html_complete(joined))
+            if res.get('ok') and _html_complete(res.get('text', '')):
+                res['truncated'] = False
             if res.get('skipped_images'):
                 self._log(job, 'Картинки пропущены (провайдер без vision): '
                            + ', '.join(res['skipped_images']))
@@ -2993,7 +3096,8 @@ class AiAgentManager:
                 job.error_code = str(res.get('error_code') or '')
                 job.buy_url = str(res.get('buy_url') or '')
                 job.reset_at = int(res.get('reset_at') or 0)
-                self._log(job, f'Ошибка LLM: {job.error}')
+                why = _reasons_text(res)
+                self._log(job, f'Ошибка LLM: {job.error}' + (f' (причина: {why})' if why else ''))
                 return
             self._set_stage(job, 'checking', 'Проверяю шедевр')
             self._log(job, f'Ответ получен за {res["ms"]} мс. Проверяю шедевр…')

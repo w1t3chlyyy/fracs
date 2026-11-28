@@ -240,7 +240,7 @@ const isOllamaActive = (): boolean => (
       ? false
       : Boolean(config.ollamaApiKey)
 );
-const hasAnyAiKey = (): boolean => Boolean(config.ollamaApiKey || config.openrouterApiKey || config.cohereApiKey);
+const hasAnyAiKey = (): boolean => Boolean(config.ollamaApiKey || config.openrouterApiKey || config.cohereApiKey || config.qwenApiKey);
 
 const COHERE_MODEL = 'command-a-03-2025';
 const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || (isOllamaActive() ? 'kimi-k2.7-code' : 'anthropic/claude-sonnet-4')).trim();
@@ -283,6 +283,8 @@ const AI_PRICE: Record<string, [number, number]> = {
   'deepseek/deepseek-chat': [0.3, 0.9], 'qwen/qwen-2.5-72b-instruct': [0.12, 0.39],
   // Cohere Command A: $2.5 / $10 за 1M токенов, контекст 256K, но не больше 8000 токенов ответа
   'command-a-03-2025': [2.5, 10],
+  // Qwen Model Studio (ориентировочно, для учёта квот; уточните в консоли Alibaba Cloud)
+  [config.qwenModel]: [0.4, 1.2],
 };
 
 // ── Cohere работает ВМЕСТЕ с OpenRouter / Ollama ─────────────────────────────
@@ -298,7 +300,9 @@ const MODELS_LOW_REASONING = new Set([
   'anthropic/claude-sonnet-5.5',
   'openai/gpt-5.6-terra-pro',
 ]);
-type Upstream = { url: string; key: string; body: any; via: 'cohere' | 'openrouter' | 'ollama'; model: string };
+type Via = 'cohere' | 'openrouter' | 'ollama' | 'qwen';
+type Upstream = { url: string; key: string; body: any; via: Via; model: string };
+const isQwenModel = (m: string): boolean => m === config.qwenModel;
 
 function prepareUpstreamBody(baseBody: any, targetModel: string, stripExtra = false): any {
   const out: any = { ...baseBody, model: targetModel };
@@ -343,7 +347,53 @@ function buildFallbackModels(primaryModel: string, imageCount: number): string[]
         : ['google/gemini-2.5-flash', 'deepseek/deepseek-chat', 'anthropic/claude-sonnet-4', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']));
     }
   }
-  return Array.from(new Set(list));
+  if (config.qwenApiKey) list.push(config.qwenModel);
+  return interleaveByProvider(Array.from(new Set(list)));
+}
+
+// ── Отказоустойчивость по ПРОВАЙДЕРАМ, а не по моделям ───────────────────────
+// Раньше при невалидном ключе/кончившихся кредитах одного провайдера все его модели шли подряд
+// (по 15-22 с на каждую), дедлайн 55 с на Vercel выгорал и до остальных провайдеров очередь не доходила.
+// Теперь: 1) кандидаты чередуются по провайдерам; 2) провайдер, который только что упал, пропускается
+// на время (circuit breaker) — переключение на следующего происходит сразу.
+const providerDownUntil: Partial<Record<Via, number>> = {};
+const isProviderDown = (v: Via): boolean => (providerDownUntil[v] || 0) > Date.now();
+function markProviderFailure(v: Via, status: number): void {
+  // 401/402/403 — ключ/баланс: надолго; 429 — перегрузка: ненадолго; 5xx/таймаут/сеть — на минуту
+  const ms = status === 401 || status === 402 || status === 403 ? 10 * 60_000 : status === 429 ? 30_000 : 60_000;
+  providerDownUntil[v] = Date.now() + ms;
+  console.warn(`[ai] провайдер ${v} временно отключён на ${Math.round(ms / 1000)} с (status ${status})`);
+}
+const markProviderOk = (v: Via): void => { delete providerDownUntil[v]; };
+const failReason = (status: number): string => (
+  status === 401 || status === 403 ? 'auth' : status === 402 ? 'billing' : status === 429 ? 'rate'
+    : status === 599 ? 'timeout' : status >= 500 ? 'server' : status === 0 ? 'empty' : 'rejected'
+);
+
+function interleaveByProvider(models: string[]): string[] {
+  if (models.length < 3) return models;
+  const [primary, ...rest] = models;
+  const viaOf = (m: string) => resolveUpstream({ model: m, messages: [], max_tokens: 1 }, false, m, false)?.via || 'none';
+  const groups = new Map<string, string[]>();
+  for (const m of rest) {
+    const via = viaOf(m);
+    if (via === 'none') continue;
+    if (!groups.has(via)) groups.set(via, []);
+    groups.get(via)!.push(m);
+  }
+  // провайдер основной модели идёт в круге последним: сначала пробуем ДРУГИЕ движки
+  const primaryVia = viaOf(primary);
+  const order = [...groups.keys()].sort((a, b) => (a === primaryVia ? 1 : 0) - (b === primaryVia ? 1 : 0));
+  const out = [primary];
+  for (let round = 0; out.length < models.length; round++) {
+    let added = false;
+    for (const k of order) {
+      const m = groups.get(k)![round];
+      if (m) { out.push(m); added = true; }
+    }
+    if (!added) break;
+  }
+  return out;
 }
 
 function hasNonEmptyCompletion(parsed: any): boolean {
@@ -359,6 +409,12 @@ function hasNonEmptyCompletion(parsed: any): boolean {
 
 function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: string, stripExtra = false): Upstream | null {
   const target = overrideModel || body.model;
+  if (isQwenModel(target)) {
+    if (!config.qwenApiKey) return null;
+    const qBody = prepareUpstreamBody(body, target, stripExtra);
+    delete qBody.usage; delete qBody.reasoning; // расширения OpenRouter
+    return { url: config.qwenUrl + '/chat/completions', key: config.qwenApiKey, body: qBody, via: 'qwen', model: target };
+  }
   if (target === COHERE_MODEL) {
     if (config.cohereApiKey && !forceOpenRouter) {
       const direct = prepareUpstreamBody(body, COHERE_MODEL, stripExtra);
@@ -378,6 +434,12 @@ function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: str
       olBody.max_tokens = Math.min(Number(olBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
       return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: olModel };
     }
+    if (config.qwenApiKey) {
+      const qBody = prepareUpstreamBody(body, config.qwenModel, stripExtra);
+      delete qBody.usage; delete qBody.reasoning;
+      qBody.max_tokens = Math.min(Number(qBody.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
+      return { url: config.qwenUrl + '/chat/completions', key: config.qwenApiKey, body: qBody, via: 'qwen', model: config.qwenModel };
+    }
     return null;
   }
   const preferOllama = isOllamaActive() || (!config.openrouterApiKey && Boolean(config.ollamaApiKey));
@@ -395,6 +457,11 @@ function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: str
     const olBody = prepareUpstreamBody(body, fallbackOllamaModel, stripExtra);
     delete olBody.usage;
     return { url: config.ollamaUrl + '/chat/completions', key: config.ollamaApiKey, body: olBody, via: 'ollama', model: fallbackOllamaModel };
+  }
+  if (config.qwenApiKey) {
+    const qBody = prepareUpstreamBody(body, config.qwenModel, stripExtra);
+    delete qBody.usage; delete qBody.reasoning;
+    return { url: config.qwenUrl + '/chat/completions', key: config.qwenApiKey, body: qBody, via: 'qwen', model: config.qwenModel };
   }
   return null;
 }
@@ -648,12 +715,15 @@ appRouter.post('/ai', h(async (req, res) => {
       const overallTimer = setTimeout(() => { timerReason = 'overall_timeout'; ac.abort(); }, overallTimeoutMs);
       let firstTokenTimer: ReturnType<typeof setTimeout> | null = null;
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      let partial = ''; // уже сгенерированный текст: при таймауте стрима отдаём его, а не выбрасываем
       const clearTimers = () => {
         clearTimeout(overallTimer);
         if (firstTokenTimer) { clearTimeout(firstTokenTimer); firstTokenTimer = null; }
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
       };
-      const reqBody = useStream ? { ...u.body, stream: true } : u.body;
+      const reqBody = useStream
+        ? { ...u.body, stream: true, ...(u.via === 'qwen' ? { stream_options: { include_usage: true } } : {}) }
+        : u.body;
       if (useStream && firstTokenTimeoutMs < overallTimeoutMs) {
         firstTokenTimer = setTimeout(() => { timerReason = 'first_token_timeout'; ac.abort(); }, firstTokenTimeoutMs);
       }
@@ -701,6 +771,7 @@ appRouter.post('/ai', h(async (req, res) => {
           const delta = ch.delta;
           if (typeof delta?.content === 'string' && delta.content.length > 0) {
             content += delta.content;
+            partial = content;
             if (!gotContent) {
               gotContent = true;
               if (firstTokenTimer) { clearTimeout(firstTokenTimer); firstTokenTimer = null; }
@@ -740,6 +811,20 @@ appRouter.post('/ai', h(async (req, res) => {
         };
         return { status: r.status, rawText: '', parsed };
       } catch (err: any) {
+        // Serverless-лимит (55 с на Vercel) короче, чем генерация целой страницы. Если модель успела
+        // выдать заметный кусок — возвращаем его как finish_reason:'length': программа допишет остаток
+        // дозапросом «продолжи» (см. _continue_html в ai_agent.py), а не потеряет всё.
+        if (partial.length > 1200) {
+          console.warn('[ai] стрим оборван (' + (timerReason || err?.message || 'error') + '), отдаю частичный ответ:', partial.length, 'симв.');
+          return {
+            status: 200,
+            rawText: '',
+            parsed: {
+              id: `fracs-${Date.now()}`, object: 'chat.completion',
+              choices: [{ index: 0, message: { role: 'assistant', content: partial }, finish_reason: 'length' }],
+            },
+          };
+        }
         if (timerReason) throw new Error(timerReason);
         throw err;
       } finally {
@@ -748,8 +833,11 @@ appRouter.post('/ai', h(async (req, res) => {
     };
 
     const candidates = buildFallbackModels(body.model, imageCount);
+    const reasons = new Set<string>();   // коды причин для диагностики (без имён провайдеров и моделей)
+    // Если хотя бы один провайдер «жив», недавно упавших пропускаем сразу, не тратя на них дедлайн.
+    const anyProviderUp = candidates.some((c) => { const u = resolveUpstream(body, false, c, false); return !!u && !isProviderDown(u.via); });
     const isVercel = Boolean(process.env.VERCEL);
-    const deadline = Date.now() + (isVercel ? 55_000 : 155_000);
+    const deadline = Date.now() + envNum('AI_DEADLINE_MS', isVercel ? 55_000 : 155_000);
     let okUpstream: { status: number; parsed: any; model: string } | null = null;
     let lastStatus = 502;
 
@@ -773,7 +861,11 @@ appRouter.post('/ai', h(async (req, res) => {
       }
 
       for (const route of attempts) {
-        const canStream = route.via === 'openrouter' || route.via === 'ollama';
+        if (anyProviderUp && isProviderDown(route.via)) {
+          console.warn('[ai] пропускаю', route.via, '— провайдер недавно падал');
+          continue;
+        }
+        const canStream = route.via === 'openrouter' || route.via === 'ollama' || route.via === 'qwen';
         try {
           let resUp = await callUpstreamSmart(route, overallMs, Math.max(4_000, firstTokMs), canStream);
           // На HTTP 400/422 пробуем один раз без лишних параметров и с безопасным max_tokens <= 8192.
@@ -804,13 +896,21 @@ appRouter.post('/ai', h(async (req, res) => {
             }
           }
           lastStatus = resUp.status;
+          if (!(resUp.status >= 200 && resUp.status < 300)) {
+            if ([401, 402, 403, 429].includes(resUp.status) || resUp.status >= 500) {
+              markProviderFailure(route.via, resUp.status);
+              reasons.add(failReason(resUp.status));
+            }
+          }
           if (resUp.status >= 200 && resUp.status < 300) {
             try {
               const parsed = resUp.parsed ?? JSON.parse(resUp.rawText);
               if (hasNonEmptyCompletion(parsed)) {
                 okUpstream = { status: resUp.status, parsed, model: candidate };
+                markProviderOk(route.via);
                 break;
               }
+              reasons.add('empty');
               console.error('[ai] upstream empty completion:', candidate, String(resUp.rawText).slice(0, 240));
             } catch (parseErr) {
               console.error('[ai] upstream invalid json:', candidate, parseErr);
@@ -820,6 +920,8 @@ appRouter.post('/ai', h(async (req, res) => {
           }
         } catch (err: any) {
           console.error('[ai] upstream fetch failed:', candidate, route.via, err?.message || err);
+          markProviderFailure(route.via, 599);
+          reasons.add(/timeout/.test(String(err?.message)) ? 'timeout' : 'network');
         }
       }
       if (okUpstream) break;
@@ -858,7 +960,7 @@ appRouter.post('/ai', h(async (req, res) => {
         await refundBudgetWindow(cxKey, cxCost);
       }
       outStatus = lastStatus >= 500 ? lastStatus : 502;
-      safeBody = JSON.stringify({ ok: false, error: 'upstream', message: 'Fracs AI временно недоступен. Попробуйте позже.' });
+      safeBody = JSON.stringify({ ok: false, error: 'upstream', reasons: [...reasons], message: 'Fracs AI временно недоступен. Попробуйте позже.' });
     }
     res.setHeader('X-Fracs-Complexity-Tier', complexity.tier);
     res.setHeader('X-Fracs-Complexity-Cost', String(cxCost));

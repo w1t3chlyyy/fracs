@@ -2050,7 +2050,7 @@
       trace:'Ошибка',
       stage:curStage,
       collapseLogs:false,
-      error:errText||'Не удалось выполнить запрос.',
+      error:'',   // красную плашку не показываем: статус «Ошибка» виден у названия, причина — в логах шага
       actions:actions
     });
     activeBotTurn=null;
