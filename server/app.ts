@@ -24,6 +24,8 @@ export function buildApp() {
   });
   // /api/app/demo принимает страницу видеообзора (до 1,2 МБ) — свой лимит тела, до общего парсера.
   app.use('/api/app/demo', express.json({ limit: '1500kb' }));
+  // /api/app/ai принимает правки HTML (до 34К+ символов в UTF-8) и до 3 картинок base64.
+  app.use('/api/app/ai', express.json({ limit: '8mb' }));
   app.use(express.json({
     limit: '100kb',
     verify: (req: any, _res, buf) => { req.rawBody = buf; },

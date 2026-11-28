@@ -323,10 +323,10 @@
 
   /* ---- AI-Агент ---- */
   .content.wide .topbar{display:none}
-  .content.wide .work{padding:18px clamp(18px,3vw,32px)}
-  .work-panel[data-panel="ai"]{flex:1;min-height:0}
+  .content.wide .work{padding:18px clamp(18px,3vw,32px);display:flex;flex-direction:column;overflow:hidden}
+  .work-panel[data-panel="ai"]{flex:1;min-height:0;height:100%}
   .ai-wrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;height:100%;min-height:0}
-  .ai-chat-col{display:flex;flex-direction:column;gap:12px;min-height:0;align-items:center}
+  .ai-chat-col{display:flex;flex-direction:column;gap:12px;height:100%;min-height:0;align-items:center}
   /* Маскот: пустой экран с быстрыми стартами */
   .ai-mascot{flex:1;width:100%;max-width:760px;display:flex;flex-direction:column;align-items:center;
     justify-content:center;gap:14px;min-height:280px;user-select:none;padding:12px 0}
@@ -343,9 +343,10 @@
     transition:border-color .15s,color .15s,background .15s;text-align:left}
   .ai-starter:hover{border-color:rgba(242,101,34,.5);color:#fff;background:rgba(242,101,34,.08)}
 
-  /* Поток переписки: воздух и типографика без вложенных рамок */
-  .ai-chat{flex:1;width:100%;max-width:760px;min-height:180px;background:transparent;border:none;border-radius:0;
-    padding:8px 4px 18px;overflow:auto;display:flex;flex-direction:column;gap:18px}
+  /* Поток переписки: прижат к плашке ввода снизу и растёт вверх, плашка ввода не двигается */
+  .ai-chat{flex:1;width:100%;max-width:760px;min-height:0;background:transparent;border:none;border-radius:0;
+    padding:10px 6px 14px;overflow-y:auto;display:flex;flex-direction:column;gap:18px}
+  .ai-chat>:first-child{margin-top:auto}
   .ai-msg{max-width:85%;font-size:14px;line-height:1.6;word-break:break-word}
   .ai-msg.user{align-self:flex-end;max-width:min(540px,84%);background:#16161b;
     border:1px solid rgba(255,255,255,.11);color:#f4f4f6;padding:11px 16px;
@@ -378,7 +379,7 @@
   .ai-stage-tag.is-done .st-dot{background:#34d399}
   .ai-stage-sep{color:#3f3f46;font-size:11px;user-select:none}
 
-  .ai-side{display:flex;flex-direction:column;gap:16px;border-left:1px solid rgba(255,255,255,.07);padding-left:20px;min-height:0;overflow:auto}
+  .ai-side{display:flex;flex-direction:column;gap:16px;border-left:1px solid rgba(255,255,255,.07);padding-left:20px;min-height:0;height:100%;overflow:auto}
   .ai-side-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
   .ai-files-empty{font-size:12.5px;color:#787882;border:1px dashed rgba(255,255,255,.11);border-radius:10px;padding:12px 13px;line-height:1.45}
   .ai-chips{display:flex;flex-wrap:wrap;gap:6px}
@@ -427,7 +428,11 @@
     .content{grid-column:2;grid-template-columns:1fr}
     .side{border-right:none;border-bottom:1px solid var(--line)}
     body{overflow:auto}
-    .ai-wrap{grid-template-columns:1fr}
+    .content.wide .work{overflow:auto}
+    .work-panel[data-panel="ai"]{height:auto}
+    .ai-wrap{grid-template-columns:1fr;height:auto}
+    .ai-chat-col{height:auto;min-height:calc(100vh - 140px)}
+    .ai-chat{max-height:65vh}
   }
   @media (max-width:720px){
     .shell{grid-template-columns:56px 1fr}
@@ -464,8 +469,8 @@
   .ai-send:disabled{opacity:.45;cursor:not-allowed}
   .ai-send svg{width:17px;height:17px}
 
-  /* Единый студийный композер (без слоистых пилюль) */
-  .ai-dock{width:100%;max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+  /* Единый студийный композер (зафиксирован внизу, чат растёт вверх) */
+  .ai-dock{flex:none;width:100%;max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
   .ai-composer{background:#0d0d10;border:1px solid rgba(255,255,255,.12);border-radius:14px;
     display:flex;flex-direction:column;transition:border-color .15s,box-shadow .15s}
   .ai-composer:focus-within{border-color:rgba(242,101,34,.62);box-shadow:0 0 0 3px rgba(242,101,34,.12)}
@@ -518,7 +523,7 @@
   .ai-status.building,.ai-status.checking,.ai-status.packaging{color:#f4a26e}
   .ai-status.failed,.ai-status.cancelled{color:#f87171}
   @media (max-width:1100px){
-    .ai-side{border-left:none;padding-left:0;border-top:1px solid rgba(255,255,255,.07);padding-top:16px}
+    .ai-side{border-left:none;padding-left:0;border-top:1px solid rgba(255,255,255,.07);padding-top:16px;height:auto;max-height:none;overflow:visible}
   }
   @media (max-width:640px){
     .ai-kbd-hint{display:none}
@@ -1840,6 +1845,15 @@
     });
   }
 
+  function scrollAiToBottom(){
+    requestAnimationFrame(function(){
+      var c=$('aiChat');
+      if(c)c.scrollTop=c.scrollHeight;
+      var w=document.querySelector('.work');
+      if(w&&w.scrollHeight>w.clientHeight)w.scrollTop=w.scrollHeight;
+    });
+  }
+
   function addMsg(cls,text,meta){
     var c=$('aiChat'),m=$('aiMascot');
     if(c&&c.hidden)c.hidden=false;
@@ -1870,6 +1884,7 @@
     }
     c.appendChild(msg);
     c.scrollTop=c.scrollHeight;
+    scrollAiToBottom();
     return msg;
   }
 
@@ -1901,6 +1916,7 @@
       pill.className='ai-status '+stage;
       if(detailText!==undefined) pill.textContent=detailText;
     }
+    scrollAiToBottom();
   }
 
   function syncComposerExtras(){
@@ -2415,7 +2431,8 @@
     return parts.join('\n');
   }
 
-  function startAgent(prompt,silent){
+  var pendingCardMeta=null;
+  function startAgent(prompt,silent,cardMeta){
     if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
     setAiStage('thinking','Думаю над задачей…');
     resolveReadyProvider(false).then(function(info){
@@ -2428,11 +2445,17 @@
       var needKey=!info.pro_only&&info.needs_key!==false;
       if(needKey&&!key){setAiStage(null);addMsg('sys','Введите API-ключ в настройках агента («Настроить →») и сохраните его.');return;}
       if(info.pro_only&&info.configured===false){setAiStage(null);addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
+      var cm=cardMeta||pendingCardMeta;
+      if(cm&&!cardMeta&&cm.name&&String(prompt||'').indexOf(cm.name)===-1){cm=null;}
+      pendingCardMeta=null;
       var model=currentModel();
       var extra=ls('fracsAiExtra');
       var style=ls('fracsAiStyle');
       var body={prompt:prompt||'',api_key:key,model:model,provider:currentProvider,extra:extra,
         session_id:sessionId,prev_job:currentJob||'',style:style,
+        photos:(cm&&Array.isArray(cm.photos))?cm.photos:[],
+        card_url:(cm&&cm.card_url)||'',
+        ymaps_url:(cm&&cm.ymaps_url)||'',
         key21st:ls('fracsAiKey21st'),
         base_url:ls('fracsAiBaseUrl'),
         temperature:parseFloat(ls('fracsAiTemp'))||0.7,
@@ -2579,6 +2602,8 @@
     try{
       if(window.setTab)window.setTab('ai');
       var c=rec.contacts||{}, ow=rec.owner||{};
+      var cardPhotos=Array.isArray(rec.photos)?rec.photos.filter(Boolean):[];
+      var cardMeta={name:rec.name||'',photos:cardPhotos,card_url:rec.url||'',ymaps_url:rec.ymaps||''};
       var lines=['Сделай одностраничный сайт-визитку по данным карточки бизнеса (2ГИС).'];
       lines.push('Название: '+(rec.name||'—'));
       if(rec.rubrics&&rec.rubrics.length)lines.push('Рубрики: '+rec.rubrics.join(', '));
@@ -2589,16 +2614,22 @@
       if(conn.length)lines.push('Контакты: '+conn.join(', '));
       if(rec.rating)lines.push('Рейтинг на картах: '+(rec.rating+(rec.review_count?(' ('+rec.review_count+' отзывов)'):'')));
       if(ow.name)lines.push('Владелец/директор: '+[ow.name,ow.phone,ow.email].filter(Boolean).join(', '));
+      if(cardPhotos.length){
+        lines.push('Фотографии бизнеса с карты ('+cardPhotos.length+' шт.): они будут автоматически скачаны и добавлены в папку assets/ — обязательно используй их в оформлении сайта.');
+      }else if(rec.url||rec.ymaps){
+        lines.push('Если у бизнеса на 2ГИС / Яндекс Картах есть фотографии в карточке, используй их в оформлении сайта.');
+      }
       lines.push('Собери сайт по этим данным, веди его живым конкретным языком. Чего в данных нет (цены, сроки, часы работы, отзывы) — не выдумывай и не оставляй скобочных заглушек: просто не делай такой блок или предложи позвонить.');
       var prompt=lines.join('\n');
       ensureProviders(false).then(function(){
         var cfg=window.aiGetConfig();
         if(cfg.need_key&&!cfg.key){
+          pendingCardMeta=cardMeta;
           var ta=$('aiPrompt'); if(ta){ta.value=prompt;autoResizePrompt();}
           addMsg('sys','Карточка «'+(rec.name||'')+'» прочитана. Откройте «Настроить →», вставьте API-ключ и вернитесь — отправьте сообщение, и макет соберётся по данным карточки.');
           return;
         }
-        startAgent(prompt);
+        startAgent(prompt,false,cardMeta);
       });
     }catch(e){addMsg('sys','Не удалось передать карточку агенту: '+e);}
   };

@@ -21,7 +21,7 @@ from urllib.parse import quote, urlparse
 from .chrome.options import ChromeOptions
 from .chrome.remote import ChromeRemote
 from .logger import logger
-from .writer.record import extract_record
+from .writer.record import clean_photos, extract_record
 
 SOURCE_COMMENT = 'Яндекс Карты'
 
@@ -78,11 +78,39 @@ _JS_PROBE = r'''
     var bodyText = (root.innerText || '').slice(0, 4000);
     var closed = /закрыт[оа]?\s+навсегда|постоянно\s+закрыт|больше\s+не\s+работает|перестал[аи]?\s+работать|организация\s+закрыта/i.test(bodyText);
 
+    // Фотографии бизнеса с карточки (обложка и галерея), без аватаров отзывов, рекламы и карт.
+    var photos = [], seenP = {};
+    function pushPhoto(u) {
+      if (!u || typeof u !== 'string') return;
+      u = u.trim();
+      if (!/^https?:\/\//i.test(u)) return;
+      if (/yapic|avatar|favicon|logo_yandex|yandex\.ru\/maps|tiles|vec0|sat0|\.svg(\?|$)/i.test(u)) return;
+      if (seenP[u] || photos.length >= 6) return;
+      seenP[u] = true;
+      photos.push(u);
+    }
+    var mediaRoots = root.querySelectorAll('.orgpage-header-view img, .business-header-view img, .business-media-view img, [class*="photo-gallery"] img, [class*="photos-view"] img, .img-with-fallback, img[src*="avatars.mds.yandex.net/get-altay"], img[src*="avatars.mds.yandex.net/get-sprav"], img[src*="avatars.mds.yandex.net/get-vh"]');
+    for (var k = 0; k < mediaRoots.length; k++) {
+      var im = mediaRoots[k];
+      if (im.closest('[class*="advert"], [class*="-ad-"], [class*="related"], [class*="similar"], [class*="review"], [class*="author"], [class*="avatar"]')) continue;
+      if (im.tagName === 'IMG') {
+        var w = im.naturalWidth || im.width || im.clientWidth || 0;
+        var h = im.naturalHeight || im.height || im.clientHeight || 0;
+        if ((w > 0 && w < 70) || (h > 0 && h < 70)) continue;
+        pushPhoto(im.currentSrc || im.src || im.getAttribute('data-src'));
+      }
+      var bg = '';
+      try { bg = getComputedStyle(im).backgroundImage || ''; } catch (e) {}
+      var mBg = bg.match(/url\(["']?(https?:\/\/[^"')]+)["']?\)/i);
+      if (mBg) pushPhoto(mBg[1]);
+    }
+
     return JSON.stringify({
       state: 'card',
       url: href,
       name: txt(nameEl),
       links: links,
+      photos: photos,
       rating: txt(ratingEl),
       address: txt(addrEl),
       closed: closed
@@ -381,7 +409,11 @@ class YandexMaps:
                                     i, len(targets), record['name'], data.get('name'),
                                     data.get('address') or 'адрес не считан')
                     else:
-                        doc.setdefault('_fracs', {})['ymaps'] = (data.get('url') or '').split('#')[0]
+                        fracs_meta = doc.setdefault('_fracs', {})
+                        fracs_meta['ymaps'] = (data.get('url') or '').split('#')[0]
+                        photos = clean_photos(data.get('photos') or [])
+                        if photos:
+                            fracs_meta['photos'] = clean_photos(list(fracs_meta.get('photos') or []) + photos)
                         if data.get('closed'):
                             stats['closed'] += 1
                             stats['closed_idx'].append(doc_idx)

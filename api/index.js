@@ -3229,18 +3229,66 @@ var AI_PRICE = {
 };
 var COHERE_VIA_OR = "cohere/command-a";
 var COHERE_MAX_OUT = 8e3;
-function resolveUpstream(body, forceOpenRouter = false) {
-  if (body.model === COHERE_MODEL) {
+var MODELS_NO_TEMP = /* @__PURE__ */ new Set([
+  "anthropic/claude-sonnet-5.5",
+  "openai/gpt-5.6-terra-pro"
+]);
+var MODELS_LOW_REASONING = /* @__PURE__ */ new Set([
+  "anthropic/claude-sonnet-5.5",
+  "openai/gpt-5.6-terra-pro"
+]);
+function prepareUpstreamBody(baseBody, targetModel, stripExtra = false) {
+  const out = { ...baseBody, model: targetModel };
+  if (MODELS_NO_TEMP.has(targetModel) || stripExtra) {
+    delete out.temperature;
+  }
+  if (!stripExtra && MODELS_LOW_REASONING.has(targetModel) && !out.reasoning) {
+    out.reasoning = { effort: "low" };
+  } else if (stripExtra) {
+    delete out.reasoning;
+  }
+  return out;
+}
+function buildFallbackModels(primaryModel, imageCount) {
+  if (primaryModel === COHERE_MODEL) {
+    return [COHERE_MODEL, "deepseek/deepseek-v4.1-flash-1017", "openai/gpt-4o-mini"];
+  }
+  if (primaryModel === FRACS_BUILD_MODEL || primaryModel === "anthropic/claude-sonnet-5.5") {
+    const fallbacks = imageCount > 0 ? ["google/gemini-2.0-flash-001", "openai/gpt-4o-mini"] : ["deepseek/deepseek-v4-pro-0813", "deepseek/deepseek-v4.1-flash-1017", "openai/gpt-4o-mini"];
+    return Array.from(/* @__PURE__ */ new Set([primaryModel, ...fallbacks]));
+  }
+  if (primaryModel === FRACS_FAST_MODEL) {
+    return Array.from(/* @__PURE__ */ new Set([primaryModel, "openai/gpt-4o-mini", "google/gemini-2.0-flash-001"]));
+  }
+  return [primaryModel];
+}
+function hasNonEmptyCompletion(parsed) {
+  const ch = parsed?.choices?.[0];
+  if (!ch) return false;
+  const c = ch?.message?.content;
+  if (typeof c === "string") return c.trim().length > 0;
+  if (Array.isArray(c)) {
+    return c.some((b) => b?.type === "text" && typeof b?.text === "string" && b.text.trim().length > 0);
+  }
+  return typeof ch?.text === "string" && ch.text.trim().length > 0;
+}
+function resolveUpstream(body, forceOpenRouter = false, overrideModel, stripExtra = false) {
+  const target = overrideModel || body.model;
+  if (target === COHERE_MODEL) {
     if (config.cohereApiKey && !forceOpenRouter) {
-      const direct = { ...body };
+      const direct = prepareUpstreamBody(body, COHERE_MODEL, stripExtra);
       delete direct.usage;
-      return { url: config.cohereUrl + "/chat/completions", key: config.cohereApiKey, body: direct, via: "cohere" };
+      direct.max_tokens = Math.min(Number(direct.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
+      return { url: config.cohereUrl + "/chat/completions", key: config.cohereApiKey, body: direct, via: "cohere", model: COHERE_MODEL };
     }
     if (!config.openrouterApiKey) return null;
-    return { url: config.openrouterUrl + "/chat/completions", key: config.openrouterApiKey, body: { ...body, model: COHERE_VIA_OR }, via: "openrouter" };
+    const orBody2 = prepareUpstreamBody(body, COHERE_VIA_OR, stripExtra);
+    orBody2.max_tokens = Math.min(Number(orBody2.max_tokens) || COHERE_MAX_OUT, COHERE_MAX_OUT);
+    return { url: config.openrouterUrl + "/chat/completions", key: config.openrouterApiKey, body: orBody2, via: "openrouter", model: COHERE_VIA_OR };
   }
   if (!config.openrouterApiKey) return null;
-  return { url: config.openrouterUrl + "/chat/completions", key: config.openrouterApiKey, body, via: "openrouter" };
+  const orBody = prepareUpstreamBody(body, target, stripExtra);
+  return { url: config.openrouterUrl + "/chat/completions", key: config.openrouterApiKey, body: orBody, via: "openrouter", model: target };
 }
 var FRACS_TASKS = /* @__PURE__ */ new Set(["copy", "critique", "build"]);
 var priceOf = (model) => AI_PRICE[model] || [1, 4];
@@ -3328,10 +3376,14 @@ function sanitizeAiBody(raw) {
   const capTokens = model === COHERE_MODEL ? Math.min(AI_LIMITS.maxTokens, COHERE_MAX_OUT) : AI_LIMITS.maxTokens;
   const maxTokens = Math.min(capTokens, Number.isFinite(reqTok) && reqTok > 0 ? Math.floor(reqTok) : capTokens);
   const temp = Number(raw.temperature);
+  const outBody = { model, messages, max_tokens: maxTokens, stream: false, usage: { include: true } };
+  if (!MODELS_NO_TEMP.has(model)) {
+    outBody.temperature = Number.isFinite(temp) ? Math.min(model === COHERE_MODEL ? 1 : 1.2, Math.max(0, temp)) : 0.7;
+  }
   return {
     inChars: chars,
     imageCount: images,
-    body: { model, messages, max_tokens: maxTokens, temperature: Number.isFinite(temp) ? Math.min(model === COHERE_MODEL ? 1 : 1.2, Math.max(0, temp)) : 0.7, stream: false, usage: { include: true } },
+    body: outBody,
     task: FRACS_TASKS.has(String(raw.fracs_task)) ? String(raw.fracs_task) : ""
   };
 }
@@ -3444,33 +3496,67 @@ appRouter.post("/ai", h2(async (req, res) => {
     return void res.status(429).json({ ok: false, error: "quota_budget", resetAt: nextUtcMidnight.getTime(), message: "\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043F\u043E \u043E\u0431\u044A\u0451\u043C\u0443 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D. \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430 \u0438\u043B\u0438 \u043F\u043E\u0441\u043B\u0435 \u043F\u043E\u043A\u0443\u043F\u043A\u0438 \u043F\u0430\u043A\u0435\u0442\u0430 \u0442\u043E\u043A\u0435\u043D\u043E\u0432." });
   }
   try {
-    const callUpstream = (u) => fetch(u.url, {
+    const callUpstream = (u, timeoutMs) => fetch(u.url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${u.key}` },
       body: JSON.stringify(u.body),
-      signal: AbortSignal.timeout(17e4)
+      signal: AbortSignal.timeout(timeoutMs)
     });
-    const route = resolveUpstream(body);
-    let upstream;
-    try {
-      upstream = await callUpstream(route);
-      if (route.via === "cohere" && (upstream.status >= 500 || upstream.status === 429) && config.openrouterApiKey) {
-        console.warn("[ai] Cohere", upstream.status, "\u2192 \u0444\u043E\u043B\u0431\u044D\u043A \u0447\u0435\u0440\u0435\u0437 OpenRouter");
-        upstream = await callUpstream(resolveUpstream(body, true));
+    const candidates = buildFallbackModels(body.model, imageCount);
+    let okUpstream = null;
+    let lastStatus = 502;
+    for (let idx = 0; idx < candidates.length; idx++) {
+      const candidate = candidates[idx];
+      const timeoutMs = idx === 0 ? 11e4 : 75e3;
+      const attempts = [];
+      const u1 = resolveUpstream(body, false, candidate, false);
+      if (u1) attempts.push(u1);
+      if (candidate === COHERE_MODEL && config.cohereApiKey && config.openrouterApiKey) {
+        const uOr = resolveUpstream(body, true, candidate, false);
+        if (uOr) attempts.push(uOr);
       }
-    } catch (e) {
-      if (route.via !== "cohere" || !config.openrouterApiKey) throw e;
-      console.warn("[ai] Cohere \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u2192 \u0444\u043E\u043B\u0431\u044D\u043A \u0447\u0435\u0440\u0435\u0437 OpenRouter");
-      upstream = await callUpstream(resolveUpstream(body, true));
+      for (const route of attempts) {
+        try {
+          let r = await callUpstream(route, timeoutMs);
+          let rawText = await r.text();
+          if (r.status === 400 && /temperature|reasoning|unsupported/i.test(rawText)) {
+            const stripped = resolveUpstream(body, route.via === "openrouter" && candidate === COHERE_MODEL, candidate, true);
+            if (stripped) {
+              r = await callUpstream(stripped, timeoutMs);
+              rawText = await r.text();
+            }
+          }
+          lastStatus = r.status;
+          if (r.ok) {
+            try {
+              const parsed = JSON.parse(rawText);
+              if (hasNonEmptyCompletion(parsed)) {
+                okUpstream = { status: r.status, parsed, model: candidate };
+                break;
+              }
+              console.error("[ai] upstream empty completion:", candidate, rawText.slice(0, 240));
+            } catch (parseErr) {
+              console.error("[ai] upstream invalid json:", candidate, parseErr);
+            }
+          } else {
+            console.error("[ai] upstream error:", candidate, route.via, r.status, rawText.slice(0, 300));
+          }
+        } catch (err) {
+          console.error("[ai] upstream fetch failed:", candidate, route.via, err?.message || err);
+        }
+      }
+      if (okUpstream) break;
     }
-    const text = await upstream.text();
-    let safeBody = text;
-    if (upstream.ok) {
+    let safeBody;
+    let outStatus;
+    if (okUpstream) {
+      outStatus = okUpstream.status;
+      const parsed = okUpstream.parsed;
+      const [usedIn, usedOut] = priceOf(okUpstream.model);
       try {
-        const parsed = JSON.parse(text);
         const u = parsed?.usage || {};
         const tokens = Number(u.total_tokens) || (Number(u.prompt_tokens) || 0) + (Number(u.completion_tokens) || 0);
-        const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || totalInChars / 3.5) * pin + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * pout) / 1e6;
+        const cost = Number(u.cost) > 0 ? Number(u.cost) : ((Number(u.prompt_tokens) || totalInChars / 3.5) * usedIn + (Number(u.completion_tokens) || complexity.reserveOutputTokens) * usedOut) / 1e6;
         await aiUsageAdd(uid, tokens, cost);
         if (!isAdmin) {
           const prevOver = Math.max(0, usage.userTokens - AI_LIMITS.dailyTokens);
@@ -3478,19 +3564,20 @@ appRouter.post("/ai", h2(async (req, res) => {
           const over = Math.max(0, nextOver - prevOver);
           if (over > 0) await aiTokensSpend(uid, over).catch((e) => console.error("[ai] tokens spend failed:", e));
         }
-        if (parsed && typeof parsed === "object") {
-          parsed.model = "fracs-ai";
-          if ("provider" in parsed) delete parsed.provider;
-          if ("system_fingerprint" in parsed) delete parsed.system_fingerprint;
-          safeBody = JSON.stringify(parsed);
-        }
       } catch (e) {
         console.error("[ai] usage write failed:", e);
       }
+      if (parsed && typeof parsed === "object") {
+        parsed.model = "fracs-ai";
+        if ("provider" in parsed) delete parsed.provider;
+        if ("system_fingerprint" in parsed) delete parsed.system_fingerprint;
+      }
+      safeBody = JSON.stringify(parsed);
     } else {
-      if (cxConsumed && upstream.status >= 500) {
+      if (cxConsumed) {
         await refundBudgetWindow(cxKey, cxCost);
       }
+      outStatus = lastStatus >= 500 ? lastStatus : 502;
       safeBody = JSON.stringify({ ok: false, error: "upstream", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
     }
     res.setHeader("X-Fracs-Complexity-Tier", complexity.tier);
@@ -3501,9 +3588,10 @@ appRouter.post("/ai", h2(async (req, res) => {
     if (!isAdmin && cxResetAt > 0) {
       res.setHeader("X-Fracs-Reset-At", String(cxResetAt));
     }
-    res.status(upstream.status).type("application/json").send(safeBody);
+    res.status(outStatus).type("application/json").send(safeBody);
   } catch (e) {
     if (cxConsumed) await refundBudgetWindow(cxKey, cxCost);
+    console.error("[ai] unexpected route error:", e);
     res.status(502).json({ ok: false, error: "upstream", message: "Fracs AI \u0432\u0440\u0435\u043C\u0435\u043D\u043D\u043E \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u043F\u043E\u0437\u0436\u0435." });
   }
 }));
@@ -4552,6 +4640,7 @@ function buildApp() {
     }
   });
   app.use("/api/app/demo", express.json({ limit: "1500kb" }));
+  app.use("/api/app/ai", express.json({ limit: "8mb" }));
   app.use(express.json({
     limit: "100kb",
     verify: (req, _res, buf) => {

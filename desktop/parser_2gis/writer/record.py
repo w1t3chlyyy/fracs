@@ -14,6 +14,79 @@ TYPE_NAMES = {
 }
 
 
+def clean_photos(urls: Any, limit: int = 6) -> list[str]:
+    """Keep up to `limit` unique HTTP(S) photo URLs (excluding SVG/icons)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(urls, (list, tuple)):
+        return out
+    for u in urls:
+        if not isinstance(u, str):
+            continue
+        s = u.strip()
+        if not s or not (s.startswith('https://') or s.startswith('http://')):
+            continue
+        low = s.split('?', 1)[0].lower()
+        if low.endswith('.svg') or '/icon' in low or 'yapic' in low:
+            continue
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def _collect_photo_urls_from_obj(obj: Any, sink: list[str]) -> None:
+    if isinstance(obj, str):
+        sink.append(obj)
+    elif isinstance(obj, list):
+        for el in obj:
+            _collect_photo_urls_from_obj(el, sink)
+    elif isinstance(obj, dict):
+        for k in ('main_photo_url', 'photo_url', 'image_url', 'url', 'src', 'orig'):
+            v = obj.get(k)
+            if isinstance(v, str):
+                sink.append(v)
+        pv = obj.get('preview_urls')
+        if isinstance(pv, dict):
+            picked = False
+            for k in ('url', 'orig', 'large', '1024x', '640x480', '320x240'):
+                v = pv.get(k)
+                if isinstance(v, str):
+                    sink.append(v)
+                    picked = True
+            if not picked:
+                for v in pv.values():
+                    if isinstance(v, str):
+                        sink.append(v)
+                        break
+        for k in ('photos', 'items', 'images', 'gallery', 'media', 'urls'):
+            v = obj.get(k)
+            if isinstance(v, list):
+                _collect_photo_urls_from_obj(v, sink)
+
+
+def _extract_2gis_photos(item: dict[str, Any]) -> list[str]:
+    raw: list[str] = []
+    for k in ('main_photo_url', 'photo_url'):
+        if isinstance(item.get(k), str):
+            raw.append(item[k])
+    ec = item.get('external_content')
+    if isinstance(ec, list):
+        for entry in ec:
+            if not isinstance(entry, dict):
+                continue
+            etype = str(entry.get('type') or '').lower()
+            if etype and 'photo' not in etype and 'image' not in etype and 'gallery' not in etype and not entry.get('main_photo_url'):
+                continue
+            _collect_photo_urls_from_obj(entry, raw)
+    for k in ('photos', 'media', 'gallery'):
+        if k in item:
+            _collect_photo_urls_from_obj(item.get(k), raw)
+    return clean_photos(raw)
+
+
 def extract_record(catalog_doc: Any) -> Optional[dict[str, Any]]:
     """Extract a flat, presentation-ready record from a Catalog Item document.
 
@@ -67,6 +140,7 @@ def extract_record(catalog_doc: Any) -> Optional[dict[str, Any]]:
                 contacts[contact.type] = contact.url.split('?')[0]
 
     extra = (catalog_doc.get('_fracs') or {}) if isinstance(catalog_doc, dict) else {}
+    photos = clean_photos(_extract_2gis_photos(item) + list(extra.get('photos') or []))
     return {
         'name': name,
         'description': description,
@@ -79,4 +153,5 @@ def extract_record(catalog_doc: Any) -> Optional[dict[str, Any]]:
         'url': catalog_item.url,
         'owner': extra.get('owner') or {},
         'ymaps': extra.get('ymaps'),
+        'photos': photos,
     }

@@ -32,12 +32,14 @@ import base64
 import colorsys
 import html as _html
 import io
+import ipaddress
 import json
 import mimetypes
 import os
 import re
 import secrets
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -116,6 +118,8 @@ _FRACS_DOWN = 'Fracs AI временно недоступен. Попробуй�
 # Актуальные ID и цены сверены с openrouter.ai/api/v1/models (2026-11).
 _BEST_CODE_MODEL = 'anthropic/claude-sonnet-5.5'        # топ для фронтенд-кода, ctx 1M, vision
 _CHEAP_CHAT_MODEL = 'deepseek/deepseek-v4.1-flash-1017'  # дёшево и быстро для не-кодинга
+_FALLBACK_CODE_MODELS = ('deepseek/deepseek-v4-pro-0813', _CHEAP_CHAT_MODEL, 'openai/gpt-4o-mini')
+_NO_TEMP_MODELS = {'anthropic/claude-sonnet-5.5', 'openai/gpt-5.6-terra-pro'}
 
 # Cohere Command A работает ВМЕСТЕ с OpenRouter: тексты/арт-дирекшн до сборки и вычитка после.
 # Ограничения модели: ответ ≤ 8000 токенов, контекст 256K, только текст (без vision).
@@ -397,15 +401,20 @@ _SYSTEM_PROMPT = (
     'иконки-заглушки без смысла, lorem ipsum, центровка длинных абзацев, текст на пёстром фоне, '
     'клише «инновационный / индивидуальный подход / ваш надёжный партнёр / мы рады представить».\n'
     '— Радиусы одной системой: 8 / 16 / 999. Тени: одна мягкая нейтральная.\n'
-    '— Фото нет и внешние картинки не подключай (сломаются). Визуал строй из типографики, '
-    'монограммы из инициалов бизнеса (inline SVG) и геометрии CSS: сетка, точки, линии, '
-    'крупные цифры (см. библиотеку блоков).\n'
+    '— Фото и картинки: внешние стоковые URL не выдумывай и не подключай (сломаются). '
+    'Если в задании перечислены локальные файлы бизнеса (вида assets/photo-1.jpg), ОБЯЗАТЕЛЬНО '
+    'встрой их в макет — в первый экран (герой) и/или блок «О компании» / галерею через <img> с '
+    'точным относительным src="assets/photo-1.jpg", object-fit:cover, скруглением по системе и '
+    'осмысленным alt (если поверх фото есть текст — ставь затемнение/градиент для контраста). '
+    'Если фото в задании НЕ переданы — визуал строй из типографики, монограммы из инициалов '
+    'бизнеса (inline SVG) и геометрии CSS: сетка, точки, линии, крупные цифры.\n'
     '\n'
     'СТРУКТУРА: герой → полоса фактов (только из карточки) → услуги → как работаем/почему мы → '
     'о компании → FAQ → контакты и CTA → подвал. Секцию без данных пропускай; герой и контакты — всегда.\n'
     '\n'
     'ТЕХНИКА:\n'
-    '— Один файл, <style> и <script> внутри. Внешнее — только Google Fonts. Библиотеки '
+    '— Один файл, <style> и <script> внутри. Внешнее — только Google Fonts; картинки — только '
+    'локальные файлы assets/* из задания. Библиотеки '
     'анимаций не подключай: хватает IntersectionObserver + CSS transition.\n'
     '— Скрытое начальное состояние для анимаций ставь только классом, который добавляет сам '
     'скрипт (document.documentElement.classList.add("js")): без JS всё должно быть видно.\n'
@@ -665,11 +674,26 @@ def _slug_from_prompt(prompt: str, fallback: str = 'site') -> str:
 
 
 def _save_site_files(job) -> str:
-    """Пишет сайт в <проект>/sites/<slug>/ : index.html (последняя версия) и
-    versions/v<N>.html (история). Возвращает локальный URL /sites/<slug>/."""
+    """Пишет сайт в <проект>/sites/<slug>/ : index.html (последняя версия),
+    assets/* (фотографии бизнеса, если есть) и versions/v<N>.html (история).
+    Возвращает локальный URL /sites/<slug>/."""
     try:
         d = os.path.join(_SITES_DIR, job.site_slug)
         os.makedirs(os.path.join(d, 'versions'), exist_ok=True)
+        assets = getattr(job, 'assets', None) or []
+        if assets:
+            assets_dir = os.path.realpath(os.path.join(d, 'assets'))
+            os.makedirs(assets_dir, exist_ok=True)
+            for asset in assets:
+                fname = os.path.basename(str(asset.get('filename') or ''))
+                raw = asset.get('bytes')
+                if not fname or not raw:
+                    continue
+                target = os.path.realpath(os.path.join(assets_dir, fname))
+                if not target.startswith(assets_dir + os.sep):
+                    continue
+                with open(target, 'wb') as af:
+                    af.write(raw)
         with open(os.path.join(d, 'index.html'), 'w', encoding='utf-8') as f:
             f.write(job.html)
         with open(os.path.join(d, 'versions', f'v{job.version:02d}.html'), 'w',
@@ -684,6 +708,215 @@ def _save_site_files(job) -> str:
     except OSError as e:
         job.logs.append(f'Не удалось сохранить файлы сайта: {e}')
         return ''
+
+
+# ── Безопасная загрузка фото карточки бизнеса (2GIS / Яндекс Карты) ────────────
+
+_MAX_CARD_PHOTOS = 6
+_PHOTO_FETCH_TIMEOUT = 10
+
+
+def _is_public_url(url: str) -> bool:
+    """Проверяет, что URL использует http/https и резолвится только в публичные IP (защита от SSRF)."""
+    try:
+        parsed = urllib.parse.urlsplit((url or '').strip())
+    except ValueError:
+        return False
+    if parsed.scheme.lower() not in ('http', 'https') or not parsed.hostname:
+        return False
+    host = parsed.hostname.strip().lower()
+    if host in ('localhost', 'localhost.localdomain') or host.endswith('.local'):
+        return False
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for info in infos:
+        ip_str = info[4][0].split('%')[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return False
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or ip.is_unspecified):
+            return False
+    return True
+
+
+def _safe_http_get(url: str, max_bytes: int = _MAX_IMAGE_BYTES,
+                   timeout: int = _PHOTO_FETCH_TIMEOUT) -> tuple[bytes, str] | None:
+    """Скачивает ресурс по публичному URL, проверяя каждый редирект от SSRF."""
+    cur = (url or '').strip()
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; FracsBuilder/1.0)'}
+    for _ in range(3):
+        if not _is_public_url(cur):
+            return None
+        try:
+            r = requests.get(cur, headers=headers, timeout=timeout, stream=True, allow_redirects=False)
+        except requests.RequestException:
+            return None
+        if r.status_code in (301, 302, 303, 307, 308):
+            loc = r.headers.get('Location') or ''
+            r.close()
+            if not loc:
+                return None
+            cur = urllib.parse.urljoin(cur, loc)
+            continue
+        if not r.ok:
+            r.close()
+            return None
+        ctype = (r.headers.get('Content-Type') or '').split(';')[0].strip().lower()
+        buf = bytearray()
+        try:
+            for chunk in r.iter_content(chunk_size=32768):
+                if not chunk:
+                    continue
+                buf.extend(chunk)
+                if len(buf) > max_bytes:
+                    return None
+        finally:
+            r.close()
+        return bytes(buf), ctype
+    return None
+
+
+def _normalize_photo_bytes(raw: bytes, ctype: str) -> tuple[bytes, str, str] | None:
+    """Проверяет, что это настоящая картинка, и при наличии Pillow оптимизирует её в JPEG."""
+    if not raw:
+        return None
+    if Image is not None:
+        try:
+            with Image.open(io.BytesIO(raw)) as im:
+                im.load()
+                if im.width < 60 or im.height < 60:
+                    return None
+                if im.mode in ('RGBA', 'LA', 'P'):
+                    bg = Image.new('RGB', im.size, (255, 255, 255))
+                    rgba = im.convert('RGBA')
+                    bg.paste(rgba, mask=rgba.split()[-1])
+                    rgb = bg
+                else:
+                    rgb = im.convert('RGB')
+                max_side = 1280
+                if max(rgb.size) > max_side:
+                    rgb.thumbnail((max_side, max_side), Image.LANCZOS)
+                out = io.BytesIO()
+                rgb.save(out, format='JPEG', quality=82, optimize=True)
+                return out.getvalue(), 'image/jpeg', 'jpg'
+        except Exception:
+            return None
+    # Без Pillow проверяем сигнатуры JPEG / PNG / WEBP.
+    if raw.startswith(b'\xff\xd8\xff'):
+        return raw, 'image/jpeg', 'jpg'
+    if raw.startswith(b'\x89PNG\r\n\x1a\n'):
+        return raw, 'image/png', 'png'
+    if raw.startswith(b'RIFF') and raw[8:12] == b'WEBP':
+        return raw, 'image/webp', 'webp'
+    if ctype in _IMAGE_MIMES:
+        ext = _IMAGE_MIMES[ctype]
+        if ext != 'gif':
+            return raw, ctype, ext
+    return None
+
+
+def _discover_card_photos(card_url: str, ymaps_url: str = '') -> list[str]:
+    """Запасной поиск фото со страницы карточки 2GIS/Яндекс Карт, если в сохранённой записи их нет."""
+    found: list[str] = []
+    seen: set[str] = set()
+    for page_url in (card_url, ymaps_url):
+        u = (page_url or '').strip()
+        if not u:
+            continue
+        host = (urllib.parse.urlsplit(u).hostname or '').lower()
+        if not (host == '2gis.com' or host.endswith('.2gis.com') or host.endswith('.2gis.ru')
+                or host.endswith('.yandex.ru') or host.endswith('.yandex.com')):
+            continue
+        got = _safe_http_get(u, max_bytes=1_500_000, timeout=5)
+        if not got:
+            continue
+        body_bytes, _ = got
+        html_txt = body_bytes.decode('utf-8', errors='replace')
+        for m in re.finditer(r'(?:property=["\']og:image["\'][^>]+content=|content=["\'])(https://[^"\'>\s]+)', html_txt, re.I):
+            cand = m.group(1).strip()
+            if cand not in seen and ('photo.2gis' in cand or 'avatars.mds.yandex.net/get-' in cand):
+                seen.add(cand)
+                found.append(cand)
+        for m in re.finditer(r'https://(?:i\d+\.photo\.2gis\.com|avatars\.mds\.yandex\.net/get-(?:altay|sprav|vh))/[^\s"\'<>\\]+', html_txt):
+            cand = m.group(0).strip()
+            if cand not in seen and not cand.lower().endswith('.svg'):
+                seen.add(cand)
+                found.append(cand)
+                if len(found) >= _MAX_CARD_PHOTOS:
+                    return found
+    return found[:_MAX_CARD_PHOTOS]
+
+
+def _fetch_card_photos(photo_urls: list[str], limit: int = 4) -> list[dict]:
+    """Скачивает и нормализует до `limit` фотографий карточки в assets/photo-N.<ext>."""
+    assets: list[dict] = []
+    seen_urls: set[str] = set()
+    for raw_url in photo_urls:
+        if len(assets) >= limit:
+            break
+        u = str(raw_url or '').strip()
+        if not u or u in seen_urls:
+            continue
+        seen_urls.add(u)
+        got = _safe_http_get(u)
+        if not got:
+            continue
+        norm = _normalize_photo_bytes(*got)
+        if not norm:
+            continue
+        img_bytes, mime, ext = norm
+        idx = len(assets) + 1
+        fname = f'photo-{idx}.{ext}'
+        assets.append({
+            'filename': fname,
+            'rel_path': f'assets/{fname}',
+            'mime': mime,
+            'bytes': img_bytes,
+            'b64': base64.b64encode(img_bytes).decode('ascii'),
+            'source_url': u,
+        })
+    return assets
+
+
+def _inline_assets_html(html: str, assets: list[dict], max_total_bytes: int = 750_000) -> str:
+    """Заменяет относительные ссылки assets/photo-* на data-URI для автономных review.html и preview."""
+    if not html or not assets:
+        return html
+    out = html
+    used_bytes = 0
+    for asset in assets:
+        rel = asset.get('rel_path') or ''
+        b64 = asset.get('b64') or ''
+        mime = asset.get('mime') or 'image/jpeg'
+        if not rel or not b64:
+            continue
+        if used_bytes + len(b64) > max_total_bytes:
+            break
+        pat = re.compile(r'(?:\.?/)' + re.escape(rel) + r'|(?<![A-Za-z0-9_/-])' + re.escape(rel))
+        if pat.search(out):
+            data_uri = f'data:{mime};base64,{b64}'
+            out = pat.sub(lambda _m, uri=data_uri: uri, out)
+            used_bytes += len(b64)
+    return out
+
+
+def _normalize_asset_refs(html: str, assets: list[dict]) -> str:
+    """Приводит пути ./assets/photo-N.jpg и /assets/photo-N.jpg к единому assets/photo-N.jpg."""
+    if not html or not assets:
+        return html
+    out = html
+    for asset in assets:
+        rel = asset.get('rel_path') or ''
+        if not rel:
+            continue
+        out = re.sub(r'(["\'\(])\s*(?:\./|/)' + re.escape(rel), r'\1' + rel, out)
+    return out
 
 
 # ── 21st.dev: бесплатный поиск референсов-компонентов (metadata only) ─────────
@@ -923,24 +1156,53 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
         system += _EXTRA_PREFIX + '\n' + extra.strip()
     user_content = _build_user_content(provider, cfg, prompt, uploads, vision_ok)
 
-    if cfg['shape'] == 'anthropic':
-        body = {'model': model, 'max_tokens': int(max_tokens or 4096),
-                'system': system, 'messages': [{'role': 'user', 'content': user_content}]}
-    else:
-        body = {'model': model, 'max_tokens': int(max_tokens or 4096),
-                'temperature': float(temperature if temperature is not None else 0.7),
-                'messages': [{'role': 'system', 'content': system},
-                             {'role': 'user', 'content': user_content}]}
+    def _make_req_body(target_model: str, strip_temp: bool = False) -> dict:
+        if cfg['shape'] == 'anthropic':
+            return {'model': target_model, 'max_tokens': int(max_tokens or 4096),
+                    'system': system, 'messages': [{'role': 'user', 'content': user_content}]}
+        b: dict[str, Any] = {
+            'model': target_model,
+            'max_tokens': int(max_tokens or 4096),
+            'messages': [{'role': 'system', 'content': system},
+                         {'role': 'user', 'content': user_content}],
+        }
+        if not strip_temp and target_model not in _NO_TEMP_MODELS:
+            b['temperature'] = float(temperature if temperature is not None else 0.7)
         if via_proxy and task:
-            body['fracs_task'] = task   # прокси по метке копирайта/вычитки считает их как лёгкие задачи
+            b['fracs_task'] = task   # прокси по метке копирайта/вычитки считает их как лёгкие задачи
+        return b
 
     headers = _auth_headers(provider, cfg, api_key)
-    try:
-        r = requests.post(url, headers=headers, json=body, timeout=180)
-    except requests.RequestException as e:
+    direct_candidates = [model]
+    if provider == 'Fracs AI' and not via_proxy and not direct_cohere and model == _BEST_CODE_MODEL:
+        for fb in _FALLBACK_CODE_MODELS:
+            if fb not in direct_candidates:
+                direct_candidates.append(fb)
+
+    r = None
+    last_req_err: Exception | None = None
+    for cand_idx, cand_model in enumerate(direct_candidates):
+        body = _make_req_body(cand_model)
+        try:
+            r = requests.post(url, headers=headers, json=body, timeout=180)
+            if r.status_code == 400 and not via_proxy and 'temperature' in body and 'temperature' in (r.text or '').lower():
+                r = requests.post(url, headers=headers, json=_make_req_body(cand_model, strip_temp=True), timeout=180)
+        except requests.RequestException as e:
+            last_req_err = e
+            r = None
+            if cand_idx + 1 < len(direct_candidates):
+                continue
+            if provider == 'Fracs AI':
+                return {'ok': False, 'error': _FRACS_DOWN, 'ms': _ms(started), 'skipped_images': skipped}
+            return {'ok': False, 'error': f'network: {e}', 'ms': _ms(started), 'skipped_images': skipped}
+        if r.status_code < 400 or via_proxy or cand_idx + 1 >= len(direct_candidates):
+            break
+
+    if r is None:
         if provider == 'Fracs AI':
             return {'ok': False, 'error': _FRACS_DOWN, 'ms': _ms(started), 'skipped_images': skipped}
-        return {'ok': False, 'error': f'network: {e}', 'ms': _ms(started), 'skipped_images': skipped}
+        return {'ok': False, 'error': f'network: {last_req_err}', 'ms': _ms(started), 'skipped_images': skipped}
+
     if r.status_code >= 400 and provider == 'Fracs AI':
         # наружу — только «свои» сообщения Fracs (лимиты прокси), без деталей движка
         msg = _FRACS_DOWN
@@ -1511,6 +1773,10 @@ class AiJob:
     version: int = 0      # номер версии (1, 2, … — растёт при «Изменить макет»)
     is_edit: bool = False  # правка поверх предыдущего макета (бриф Cohere не пересобираем)
     brief: dict = field(default_factory=dict)   # арт-дирекшн и тексты от Cohere (конвейер Fracs AI)
+    photo_urls: list[str] = field(default_factory=list)
+    card_url: str = ''
+    ymaps_url: str = ''
+    assets: list[dict] = field(default_factory=list)
 
     def to_dict(self, base_url: str = '') -> dict:
         files = []
@@ -1631,7 +1897,9 @@ class AiAgentManager:
     def start(self, prompt: str, api_key: str, model: str, provider: str, extra: str = '',
               session_id: str = '', prev_job: str = '', base_url: str = '',
               temperature: float = 0.7, max_tokens: int = 4096,
-              style: str = '', key21st: str = '') -> dict:
+              style: str = '', key21st: str = '',
+              photos: list[str] | None = None,
+              card_url: str = '', ymaps_url: str = '') -> dict:
         self._sweep_jobs()
         # не больше 2 одновременных задач на программу (защита от «залпа» запросов)
         with self._lock:
@@ -1665,11 +1933,18 @@ class AiAgentManager:
                     'на тарифах PRO и Ultra.', 'pro_required': True}
         job_id = secrets.token_urlsafe(12)
         job_model = 'fracs-ai' if (provider or '') == 'Fracs AI' else (model or '')
+        clean_photo_urls = [str(u).strip() for u in (photos or [])
+                            if isinstance(u, str) and str(u).strip().startswith(('http://', 'https://'))][:_MAX_CARD_PHOTOS]
         job = AiJob(job_id=job_id, prompt=prompt or '', model=job_model,
-                    provider=provider or 'Z.ai')
+                    provider=provider or 'Z.ai', photo_urls=clean_photo_urls,
+                    card_url=(card_url or '').strip(), ymaps_url=(ymaps_url or '').strip())
         uploads = self.pop_uploads(session_id)
         if prev_job:
             prev = self.get(prev_job)
+            if prev and prev.assets:
+                job.assets = list(prev.assets)
+                if not job.photo_urls and prev.photo_urls:
+                    job.photo_urls = list(prev.photo_urls)
             if prev and prev.html and len(prev.html) > _MAX_PREV_HTML:
                 # раньше макет обрезался до 12К знаков посреди кода, и правки ломали страницу
                 self._log(job, 'Макет слишком большой для правок поверх — соберу заново '
@@ -1742,13 +2017,43 @@ class AiAgentManager:
                                   'не копируй чужой код и тексты):\n' + ref[:3000])
                 else:
                     self._log(job, '21st.dev: референсы не найдены — собираю без них.')
+            # ── Загрузка реальных фото бизнеса из карточки (2GIS / Яндекс Карты) ──
+            if not job.assets:
+                urls_to_fetch = list(job.photo_urls)
+                if len(urls_to_fetch) < 2 and (job.card_url or job.ymaps_url):
+                    discovered = _discover_card_photos(job.card_url, job.ymaps_url)
+                    for du in discovered:
+                        if du not in urls_to_fetch:
+                            urls_to_fetch.append(du)
+                if urls_to_fetch:
+                    self._log(job, f'Загружаю фотографии бизнеса ({len(urls_to_fetch)} шт.)…')
+                    job.assets = _fetch_card_photos(urls_to_fetch, limit=4)
+                    if job.assets:
+                        self._log(job, f'В макет добавлены реальные фото: '
+                                   + ', '.join(a['rel_path'] for a in job.assets) + '.')
+
+            llm_prompt = job.prompt
+            if job.assets:
+                photo_lines = [
+                    '\n\nРЕАЛЬНЫЕ ФОТО БИЗНЕСА ИЗ КАРТОЧКИ (файлы уже сохранены рядом с index.html — '
+                    'ОБЯЗАТЕЛЬНО используй их в вёрстке через <img>):'
+                ]
+                for idx_a, a in enumerate(job.assets):
+                    role_hint = 'главное фото для первого экрана (hero) или обложки' if idx_a == 0 else 'фото для блока «О компании» / интерьера / галереи'
+                    photo_lines.append(f'- {a["rel_path"]} ({role_hint})')
+                photo_lines.append(
+                    'Указывай в src ТОЛЬКО эти точные относительные пути (например src="assets/photo-1.jpg"), '
+                    'задавай object-fit:cover, нормальный aspect-ratio и осмысленный alt. Чужие URL не придумывай.'
+                )
+                llm_prompt = llm_prompt + '\n'.join(photo_lines)
+
             # ── конвейер Fracs AI: Cohere пишет тексты и арт-дирекшн, OpenRouter верстает ──
             use_pipe = _PIPELINE_ON and job.provider == 'Fracs AI'
             brief_block = ''
             if use_pipe and not job.is_edit:
                 self._set_stage(job, 'thinking', 'Пишу тексты и концепцию')
                 self._log(job, 'Редактор пишет тексты и подбирает палитру и шрифты под бизнес…')
-                br = _make_brief(job.prompt, extra, job.uploads)
+                br = _make_brief(llm_prompt, extra, job.uploads)
                 if br.get('ok'):
                     job.brief = br['brief']
                     brief_block = _brief_block(job.brief)
@@ -1764,7 +2069,7 @@ class AiAgentManager:
                               + ') — собираю без брифа.')
             self._set_stage(job, 'building', 'Собираю')
             self._log(job, 'Собираю вёрстку, стили и скрипты сайта…')
-            res = _call_llm(job.provider, api_key, job.model, job.prompt, extra,
+            res = _call_llm(job.provider, api_key, job.model, llm_prompt, extra,
                             base_url=base_url, uploads=job.uploads,
                             temperature=temperature, max_tokens=max_tokens,
                             style=style, brief_block=brief_block,
@@ -1784,6 +2089,7 @@ class AiAgentManager:
             self._set_stage(job, 'checking', 'Проверяю шедевр')
             self._log(job, f'Ответ получен за {res["ms"]} мс. Проверяю шедевр…')
             html = _extract_html(res['text'])
+            html = _normalize_asset_refs(html, job.assets)
             html, font_fixes = _fix_fonts(html)
             if font_fixes:
                 self._log(job, 'Шрифты без кириллицы заменены: ' + ', '.join(font_fixes) + '.')
@@ -1889,7 +2195,8 @@ class AiAgentManager:
         Именно эта страница открывается по QR. Не требует ffmpeg/playwright."""
         try:
             title, sub = business_parts(job.prompt)
-            html = render_review_html(title, sub, job.html)
+            review_site_html = _inline_assets_html(job.html, job.assets)
+            html = render_review_html(title, sub, review_site_html)
             d = (os.path.join(_SITES_DIR, job.site_slug) if job.site_url
                  else tempfile.mkdtemp(prefix='fracs_ai_rev_'))
             os.makedirs(d, exist_ok=True)
@@ -1929,14 +2236,22 @@ class AiAgentManager:
     def _build_zip(self, job: AiJob):
         d = tempfile.mkdtemp(prefix='fracs_ai_')
         zip_path = os.path.join(d, 'site.zip')
+        assets_note = ('assets/         — фотографии бизнеса, используемые в index.html.\n'
+                       if job.assets else '')
         readme = ('# Сайт, собранный AI-Агентом Fracs\n\n'
                   'index.html      — одностраничный сайт-визитка. Откройте в браузере или выложите\n'
                   '                  на статический хостинг (Vercel / Netlify / GitHub Pages).\n'
+                  + assets_note +
                   'review.html     — анимированный видеообзор сайта (его открывает QR из открытки).\n'
                   'postcard.png    — открытка с QR-кодом для заказчика.\n\n'
                   'Промт: ' + (job.prompt[:200] or '—') + '\n')
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
             z.writestr('index.html', job.html)
+            for asset in job.assets:
+                rel = asset.get('rel_path')
+                raw = asset.get('bytes')
+                if rel and raw:
+                    z.writestr(rel, raw)
             z.writestr('README.md', readme)
             if job.review_path and os.path.exists(job.review_path):
                 z.write(job.review_path, 'review.html')
@@ -2127,6 +2442,7 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             max_tokens = min(16384, max(4096, int(data.get('max_tokens', 16384))))
         except (TypeError, ValueError):
             max_tokens = 16384
+        photos = data.get('photos') if isinstance(data.get('photos'), list) else []
         res = mgr.start(prompt, api_key, model, provider,
                         extra=str(data.get('extra', '')).strip(),
                         session_id=str(data.get('session_id', '')).strip(),
@@ -2135,7 +2451,10 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
                         temperature=temperature, max_tokens=max_tokens,
                         style=str(data.get('style', '')).strip(),
                         key21st=str(data.get('key21st', '')).strip()
-                        or _21ST_KEY_ENV)
+                        or _21ST_KEY_ENV,
+                        photos=photos,
+                        card_url=str(data.get('card_url', '')).strip(),
+                        ymaps_url=str(data.get('ymaps_url', '')).strip())
         status = 403 if (not res.get('ok') and res.get('pro_required')) else 200
         return jsonify(res), status
 
@@ -2240,7 +2559,8 @@ def register(app, base_url: str = 'http://127.0.0.1:8666') -> None:
             return Response('Превью ещё не готово.', status=404, mimetype='text/plain')
         # HTML сгенерирован нейросетью/пользователем: изолируем origin (CSP sandbox
         # без allow-same-origin) — скрипты страницы не достучатся до /api/* программы.
-        resp = Response(job.html, mimetype='text/html; charset=utf-8')
+        preview_html = _inline_assets_html(job.html, job.assets) if job.assets else job.html
+        resp = Response(preview_html, mimetype='text/html; charset=utf-8')
         resp.headers['Content-Security-Policy'] = "sandbox allow-scripts allow-forms allow-popups"
         return resp
 
