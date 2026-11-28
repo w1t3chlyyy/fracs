@@ -295,7 +295,6 @@ const MODELS_NO_TEMP = new Set([
   'openai/gpt-5.6-terra-pro',
 ]);
 const MODELS_LOW_REASONING = new Set([
-  'anthropic/claude-sonnet-4',
   'anthropic/claude-sonnet-5.5',
   'openai/gpt-5.6-terra-pro',
 ]);
@@ -321,9 +320,13 @@ function buildFallbackModels(primaryModel: string, imageCount: number): string[]
     if (primaryModel === COHERE_MODEL) {
       list.push(FRACS_FAST_MODEL, 'glm-5.3-flash');
     } else if (primaryModel === FRACS_BUILD_MODEL) {
-      list.push(...(imageCount > 0
-        ? ['deepseek-v4.1-flash:1017', 'glm-5.3-flash', 'mistral-large-4']
-        : ['deepseek-v4-pro:0813', 'deepseek-v4.1-flash:1017', 'glm-5.3']));
+      // Если одновременно задан OpenRouter — ограничиваем Ollama 2 попытками, чтобы успеть перейти к OpenRouter.
+      const olFallbacks = config.openrouterApiKey
+        ? [imageCount > 0 ? 'deepseek-v4.1-flash:1017' : 'deepseek-v4-pro:0813']
+        : (imageCount > 0
+          ? ['deepseek-v4.1-flash:1017', 'glm-5.3-flash', 'mistral-large-4']
+          : ['deepseek-v4-pro:0813', 'deepseek-v4.1-flash:1017', 'glm-5.3']);
+      list.push(...olFallbacks);
     } else if (primaryModel === FRACS_FAST_MODEL) {
       list.push('glm-5.3-flash', 'gemma4:31b', 'minimax-m3.1-flash');
     }
@@ -335,8 +338,8 @@ function buildFallbackModels(primaryModel: string, imageCount: number): string[]
       list.push('deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku');
     } else {
       list.push(...(imageCount > 0
-        ? ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini']
-        : ['anthropic/claude-sonnet-4', 'anthropic/claude-3.5-sonnet', 'deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini']));
+        ? ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']
+        : ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']));
     }
   }
   return Array.from(new Set(list));
@@ -641,7 +644,8 @@ appRouter.post('/ai', h(async (req, res) => {
     });
 
     const candidates = buildFallbackModels(body.model, imageCount);
-    const deadline = Date.now() + 160_000;
+    const isVercel = Boolean(process.env.VERCEL);
+    const deadline = Date.now() + (isVercel ? 53_000 : 155_000);
     let okUpstream: { status: number; parsed: any; model: string } | null = null;
     let lastStatus = 502;
 
@@ -649,7 +653,10 @@ appRouter.post('/ai', h(async (req, res) => {
       const remaining = deadline - Date.now();
       if (remaining <= 3_000) break;
       const candidate = candidates[idx];
-      const timeoutMs = Math.min(remaining, idx === 0 ? 70_000 : 45_000);
+      const hasMore = idx + 1 < candidates.length;
+      const timeoutMs = isVercel
+        ? Math.min(remaining, idx === 0 && hasMore ? 32_000 : 20_000)
+        : Math.min(remaining, idx === 0 && hasMore ? 55_000 : 35_000);
       const attempts: Upstream[] = [];
       const u1 = resolveUpstream(body, false, candidate, false);
       if (u1) attempts.push(u1);
@@ -670,9 +677,10 @@ appRouter.post('/ai', h(async (req, res) => {
               rawText = await r.text();
             }
           }
-          // На HTTP 402 (нехватка кредитов под большой max_tokens) пробуем один раз с умеренным потолком.
-          if (r.status === 402 && (Number(route.body.max_tokens) || 0) > 4096) {
-            const capped = resolveUpstream({ ...body, max_tokens: 4096 }, route.via === 'openrouter' && candidate === COHERE_MODEL, candidate, true);
+          // На HTTP 402 не урезаем модель до 4096 токенов, пока есть более дешёвые фолбэки (4096 режет сайт до 1 блока).
+          // Понижаем лимит (8192) только на последнем кандидате, чтобы не оборвать верстку.
+          if (r.status === 402 && !hasMore && (Number(route.body.max_tokens) || 0) > 8192) {
+            const capped = resolveUpstream({ ...body, max_tokens: 8192 }, route.via === 'openrouter' && candidate === COHERE_MODEL, candidate, true);
             if (capped) {
               r = await callUpstream(capped, timeoutMs);
               rawText = await r.text();

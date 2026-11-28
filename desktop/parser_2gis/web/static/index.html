@@ -1929,7 +1929,7 @@
     extras.hidden=!(hasChips||hasActs);
   }
 
-  var STYLE_NAMES={auto:'«Цех» — авто',coffee:'«Обжарка» — кафе',medical:'«Доверие» — медицина',beauty:'«Латунь» — барбершоп',build:'«Бетон» — стройка/мебель',neutral:'«Люкс» — премиум'};
+  var STYLE_NAMES={auto:'«Цех» — авто',coffee:'«Обжарка» — кафе',medical:'«Доверие» — медицина',beauty:'«Латунь» — барбершоп',build:'«Бетон» — стройка/мебель',neutral:'«Студия» — минимализм'};
   var ICON={zip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/></svg>',
     png:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/></svg>',
     file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v5h5M6 3h8l5 5v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/></svg>',
@@ -2489,7 +2489,6 @@
         photos:(cm&&Array.isArray(cm.photos))?cm.photos:[],
         card_url:(cm&&cm.card_url)||'',
         ymaps_url:(cm&&cm.ymaps_url)||'',
-        key21st:ls('fracsAiKey21st'),
         base_url:ls('fracsAiBaseUrl'),
         temperature:parseFloat(ls('fracsAiTemp'))||0.7,
         max_tokens:parseInt(ls('fracsAiMaxTok'))||12000};
@@ -2564,7 +2563,8 @@
             return;
           }
           /* модель недоступна → фолбэк: по ключевым словам решаем, строить или ответить */
-          if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
+          var looksLikePureQ=/^\s*(?:почему|где|зачем|что\s+(?:за|такое|это)|как\s+так)\b/i.test(v)&&!/\b(?:сделай|создай|сгенерируй|собери|измени|поменяй|переделай|почини|добавь|убери|удали)\b/i.test(v);
+          if(!looksLikePureQ&&/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
             var fbEdit=Boolean(isEditingNow&&currentJob&&!/сайт\s+(для|под)\s+|лендинг\s+(для|под)\s+|новый сайт/i.test(v));
             var fbPrompt=fbEdit?v:(currentJob||forceNew?v:buildPromptFromThread(v));
             startAgent(fbPrompt,true,null,fbEdit);
@@ -2574,7 +2574,8 @@
         })
         .catch(function(e){
           setAiStage(null);
-          if(/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
+          var looksLikePureQ=/^\s*(?:почему|где|зачем|что\s+(?:за|такое|это)|как\s+так)\b/i.test(v)&&!/\b(?:сделай|создай|сгенерируй|собери|измени|поменяй|переделай|почини|добавь|убери|удали)\b/i.test(v);
+          if(!looksLikePureQ&&/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
             var fbEdit=Boolean(isEditingNow&&currentJob&&!/сайт\s+(для|под)\s+|лендинг\s+(для|под)\s+|новый сайт/i.test(v));
             var fbPrompt=fbEdit?v:(currentJob||forceNew?v:buildPromptFromThread(v));
             startAgent(fbPrompt,true,null,fbEdit);

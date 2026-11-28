@@ -505,15 +505,74 @@ def draw_postcard(png_path: str, target: str, title: str, subtitle: str = '') ->
 
 # ── Видеообзор: анимированная страница ────────────────────────────────────────
 
+_FALLBACK_REVIEW_SITE_CSS = (
+    '<style data-fracs-review-fallback="1">'
+    ':root{--bg:#f7f4ee;--surface:#fffdf9;--line:rgba(28,24,20,.12);--text:#1c1814;--muted:#685f56;--accent:#b4481e;--accent-contrast:#fff}'
+    '*{box-sizing:border-box}html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:400 16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif;overflow-x:hidden}'
+    'a{color:inherit;text-decoration:none}img,svg{max-width:100%;height:auto}'
+    'header,.topbar{border-bottom:1px solid var(--line);padding:16px 24px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px}'
+    'nav,.nav-links{display:flex;flex-wrap:wrap;gap:18px;align-items:center}'
+    'section{padding:clamp(48px,6vw,84px) clamp(18px,4vw,32px)}'
+    '.container,.wrap{width:100%;max-width:1180px;margin:0 auto;padding:0 clamp(18px,4vw,32px)}'
+    'h1,h2,h3{margin:0 0 12px;line-height:1.08;letter-spacing:-.02em}h1{font-size:clamp(2rem,4.8vw,3.6rem)}h2{font-size:clamp(1.5rem,3vw,2.3rem)}'
+    'p{margin:0 0 14px;color:var(--muted)}'
+    '.btn,button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:11px 22px;border-radius:8px;background:var(--accent);color:var(--accent-contrast);border:1px solid transparent;font:600 15px/1 inherit;cursor:pointer}'
+    '.hero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:32px;align-items:center}'
+    '.rowp{display:flex;align-items:baseline;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.rowp i{flex:1;border-bottom:1px dotted var(--line)}'
+    'footer,.footer{border-top:1px solid var(--line);padding:32px 24px;color:var(--muted);font-size:14px}'
+    '</style>'
+)
+
+_VISIBLE_GUARD_CSS = (
+    '<style data-fracs-review-vis="1">'
+    '.js .r,.r,.reveal,[data-reveal],[data-aos]{opacity:1!important;transform:none!important}'
+    '</style>'
+)
+
+
+def _has_usable_site_css(html: str) -> bool:
+    styles = re.findall(r'<style(?![^>]*data-fracs-(?:base|review-vis))[^>]*>([\s\S]*?)</style>', html or '', re.I)
+    if not styles:
+        return False
+    cleaned = re.sub(r'/\*[\s\S]*?\*/', '', '\n'.join(styles))
+    cleaned = re.sub(r'\s+', '', cleaned)
+    return len(cleaned) >= 60 and '{' in cleaned and '}' in cleaned
+
+
+def _heal_review_site_html(site_html: str) -> str:
+    out = site_html or ''
+    if re.search(r'<style\b', out, re.I) and not re.search(r'</style>', out, re.I):
+        if re.search(r'<body\b', out, re.I):
+            out = re.sub(r'(<body\b)', '</style>\n</head>\n\\1', out, count=1, flags=re.I)
+        else:
+            out += '\n</style>'
+    out = re.sub(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*href=["\'](?!https?://)[^"\']+["\'][^>]*>', '', out, flags=re.I)
+    if not _has_usable_site_css(out):
+        if re.search(r'</head>', out, re.I):
+            out = re.sub(r'</head>', _FALLBACK_REVIEW_SITE_CSS + '\n</head>', out, count=1, flags=re.I)
+        elif re.search(r'<head[^>]*>', out, re.I):
+            out = re.sub(r'(<head[^>]*>)', r'\1\n' + _FALLBACK_REVIEW_SITE_CSS, out, count=1, flags=re.I)
+        else:
+            out = _FALLBACK_REVIEW_SITE_CSS + out
+    if 'data-fracs-review-vis' not in out:
+        if re.search(r'</head>', out, re.I):
+            out = re.sub(r'</head>', _VISIBLE_GUARD_CSS + '\n</head>', out, count=1, flags=re.I)
+        else:
+            out = _VISIBLE_GUARD_CSS + out
+    return out
+
+
 def render_review_html(title: str, subtitle: str, site_html: str, date_str: str = '') -> str:
     """Самодостаточная HTML-страница видеообзора. Сайт встраивается через srcdoc,
     поэтому страница работает и локально, и на любом статическом хостинге."""
-    site_html = _inject_scroll_hook(site_html or '')
+    site_html = _inject_scroll_hook(_heal_review_site_html(site_html or ''))
     payload = (
         json.dumps(site_html, ensure_ascii=False)
         .replace('<', '\\u003c')
         .replace('>', '\\u003e')
         .replace('&', '\\u0026')
+        .replace('\u2028', '\\u2028')
+        .replace('\u2029', '\\u2029')
     )
     page = _REVIEW_TEMPLATE
     for k, v in (('__TITLE__', _html_esc(_quoted(title or 'Сайт'))),
@@ -541,7 +600,7 @@ _SCROLL_HOOK = (
     'window.scrollTo({top:y,behavior:"instant"});}});'
     'function showAll(){document.querySelectorAll(".r,.reveal,[data-reveal],[data-aos],section,main,.hero").forEach(function(el){'
     'if(getComputedStyle(el).opacity==="0"){el.classList.add("in","visible","is-visible","aos-animate");el.style.opacity="1";el.style.transform="none";}});}'
-    'setTimeout(showAll,350);setTimeout(showAll,950);'
+    'showAll();setTimeout(showAll,200);setTimeout(showAll,850);'
     '})();</script>'
 )
 
