@@ -240,7 +240,7 @@ const isOllamaActive = (): boolean => (
       ? false
       : Boolean(config.ollamaApiKey)
 );
-const hasAnyAiKey = (): boolean => Boolean(config.ollamaApiKey || config.openrouterApiKey || config.cohereApiKey || config.qwenApiKey);
+const hasAnyAiKey = (): boolean => Boolean(config.ollamaApiKey || config.openrouterApiKey || config.cohereApiKey || config.qwenApiKey || config.freeProviders.length);
 
 const COHERE_MODEL = 'command-a-03-2025';
 const FRACS_BUILD_MODEL = (process.env.FRACS_AI_BUILD_MODEL || (isOllamaActive() ? 'kimi-k2.7-code' : 'anthropic/claude-sonnet-4')).trim();
@@ -300,7 +300,8 @@ const MODELS_LOW_REASONING = new Set([
   'anthropic/claude-sonnet-5.5',
   'openai/gpt-5.6-terra-pro',
 ]);
-type Via = 'cohere' | 'openrouter' | 'ollama' | 'qwen';
+// 'cohere' | 'openrouter' | 'ollama' | 'qwen' | 'free:<id>' (бесплатные запасные провайдеры, у каждого свой circuit breaker)
+type Via = string;
 type Upstream = { url: string; key: string; body: any; via: Via; model: string };
 const isQwenModel = (m: string): boolean => m === config.qwenModel;
 
@@ -348,6 +349,9 @@ function buildFallbackModels(primaryModel: string, imageCount: number): string[]
     }
   }
   if (config.qwenApiKey) list.push(config.qwenModel);
+  // Бесплатные запасные провайдеры — в конец цепочки; без vision их пропускаем, если в запросе есть картинки.
+  for (const fp of config.freeProviders) if (imageCount === 0 || fp.vision) list.push(`free:${fp.id}`);
+  if (config.openrouterApiKey && imageCount === 0) list.push('free:orfree');
   return interleaveByProvider(Array.from(new Set(list)));
 }
 
@@ -407,7 +411,29 @@ function hasNonEmptyCompletion(parsed: any): boolean {
   return typeof ch?.text === 'string' && ch.text.trim().length > 0;
 }
 
+/** Бесплатный запасной провайдер: target = 'free:<id>' (или первый настроенный, если основных ключей нет). */
+function resolveFree(body: any, id?: string): Upstream | null {
+  if (id === 'orfree' && config.openrouterApiKey) {
+    const b: any = { ...body, model: config.openrouterFreeModel };
+    delete b.usage; delete b.reasoning;
+    b.max_tokens = Math.min(Number(b.max_tokens) || 8192, 8192);
+    return { url: config.openrouterUrl + '/chat/completions', key: config.openrouterApiKey, body: b, via: 'free:orfree', model: config.openrouterFreeModel };
+  }
+  const fp = id ? config.freeProviders.find((p) => p.id === id) : config.freeProviders[0];
+  if (!fp) return null;
+  const b: any = { ...body, model: fp.model };
+  delete b.usage; delete b.reasoning;   // расширения OpenRouter — остальные провайдеры их не знают
+  b.max_tokens = Math.min(Number(b.max_tokens) || fp.maxOut, fp.maxOut);
+  return { url: fp.url + '/chat/completions', key: fp.key, body: b, via: `free:${fp.id}`, model: fp.model };
+}
+
 function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: string, stripExtra = false): Upstream | null {
+  const target = overrideModel || body.model;
+  if (typeof target === 'string' && target.startsWith('free:')) return resolveFree(body, target.slice(5));
+  return resolveUpstreamCore(body, forceOpenRouter, overrideModel, stripExtra) || resolveFree(body);
+}
+
+function resolveUpstreamCore(body: any, forceOpenRouter = false, overrideModel?: string, stripExtra = false): Upstream | null {
   const target = overrideModel || body.model;
   if (isQwenModel(target)) {
     if (!config.qwenApiKey) return null;
@@ -466,7 +492,7 @@ function resolveUpstream(body: any, forceOpenRouter = false, overrideModel?: str
   return null;
 }
 const FRACS_TASKS = new Set(['copy', 'critique', 'build']);
-const priceOf = (model: string): [number, number] => AI_PRICE[model] || [1, 4];
+const priceOf = (model: string): [number, number] => (model.startsWith('free:') ? [0, 0] : AI_PRICE[model] || [1, 4]);
 const aiErr = (status: number, error: string, message: string, extra: object = {}): [number, any] => [status, { ok: false, error, message, ...extra }];
 
 interface AiComplexity {
@@ -865,7 +891,7 @@ appRouter.post('/ai', h(async (req, res) => {
           console.warn('[ai] пропускаю', route.via, '— провайдер недавно падал');
           continue;
         }
-        const canStream = route.via === 'openrouter' || route.via === 'ollama' || route.via === 'qwen';
+        const canStream = route.via === 'openrouter' || route.via === 'ollama' || route.via === 'qwen' || route.via.startsWith('free:');
         try {
           let resUp = await callUpstreamSmart(route, overallMs, Math.max(4_000, firstTokMs), canStream);
           // На HTTP 400/422 пробуем один раз без лишних параметров и с безопасным max_tokens <= 8192.

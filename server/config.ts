@@ -9,6 +9,31 @@ const vercelUrl = rawVercelHost ? `https://${rawVercelHost.replace(/^https?:\/\/
 
 const cleanToken = (v?: string) => (v || '').trim().replace(/^["']|["']$/g, '');
 
+/**
+ * Бесплатные OpenAI-совместимые провайдеры (без привязки банковской карты). Каждый включается сам,
+ * как только в окружении появляется его ключ, и работает как ЗАПАСНОЙ движок Fracs AI: если основной
+ * провайдер (например OpenRouter) ответил 402/401/429/5xx, запрос уходит дальше по списку.
+ * Порядок = приоритет. Модель можно заменить переменной <ID>_MODEL (бесплатные модели меняются).
+ */
+const FREE_DEFS: { id: string; keyEnv: string; url: string; model: string; maxOut: number; vision?: boolean }[] = [
+  { id: 'gemini',   keyEnv: 'GEMINI_API_KEY',   url: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash',          maxOut: 32768, vision: true },
+  { id: 'cerebras', keyEnv: 'CEREBRAS_API_KEY', url: 'https://api.cerebras.ai/v1',                              model: 'gpt-oss-120b',              maxOut: 16384 },
+  { id: 'groq',     keyEnv: 'GROQ_API_KEY',     url: 'https://api.groq.com/openai/v1',                          model: 'llama-3.3-70b-versatile',   maxOut: 8192 },
+  { id: 'mistral',  keyEnv: 'MISTRAL_API_KEY',  url: 'https://api.mistral.ai/v1',                               model: 'mistral-small-latest',      maxOut: 16384, vision: true },
+  { id: 'nvidia',   keyEnv: 'NVIDIA_API_KEY',   url: 'https://integrate.api.nvidia.com/v1',                     model: 'meta/llama-3.3-70b-instruct', maxOut: 8192 },
+  { id: 'sambanova', keyEnv: 'SAMBANOVA_API_KEY', url: 'https://api.sambanova.ai/v1',                          model: 'Meta-Llama-3.3-70B-Instruct', maxOut: 8192 },
+];
+const freeProviders = FREE_DEFS
+  .map((d) => ({
+    id: d.id,
+    key: cleanToken(process.env[d.keyEnv]),
+    url: (cleanToken(process.env[`${d.id.toUpperCase()}_BASE_URL`]) || d.url).replace(/\/$/, ''),
+    model: cleanToken(process.env[`${d.id.toUpperCase()}_MODEL`]) || d.model,
+    maxOut: d.maxOut,
+    vision: Boolean(d.vision),
+  }))
+  .filter((d) => d.key);
+
 export const config = {
   isProd,
   port,
@@ -45,6 +70,11 @@ export const config = {
   qwenApiKey: cleanToken(env.QWEN_API_KEY),
   qwenUrl: (cleanToken(env.QWEN_BASE_URL) || 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1').replace(/\/$/, ''),
   qwenModel: cleanToken(env.QWEN_MODEL) || 'qwen-plus-character',
+
+  // Бесплатные запасные провайдеры (Gemini, Cerebras, Groq, Mistral, NVIDIA, SambaNova) — см. FREE_DEFS выше.
+  freeProviders,
+  // Бесплатные :free-модели OpenRouter на том же ключе — работают даже при нулевом балансе (лимит ~50 запросов/сутки).
+  openrouterFreeModel: cleanToken(env.OPENROUTER_FREE_MODEL) || 'meta-llama/llama-3.3-70b-instruct:free',
 
   botToken: cleanToken(env.TELEGRAM_BOT_TOKEN),
   botUsername: cleanToken(env.TELEGRAM_BOT_USERNAME).replace(/^@/, ''),

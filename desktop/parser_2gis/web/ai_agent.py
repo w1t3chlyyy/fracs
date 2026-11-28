@@ -3097,7 +3097,10 @@ class AiAgentManager:
                 job.buy_url = str(res.get('buy_url') or '')
                 job.reset_at = int(res.get('reset_at') or 0)
                 why = _reasons_text(res)
-                self._log(job, f'Ошибка LLM: {job.error}' + (f' (причина: {why})' if why else ''))
+                # панели логов в интерфейсе больше нет — причину показываем в самом тексте ошибки
+                if why:
+                    job.error = f'{job.error} (причина: {why})'
+                self._log(job, f'Ошибка LLM: {job.error}')
                 return
             self._set_stage(job, 'checking', 'Проверяю шедевр')
             self._log(job, f'Ответ получен за {res["ms"]} мс. Проверяю шедевр…')

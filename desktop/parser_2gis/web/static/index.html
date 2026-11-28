@@ -374,52 +374,6 @@
   .ai-msg a{color:#ff8b4d;text-decoration:underline;text-underline-offset:3px}
   .ai-msg a:hover{color:#ffb085}
 
-  /* Светящиеся этапы и живые логи прямо внутри сообщения бота */
-  .ai-turn-progress{display:flex;flex-direction:column;gap:8px;margin-top:2px;
-    padding:10px 12px;border-radius:12px;
-    background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,.012));
-    border:1px solid rgba(255,255,255,.08);transition:border-color .25s,box-shadow .25s}
-  .ai-msg.bot.is-working .ai-turn-progress{border-color:rgba(242,101,34,.34);
-    box-shadow:0 0 24px rgba(242,101,34,.08),inset 0 1px 0 rgba(255,160,100,.08)}
-  .ai-msg.bot.is-done .ai-turn-progress{border-color:rgba(52,211,153,.22)}
-  .ai-msg.bot.is-failed .ai-turn-progress{border-color:rgba(248,113,113,.32)}
-  .ai-turn-progress[hidden]{display:none}
-  .ai-turn-stages{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-  .ai-turn-stage{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;
-    padding:4px 9px;border-radius:7px;font-size:11.5px;font-weight:600;
-    color:#6b6b76;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);
-    transition:color .22s,border-color .22s,background .22s,box-shadow .22s}
-  .ai-turn-stage .st-dot{width:6px;height:6px;border-radius:50%;background:#4a4a55;flex:none;
-    transition:background .22s,box-shadow .22s}
-  .ai-turn-stage.is-active{color:#fff3ea;border-color:rgba(242,101,34,.75);
-    background:linear-gradient(135deg,rgba(242,101,34,.26),rgba(255,139,77,.12));
-    box-shadow:0 0 14px rgba(242,101,34,.36),inset 0 0 10px rgba(242,101,34,.14);
-    text-shadow:0 0 10px rgba(255,166,107,.55)}
-  .ai-turn-stage.is-active::after{content:"";position:absolute;inset:0;
-    background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.22) 50%,transparent 75%);
-    transform:translateX(-120%);animation:aiStageSheen 2.1s ease-in-out infinite}
-  .ai-turn-stage.is-active .st-dot{background:#ff9c58;box-shadow:0 0 8px #ff8b4d;
-    animation:aiMarkPulse 1.05s ease-in-out infinite}
-  .ai-turn-stage.is-done{color:#6ee7b7;border-color:rgba(52,211,153,.32);
-    background:rgba(52,211,153,.09);box-shadow:0 0 10px rgba(52,211,153,.1)}
-  .ai-turn-stage.is-done .st-dot{background:#34d399;box-shadow:0 0 6px rgba(52,211,153,.6)}
-  .ai-turn-stage.is-error{color:#fecaca;border-color:rgba(248,113,113,.55);
-    background:rgba(248,113,113,.13);box-shadow:0 0 12px rgba(248,113,113,.2)}
-  .ai-turn-stage.is-error .st-dot{background:#f87171;box-shadow:0 0 6px rgba(248,113,113,.7)}
-  .ai-turn-logs{display:flex;flex-direction:column;gap:4px;max-height:132px;overflow-y:auto;
-    padding-top:6px;border-top:1px dashed rgba(255,255,255,.07)}
-  .ai-turn-logs:empty{display:none}
-  .ai-turn-log-line{display:flex;align-items:baseline;gap:7px;font-size:12px;line-height:1.45;color:#858590}
-  .ai-turn-log-line::before{content:"›";color:#52525c;flex:none;font-weight:700}
-  .ai-turn-log-line.is-latest{color:#ffd5b8;text-shadow:0 0 10px rgba(242,101,34,.28)}
-  .ai-turn-log-line.is-latest::before{color:#ff8b4d}
-  .ai-turn-log-details{border-top:1px dashed rgba(255,255,255,.07);padding-top:6px}
-  .ai-turn-log-details summary{cursor:pointer;font-size:11.5px;font-weight:600;color:#8e8e98;
-    list-style:none;user-select:none;display:inline-flex;align-items:center;gap:6px}
-  .ai-turn-log-details summary::-webkit-details-marker{display:none}
-  .ai-turn-log-details summary::before{content:"▸";color:#71717a;transition:transform .15s}
-  .ai-turn-log-details[open] summary::before{transform:rotate(90deg)}
-  .ai-turn-log-details .ai-turn-logs{border-top:none;padding-top:6px;max-height:180px}
   .ai-turn-error{font-size:13px;line-height:1.5;color:#fca5a5;padding-top:2px}
   .ai-turn-error:empty{display:none}
   @keyframes aiMarkPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.85)}}
@@ -1914,19 +1868,10 @@
     if(cls==='bot'){
       var who=(meta&&meta.who)||'Fracs AI';
       var traceText=(meta&&meta.trace)||'';
-      var showProgress=Boolean(meta&&meta.progress);
-      var stageTags=STAGE_ORDER.map(function(st){
-        return '<span class="ai-turn-stage" data-stage="'+st+'"><span class="st-dot"></span><span data-i18n="stage_'+st+'">'+esc(stageLabel(st))+'</span></span>';
-      }).join('');
       msg.innerHTML=
         '<div class="ai-turn-head"><span class="ai-turn-mark"></span><span class="ai-turn-who">'+esc(who)+'</span>'+
         '<span class="ai-turn-trace">'+(traceText?('· '+esc(traceText)):'')+'</span></div>'+
         '<div class="ai-turn-body">'+(text?linkifySafe(text):'')+'</div>'+
-        '<div class="ai-turn-progress"'+(showProgress?'':' hidden')+'>'+
-          '<div class="ai-turn-stages">'+stageTags+'</div>'+
-          '<div class="ai-turn-logs"></div>'+
-          '<details class="ai-turn-log-details" hidden><summary></summary><div class="ai-turn-logs"></div></details>'+
-        '</div>'+
         '<div class="ai-turn-error"></div>'+
         '<div class="ai-turn-actions"'+(meta&&meta.actions&&meta.actions.length?'':' hidden')+'>'+renderBotActionsHtml(meta&&meta.actions)+'</div>';
     }else if(cls==='sys'){
@@ -2050,7 +1995,7 @@
       trace:'Ошибка',
       stage:curStage,
       collapseLogs:false,
-      error:'',   // красную плашку не показываем: статус «Ошибка» виден у названия, причина — в логах шага
+      error:errText||'',   // панели этапов/логов больше нет — причину показываем текстом под названием
       actions:actions
     });
     activeBotTurn=null;
