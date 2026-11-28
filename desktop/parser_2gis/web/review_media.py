@@ -194,6 +194,39 @@ def _clean_brand_from_html(html: str) -> str:
     return ''
 
 
+_EDIT_COMPLAINT_RE = re.compile(
+    r'\b(?:не\s+прогружа|не\s+загружа|не\s+работа|сломал|биты[ей]|ошибк|исправ|поправ|измен|передел|замен|обнов|убер|удал|добав|сделай\s+(?:шире|уже|светлее|темнее|крупнее|мельче))',
+    re.I,
+)
+
+_CITY_PREP_MAP = {
+    'москве': 'Москва', 'санкт-петербурге': 'Санкт-Петербург', 'петербурге': 'Петербург',
+    'питере': 'Санкт-Петербург', 'казани': 'Казань', 'екатеринбурге': 'Екатеринбург',
+    'новосибирске': 'Новосибирск', 'краснодаре': 'Краснодар', 'сочи': 'Сочи',
+    'нижнем новгороде': 'Нижний Новгород', 'ростове-на-дону': 'Ростов-на-Дону',
+    'самаре': 'Самара', 'уфе': 'Уфа', 'перми': 'Пермь', 'воронеже': 'Воронеж',
+    'волгограде': 'Волгоград', 'челябинске': 'Челябинск', 'омске': 'Омск',
+    'тюмени': 'Тюмень', 'калининграде': 'Калининград', 'владивостоке': 'Владивосток',
+    'иркутске': 'Иркутск', 'томске': 'Томск', 'туле': 'Тула', 'рязани': 'Рязань',
+    'ярославле': 'Ярославль', 'саратове': 'Саратов', 'барнауле': 'Барнаул',
+    'хабаровске': 'Хабаровск', 'кемерове': 'Кемерово', 'астрахани': 'Астрахань',
+    'ставрополе': 'Ставрополь', 'белгороде': 'Белгород', 'калуге': 'Калуга',
+    'твери': 'Тверь', 'пензе': 'Пенза', 'кирове': 'Киров', 'липецке': 'Липецк',
+    'курске': 'Курск', 'красноярске': 'Красноярск', 'ижевске': 'Ижевск',
+    'ульяновске': 'Ульяновск', 'оренбурге': 'Оренбург', 'тольятти': 'Тольятти',
+}
+
+
+def _norm_city_name(raw_city: str) -> str:
+    c = (raw_city or '').strip()
+    if not c:
+        return ''
+    mapped = _CITY_PREP_MAP.get(c.lower())
+    if mapped:
+        return mapped
+    return c
+
+
 def business_parts(prompt: str, html: str = '', brief: dict | None = None) -> tuple[str, str]:
     """(название, рубрика) для открытки и видеообзора."""
     prompt = prompt or ''
@@ -202,12 +235,12 @@ def business_parts(prompt: str, html: str = '', brief: dict | None = None) -> tu
     r = re.search(r'^Рубрики:\s*(.+)$', prompt, re.M)
     rub = r.group(1).split(',')[0].strip().lower() if r else ''
     city_m = re.search(r'^Город:\s*(.+)$', prompt, re.M)
-    city = city_m.group(1).strip() if city_m else ''
+    city = _norm_city_name(city_m.group(1).strip() if city_m else '')
 
     if card_name:
         name = card_name
         if not rub and city:
-            rub = city.lower()
+            rub = city
         elif not rub and len(name) > 26 and len(name.split()) > 1:
             words = name.split()
             name, rub = words[0], ' '.join(words[1:]).lower()
@@ -224,54 +257,75 @@ def business_parts(prompt: str, html: str = '', brief: dict | None = None) -> tu
         break
 
     cleaned = _strip_prompt_lead(first)
+    is_complaint = bool(_EDIT_COMPLAINT_RE.search(first))
     quoted_m = re.search(r'[«"]([^«"]{2,36})[»"]', first)
     cat_title, cat_sub = _normalize_category_phrase(cleaned or first)
 
     if not city:
         cm = _CITY_IN_RE.search(first)
-        if cm and cm.group(1).lower() not in ('стиле', 'тему', 'формате', 'цветах', 'тонах'):
-            city = cm.group(1)
+        if cm and cm.group(1).lower() not in ('стиле', 'тему', 'формате', 'цветах', 'тонах', 'редакции'):
+            city = _norm_city_name(cm.group(1))
 
-    if quoted_m:
+    if quoted_m and not is_complaint:
         name = quoted_m.group(1).strip()
         if not rub:
-            rub = (cat_title.lower() if cat_title else '') or (city.lower() if city else '')
+            rub = (cat_title.lower() if cat_title else '') or city
     elif cat_title:
         html_brand = _clean_brand_from_html(html)
         if html_brand and cat_title.lower() not in html_brand.lower() and len(html_brand) <= 26:
             name = html_brand
-            rub = cat_title.lower()
+            rub = f'{city} · {cat_title.lower()}' if city else cat_title.lower()
         else:
             name = cat_title
             if city:
-                rub = f'{city.lower()} · {cat_sub}' if cat_sub and len(city) + len(cat_sub) <= 30 else city.lower()
+                rub = f'{city} · {cat_sub}' if cat_sub and len(city) + len(cat_sub) <= 30 else city
             elif 'прайс' in first.lower():
                 rub = 'прайс-лист и услуги'
             else:
                 rub = cat_sub
     else:
         html_brand = _clean_brand_from_html(html)
-        core = re.split(
-            r'[,;]|\s+(?:с|со|без|в\s+стиле|под\s+ключ|чтобы|где|как|и\s+блоком|и\s+формой|и\s+прайсом)\b',
-            cleaned,
-            maxsplit=1,
-            flags=re.I,
-        )[0].strip(' .«»"\':,-')
-        words = core.split()
-        if html_brand:
-            name = html_brand
-            rub = (city.lower() if city else ' '.join(words[:3]).lower())
-        elif len(words) > 3:
-            name = ' '.join(words[:2])
-            rub = city.lower() if city else ' '.join(words[2:5]).lower()
+        if is_complaint:
+            name = html_brand or 'Сайт'
+            rub = city or ''
         else:
-            name = core or 'Сайт'
-            rub = city.lower() if city else ''
+            core = re.split(
+                r'[,;]|\s+(?:с|со|без|в\s+стиле|под\s+ключ|чтобы|где|как|и\s+блоком|и\s+формой|и\s+прайсом)\b',
+                cleaned,
+                maxsplit=1,
+                flags=re.I,
+            )[0].strip(' .«»"\':,-')
+            words = core.split()
+            if html_brand:
+                name = html_brand
+                rub = city or (' '.join(words[:3]).lower() if words else '')
+            elif len(words) > 3:
+                name = ' '.join(words[:2])
+                rub = city or ' '.join(words[2:5]).lower()
+            else:
+                name = core or 'Сайт'
+                rub = city or ''
 
     if not rub and isinstance(brief, dict):
         eyebrow = str((brief.get('hero') or {}).get('eyebrow') or '').strip()
         if eyebrow and len(eyebrow) <= 32 and eyebrow.lower() != name.lower():
             rub = eyebrow.lower()
+        elif not rub:
+            cat_b, sub_b = _normalize_category_phrase(str(brief.get('positioning') or ''))
+            if sub_b:
+                rub = sub_b
+            elif cat_b and cat_b.lower() != name.lower():
+                rub = cat_b.lower()
+
+    if not rub and is_complaint:
+        probe = name
+        if html:
+            h1_m = re.search(r'<h1[^>]*>([^<]{3,60})</h1>', html, re.I)
+            if h1_m:
+                probe += ' ' + re.sub(r'\s+', ' ', h1_m.group(1)).strip()
+        cat_h, sub_h = _normalize_category_phrase(probe)
+        if sub_h:
+            rub = sub_h
 
     if name and name[0].islower():
         name = name[0].upper() + name[1:]
@@ -300,8 +354,14 @@ def _background(W, H):
     for y in range(sh):
         t = y / sh
         k = max(0.0, (t - 0.38) / 0.62) ** 1.7          # свечение начинается ниже середины
+        fade_top = max(0.0, 1.0 - t * 2.0)              # плавно сходит в 0 к середине без полосы
         for x in range(sw):
-            px[x, y] = (int(120 * k) + (int(26 * (x / sw) * (1 - t)) if t < 0.5 else 0), int(52 * k) + (int(11 * (x / sw) * (1 - t)) if t < 0.5 else 0), int(22 * k) + (int(4 * (x / sw) * (1 - t)) if t < 0.5 else 0))
+            xr = x / sw
+            px[x, y] = (
+                int(120 * k) + int(22 * xr * fade_top),
+                int(52 * k) + int(9 * xr * fade_top),
+                int(22 * k) + int(4 * xr * fade_top),
+            )
     glow = Image.new('L', (sw, sh), 0)
     gd = ImageDraw.Draw(glow)
     # нижнее левое и нижнее правое «солнце», как на референсе
@@ -365,9 +425,9 @@ def draw_postcard(png_path: str, target: str, title: str, subtitle: str = '') ->
                     continue
                 x0, y0 = ox + c * mod, oy + r * mod
                 # «вырезанный» QR: модули берут цвет фона макета (тёмный → медный).
-                # Затемняем в 0.55, чтобы контраст к белому остался ≥ 7:1 — сканируется.
+                # Затемняем в 0.42, чтобы контраст к белому оставался высоким и считывался любой камерой.
                 br, bgc, bb = bg.getpixel((x0 + mod // 2, y0 + mod // 2))
-                col = (int(br * 0.55), int(bgc * 0.55), int(bb * 0.55))
+                col = (int(br * 0.42), int(bgc * 0.42), int(bb * 0.42))
                 d.rectangle([x0, y0, x0 + mod - 1, y0 + mod - 1], fill=col)
 
     # ── текст справа ──
@@ -412,7 +472,7 @@ def draw_postcard(png_path: str, target: str, title: str, subtitle: str = '') ->
 
     cy = 442                                           # центр блока = центр QR
     desc_f = load_font(36, 'regular')
-    desc = 'Чтобы посмотреть демо-макет сайта - отсканируйте QR-Код'
+    desc = 'Чтобы посмотреть демо-макет сайта — отсканируйте QR-код'
     lines, line = [], ''
     for w in desc.split():
         cand = (line + ' ' + w).strip()
@@ -539,36 +599,39 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
 .land .hero .cap{font-size:38px}.port .hero .cap{font-size:34px}
 .hero .line{height:5px;background:var(--o);border-radius:3px;margin-bottom:46px;width:0}
 .hero .date{position:absolute;bottom:70px;left:0;right:0;font-size:26px;color:#8a7468}
+.port .hero .date{bottom:260px}
 /* окно браузера и телефон */
 .dev{position:absolute;left:50%;top:50%;will-change:transform,opacity}
 .browser{background:#15110f;border-radius:26px;box-shadow:0 60px 140px rgba(0,0,0,.65),0 0 0 2px rgba(255,255,255,.08);overflow:hidden}
 .land .browser{width:1440px;height:810px;margin:-500px 0 0 -720px}
-.port .browser{width:980px;height:640px;margin:-420px 0 0 -490px}
+.port .browser{width:980px;height:660px;margin:-510px 0 0 -490px}
 .bar{height:56px;display:flex;align-items:center;gap:10px;padding:0 22px;background:#211a16}
 .bar i{width:14px;height:14px;border-radius:50%;background:#4a3d36}.bar i:nth-child(1){background:#ff5f57}.bar i:nth-child(2){background:#febc2e}.bar i:nth-child(3){background:#28c840}
 .bar b{margin-left:18px;flex:1;max-width:560px;height:30px;border-radius:15px;background:#0f0b09;color:#9b8579;font:500 15px/30px inherit;font-family:inherit;text-align:center}
-.view{position:relative;overflow:hidden;background:#111}
-.land .view{height:754px}.port .view{height:584px}
-.view iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#111}
+.view{position:relative;overflow:hidden;background:#fff}
+.land .view{height:754px}.port .view{height:604px}
+.view iframe{position:absolute;left:0;top:0;border:0;transform-origin:0 0;background:#fff}
 .phone{background:#0d0a09;border-radius:78px;padding:20px;box-shadow:0 60px 140px rgba(0,0,0,.7),0 0 0 3px #3a2f29,inset 0 0 0 2px #1d1612}
 .land .phone{width:390px;height:810px;margin:-500px 0 0 -195px}
-.port .phone{width:520px;height:1060px;margin:-560px 0 0 -260px}
+.port .phone{width:520px;height:1020px;margin:-630px 0 0 -260px}
 .phone .view{width:100%;height:100%;border-radius:58px}
 .phone .notch{position:absolute;top:30px;left:50%;width:150px;height:34px;margin-left:-75px;background:#0d0a09;border-radius:20px;z-index:3}
-.tag{position:absolute;left:0;right:0;text-align:center;color:#d8c3b8;font-weight:500;letter-spacing:.02em}
-.land .tag{bottom:64px;font-size:34px}.port .tag{bottom:90px;font-size:38px}
+.tag{position:absolute;left:0;right:0;text-align:center;color:#d8c3b8;font-weight:500;letter-spacing:.02em;padding:0 48px;line-height:1.25}
+.land .tag{bottom:64px;font-size:34px}
+.port #s2 .tag{top:1180px;bottom:auto;font-size:40px}
+.port #s3 .tag{top:1410px;bottom:auto;font-size:40px}
 .tag span{color:var(--o)}
 /* управление и интерактивный просмотр */
-#ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:14px 18px calc(14px + env(safe-area-inset-bottom,0px));display:flex;gap:12px;align-items:center;opacity:1;transition:opacity .4s;background:linear-gradient(transparent,rgba(0,0,0,.7))}
+#ui{position:fixed;left:0;right:0;bottom:0;z-index:10;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:12px;align-items:center;opacity:1;transition:opacity .4s;background:linear-gradient(transparent,rgba(0,0,0,.82) 32%);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 #ui.hide{opacity:0;pointer-events:none}
-#pb{width:44px;height:44px;flex:none;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:16px;cursor:pointer}
+#pb{width:42px;height:42px;flex:none;border-radius:50%;border:0;background:rgba(255,255,255,.16);color:#fff;font-size:15px;cursor:pointer}
 #track{flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,.22);overflow:hidden}#fill{height:100%;width:0;background:var(--o)}
-#open-site{flex:none;height:40px;padding:0 16px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:var(--o);color:#fff;font:600 13px/1 inherit;cursor:pointer;white-space:nowrap}
-#live{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;background:#111}
+#open-site{flex:none;height:38px;padding:0 15px;border-radius:999px;border:1px solid rgba(255,255,255,.2);background:var(--o);color:#fff;font:600 13px/1 inherit;cursor:pointer;white-space:nowrap}
+#live{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;background:#fff}
 #live.open{display:flex}
-#live-bar{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 14px;background:#171311;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;color:#d8c3b8}
+#live-bar{min-height:calc(48px + env(safe-area-inset-top,0px));flex:none;display:flex;align-items:center;justify-content:space-between;padding:env(safe-area-inset-top,0px) 14px 0;background:#171311;border-bottom:1px solid rgba(255,255,255,.1);font-size:13px;color:#d8c3b8}
 #live-close{height:32px;padding:0 14px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.1);color:#fff;font:500 13px/1 inherit;cursor:pointer}
-#f-live{flex:1;width:100%;border:0;background:#111}
+#f-live{flex:1;width:100%;border:0;background:#fff}
 .rec #ui,.rec #live{display:none!important}
 #s1{opacity:1}/* фолбэк: без JS интро видно статикой */
 </style></head>
@@ -592,7 +655,7 @@ html,body{height:100%;background:var(--bg);overflow:hidden;font-family:"Inter","
   </section>
   <section class="scene hero" id="s4">
     <div class="line" id="o-line"></div>
-    <div class="name" id="o-name" style="font-size:150px">Ваш сайт готов</div>
+    <div class="name" id="o-name">Ваш сайт готов</div>
     <div class="cap" id="o-cap">__TITLE__ __SUB__</div>
   </section>
 </div></div>
@@ -726,6 +789,8 @@ $('live-close').addEventListener('click',function(){
 stage.addEventListener('click',function(){ $('ui').classList.toggle('hide'); });
 addEventListener('keydown',function(e){if(e.code==='Space'){e.preventDefault();$('pb').click();}});
 addEventListener('resize',fit);
+addEventListener('orientationchange',function(){setTimeout(fit,120);});
+if(window.visualViewport)window.visualViewport.addEventListener('resize',fit);
 try{setup(fd);setup(fp);fit();}catch(e){}
 setTimeout(function(){$('ui').classList.add('hide')},7000);
 requestAnimationFrame(loop);

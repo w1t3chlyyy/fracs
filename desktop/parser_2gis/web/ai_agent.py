@@ -361,13 +361,13 @@ TYPO_RULES = (
 # ВАЖНО: первая строка — маркер. Сервер (appRoutes.ts) видит его и НЕ добавляет свой
 # дизайн-промт: раньше модель получала два системных промта с противоречиями.
 _SYSTEM_PROMPT = (
-    'DESIGN_SYSTEM_VERSION: client-2026-11-28.2\n'
+    'DESIGN_SYSTEM_VERSION: client-2026-11-28.3\n'
     'Ты — арт-директор и senior фронтенд-разработчик веб-студии. Собираешь сайт-визитку локального '
-    'бизнеса ОДНИМ самодостаточным HTML-файлом. Планка — дорогая авторская студийная вёрстка, '
+    'бизнеса ОДНИМ самодостаным HTML-файлом. Планка — дорогая авторская студийная вёрстка, '
     'где каждый сайт ощущается спроектированным именно под этот бренд, без шаблонного конструктора.\n'
     '\n'
     'ИСТОЧНИКИ (по приоритету):\n'
-    '1. Требования пользователя в конце промта — главнее всего.\n'
+    '1. Требования пользователя в конце промта — главнее всего (включая отрицательные: «без контактов», «без формы», «без цен», «без FAQ» — исключай такие блоки и пункты меню полностью!).\n'
     '2. Блок «АРТ-ДИРЕКШН И ТЕКСТЫ», если он есть: палитра, шрифты, архетип и тексты — оттуда; '
     'тексты вставляй ДОСЛОВНО (можно чуть сжать, если не влезает, но не переписывать).\n'
     '3. Данные карточки бизнеса из задания — единственный источник фактов.\n'
@@ -378,41 +378,39 @@ _SYSTEM_PROMPT = (
     'Выдуманные цены, годы работы, число клиентов, сертификаты, «№1», фейковые отзывы, часы работы — ЗАПРЕЩЕНЫ. '
     'Если пользователь сам попросил прайс или гарантию без точных цифр — описывай категории услуг и порядок расчёта '
     'без выдуманных рублей и процентов.\n'
-    '— Нет цифр/данных — не делай полосу статов (.stats). Нет точных цен — блок «Как узнать стоимость» с кнопкой связи.\n'
+    '— Нет цифр/данных — не делай полосу статов (.stats). Нет точных цен — не выдумывай рубли и проценты.\n'
     '— Никаких скобочных заглушек вида [УТОЧНИТЬ] или TODO.\n'
     '\n'
     'АРХИТЕКТУРА CSS И ВЁРСТКИ (КРИТИЧНО — НИКАКИХ ШАБЛОННЫХ КЛОНОВ):\n'
     '— НЕ копируй один и тот же конвейер из 8 секций на каждый сайт! Собирай 4–5 выразительных, '
     'содержательных секций по выбранному АРХЕТИПУ (например: кофейне/пекарне не нужны надуманные FAQ и '
-    'сухая таблица статов, ей ближе меню-строки, живые фото и приглашение зайти; клинике или автосервису '
+    'сухая таблица статов, ей ближе меню-строки, живой ритм типографики и раздел о подходе; клинике или автосервису '
     'подходят шаги приёма, направления и короткий FAQ).\n'
     '— Все секции (<header>, <section>, <footer>) ОБЯЗАНЫ иметь внутренний контейнер .container '
     '(max-width:1180px; margin:0 auto; padding:0 clamp(18px,4vw,32px)). Ни один заголовок, абзац, список '
     'или CTA не имеет права прилипать к левому краю экрана (x=0).\n'
     '— Обязательно пиши ПОЛНЫЙ CSS в <style> для КАЖДОГО класса и КАЖДОЙ секции до </body>. '
-    'Не бросай стили на полпути к низу страницы!\n'
+    'Не бросай стили на полпути к низу страницы и не заменяй их комментариями /* ... */!\n'
     '— Если на странице есть <details>/<summary> (FAQ), ВСЕГДА стилизуй: summary{list-style:none} и '
     'summary::-webkit-details-marker{display:none}, padding:20px 0, border-bottom:1px solid var(--line).\n'
     '— В CTA-секции избегай одинакового кислотного баннера во всю ширину на каждом сайте: чередуй '
-    'спокойные сплит-блоки контактов, тёмные/светлые редакционные карточки и аккуратные приглашения с адресом.\n'
-    '— Липкая шапка (.topbar): строго 1 строка из 3 зон (название слева · 3–4 ссылки меню · 1 кнопка действия) '
+    'спокойные сплит-блоки, тёмные/светлые редакционные карточки и аккуратные приглашения (а если просили «без контактов» — завершай меню/историей/подвалом без контактного блока).\n'
+    '— Липкая шапка (.topbar): строго 1 строка из 3 зон (название слева · 2–4 ссылки на реальные секции страницы · 1 кнопка действия, либо без кнопки, если она ведёт в отсутствующие контакты) '
     'и кнопка-бургер на мобиле (<760px).\n'
     '\n'
-    'ФОТОГРАФИИ БИЗНЕСА (СТРОГИЕ ПРАВИЛА — БЕЗ КАШИ И ОБРЕЗКИ):\n'
-    '— Если в задании даны файлы assets/photo-*.jpg — ОБЯЗАТЕЛЬНО встрой их точными путями src="assets/photo-1.jpg" '
+    'ФОТОГРАФИИ БИЗНЕСА (СТРОГИЕ ПРАВИЛА — БЕЗ БИТЫХ КАРТИНОК):\n'
+    '— Если в задании ДАНЫ реальные файлы assets/photo-*.jpg — ОБЯЗАТЕЛЬНО встрой их точными путями src="assets/photo-1.jpg" '
     '(внешние стоковые URL запрещены!).\n'
-    '— РЕКОМЕНДУЕМЫЙ ПО УМОЛЧАНИЮ СПОСОБ ДЛЯ ГЕРОЯ: выделенный медиа-слот БЕЗ текста поверх фото — '
-    'сплит .hero-grid (2 колонки: слева текст на чистом фоне var(--bg), справа <figure class="hero-media">'
+    '— Если файлы assets/photo-*.jpg в задании НЕ ДАНЫ (и пользователь не прикрепил фото): СТРОГО ЗАПРЕЩЕНО писать <img src="assets/..."> '
+    'или придумывать внешние URL (unsplash, pexels и т.д.) — браузер покажет битую иконку! В этом случае строй выразительный '
+    'типографический/редакционный макет: в правом слоте героя размести стильную редакционную карту / выноску / меню дня или авторский инлайн-SVG (<svg viewBox="...">).\n'
+    '— Когда фото ДАНЫ: используй сплит .hero-grid (слева текст на чистом фоне var(--bg), справа <figure class="hero-media">'
     '<img src="assets/photo-1.jpg" alt="..."></figure> с width:100%; height:100%; min-height:340px; max-height:540px; '
-    'aspect-ratio:4/3; object-fit:cover; display:block; border-radius:var(--radius-media,14px)). Так текст всегда читаем, '
-    'а фото не режется наполовину экрана!\n'
-    '— ЕСЛИ делаешь фоновое фото во весь hero: картинка ОБЯЗАНА занимать ВСЕ 100% ширины и высоты '
-    '(position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0 — НИКОГДА не половина ширины слева!), '
-    'сплошной тёмный градиент-оверлей ::after { content:""; position:absolute; inset:0; z-index:1; '
-    'background:linear-gradient(95deg, rgba(10,12,16,.88) 0%, rgba(10,12,16,.72) 55%, rgba(10,12,16,.40) 100%) } '
-    'и светлый контрастный текст #ffffff в .container { position:relative; z-index:2 }.\n'
-    '— Дополнительные фото (assets/photo-2.jpg .. photo-4.jpg) размещай в чистых рамках aspect-ratio:4/3 '
-    'или 16/10 (object-fit:cover; width:100%; height:100%; display:block) в галерее или блоке «О нас» без текста поверх.\n'
+    'aspect-ratio:4/3; object-fit:cover; display:block; border-radius:var(--radius-media,14px)). '
+    'ЕСЛИ делаешь фоновое фото во весь hero: картинка занимает ВСЕ 100% (position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:0), '
+    'поверх тёмный градиент-оверлей ::after и белый текст #ffffff в .container { position:relative; z-index:2 }.\n'
+    '— Дополнительные фото (assets/photo-2.jpg .. photo-4.jpg), только если они даны, размещай в рамках aspect-ratio:4/3 '
+    '(object-fit:cover; width:100%; height:100%; display:block) без текста поверх.\n'
     '\n'
     'ДИЗАЙН, КНОПКИ И ЭСТЕТИКА:\n'
     '— Токены в :root: --bg --surface --surface-2 --line --text --muted --accent --accent-contrast --radius-btn --radius-card; '
@@ -497,10 +495,10 @@ _LAYOUT_ARCHETYPES: dict[str, dict[str, Any]] = {
     },
     'warm_craft': {
         'title': 'Тёплое ремесло',
-        'btn_radius': '999px',
+        'btn_radius': '10px',
         'card_radius': '16px',
-        'hero': 'Тёплая камерная подача: живое фото в чистом фрейме (.hero-media) рядом с крупным заголовком, одна выразительная кнопка и аккуратная контурная .btn.ghost.',
-        'sections': '4–5 секций: (1) герой → (2) открытое меню/направления в 2 колонки без громоздких рамок → (3) лента атмосферы (2 фото рядом или фото + рассказ о процессе без штампов) → (4) спокойный блок адреса/телефона (без ядовитого полноширинного баннера) и подвал.',
+        'hero': 'Тёплая камерная подача: живое фото в чистом фрейме (.hero-media) рядом с крупным заголовком (или редакционная карточка/SVG-композиция, если фото нет), одна выразительная кнопка и аккуратная контурная .btn.ghost.',
+        'sections': '4–5 секций: (1) герой → (2) открытое меню/направления в 2 колонки без громоздких рамок → (3) рассказ о ремесле/процессе и галерея (если есть фото) без штампов → (4) спокойное приглашение/завершение (без контактов, если просили без них) и подвал.',
     },
 }
 
@@ -655,16 +653,42 @@ STYLE_VARIANTS: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def _pick_creative_direction(prompt: str, style: str = '', seed: str = '') -> tuple[str, dict[str, Any], dict[str, Any]]:
-    """Подбирает (style_key, variant, archetype) так, чтобы разные проекты и повторные запуски не выглядели клонами."""
-    style_key = style if style in STYLE_VARIANTS else _pick_style(prompt)
-    variants = STYLE_VARIANTS.get(style_key) or STYLE_VARIANTS['neutral']
+def _wanted_archetype(prompt: str) -> str:
     low = (prompt or '').lower()
-    if any(k in low for k in ('светл', 'light', 'белы', 'кремов', 'пастель')):
+    if any(k in low for k in ('editorial', 'журнальн', 'эдиториал', 'редакц')):
+        return 'editorial'
+    if any(k in low for k in ('швейцар', 'swiss')):
+        return 'swiss_catalog'
+    if any(k in low for k in ('архитектур', 'брутал')):
+        return 'architectural_split'
+    if any(k in low for k in ('бутик', 'sticky')):
+        return 'atelier_sticky'
+    if any(k in low for k in ('крафт', 'ремесл')):
+        return 'warm_craft'
+    return ''
+
+
+def _pick_creative_direction(prompt: str, style: str = '', seed: str = '') -> tuple[str, dict[str, Any], dict[str, Any]]:
+    """Подбирает (style_key, variant, archetype) с учётом явных пожеланий стиля/темы/архетипа."""
+    style_key = style if style in STYLE_VARIANTS else _pick_style(prompt)
+    variants = list(STYLE_VARIANTS.get(style_key) or STYLE_VARIANTS['neutral'])
+    low = (prompt or '').lower()
+    wanted_arch = _wanted_archetype(prompt)
+    want_light = any(k in low for k in ('светл', 'light', 'белы', 'кремов', 'пастель'))
+    want_dark = any(k in low for k in ('тёмн', 'темн', 'dark', 'чёрн', 'черн'))
+    if wanted_arch:
+        arch_vars = [v for v in variants if v['archetype'] == wanted_arch]
+        if arch_vars:
+            variants = arch_vars
+        elif wanted_arch == 'editorial' and not want_dark:
+            light = [v for v in variants if v['theme'] == 'light']
+            if light:
+                variants = light
+    if want_light:
         light = [v for v in variants if v['theme'] == 'light']
         if light:
             variants = light
-    elif any(k in low for k in ('тёмн', 'темн', 'dark', 'чёрн', 'черн')):
+    elif want_dark:
         dark = [v for v in variants if v['theme'] == 'dark']
         if dark:
             variants = dark
@@ -673,7 +697,7 @@ def _pick_creative_direction(prompt: str, style: str = '', seed: str = '') -> tu
     else:
         idx = secrets.randbelow(len(variants))
     var = variants[idx]
-    arch_key = var['archetype']
+    arch_key = wanted_arch or var['archetype']
     arch = _LAYOUT_ARCHETYPES.get(arch_key) or _LAYOUT_ARCHETYPES['editorial']
     return style_key, var, {'key': arch_key, **arch}
 
@@ -720,6 +744,23 @@ def _pick_style(user_text: str) -> str:
     return 'neutral'
 
 
+def _extract_negative_constraints(prompt: str) -> list[str]:
+    """Явные запреты из запроса пользователя («без контактов», «без формы», «без цен» и т.п.)."""
+    low = (prompt or '').lower()
+    out: list[str] = []
+    if re.search(r'(?:без|убери(?:те)?|удали(?:те)?|не\s+нужн[аы]?|не\s+добавля(?:й|йте))\s+контакт', low):
+        out.append('БЕЗ КОНТАКТОВ: НЕ создавай блок/секцию контактов, не добавляй «Контакты» в меню, не пиши телефон/email/адрес/карту/форму связи и кнопку «Связаться»/«Зайти» в шапке.')
+    if re.search(r'(?:без|убери(?:те)?|удали(?:те)?|не\s+нужн[аы]?|не\s+добавля(?:й|йте))\s+(?:форм|заявк|обратн\w+\s+связ)', low):
+        out.append('БЕЗ ФОРМ: НЕ вставляй <form>, поля ввода <input>/<textarea> и модальные окна записи.')
+    if re.search(r'(?:без|убери(?:те)?|удали(?:те)?|не\s+нужн[аы]?|не\s+добавля(?:й|йте))\s+(?:цен|прайс|стоимост)', low):
+        out.append('БЕЗ ЦЕН: НЕ указывай цены, прайс-листы и суммы в рублях.')
+    if re.search(r'(?:без|убери(?:те)?|удали(?:те)?|не\s+нужн[аы]?|не\s+добавля(?:й|йте))\s+(?:faq|вопрос)', low):
+        out.append('БЕЗ FAQ: НЕ добавляй блок частых вопросов (<details>/FAQ).')
+    if re.search(r'(?:без|убери(?:те)?|удали(?:те)?|не\s+нужн[аы]?|не\s+добавля(?:й|йте))\s+отзыв', low):
+        out.append('БЕЗ ОТЗЫВОВ: НЕ добавляй блок отзывов.')
+    return out
+
+
 # ── Встроенная библиотека студийных компонентов и микро-анимаций ──────────────
 BLOCKS_LIB = (
     '\n\nМОДУЛЬНАЯ БИБЛИОТЕКА СТУДИЙНЫХ КОМПОНЕНТОВ (выбери ТОЛЬКО 2–3 подходящих паттерна под выбранный АРХЕТИП, '
@@ -734,12 +775,12 @@ BLOCKS_LIB = (
     '2) [ШАПКА]: .topbar{position:sticky;top:0;z-index:40;background:var(--bg);border-bottom:1px solid var(--line)} '
     '.topbar-in{height:70px;display:flex;align-items:center;justify-content:space-between;gap:24px} '
     '.nav-links{display:flex;gap:24px} @media(max-width:760px){.nav-links{display:none}}\n'
-    '3) [ГЕРОЙ-СПЛИТ С ФОТО БЕЗ НАЛОЖЕНИЯ ТЕКСТА]: '
+    '3) [ГЕРОЙ-СПЛИТ (фото — ТОЛЬКО если даны assets/*; без фото — .editorial-plate с типографикой/SVG)]: '
     '.hero-grid{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);gap:clamp(28px,5vw,56px);align-items:center} '
     '.hero-media{margin:0;border-radius:var(--radius-card,14px);overflow:hidden;border:1px solid var(--line);background:var(--surface)} '
     '.hero-media img{width:100%;height:100%;min-height:320px;max-height:520px;aspect-ratio:4/3;object-fit:cover;display:block} '
     '@media(max-width:900px){.hero-grid{grid-template-columns:minmax(0,1fr)}}\n'
-    '4) [ГАЛЕРЕЯ ФОТО]: .photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px} '
+    '4) [ГАЛЕРЕЯ ФОТО — ТОЛЬКО если даны 2+ assets/*]: .photo-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px} '
     '.photo-frame{margin:0;border-radius:var(--radius-card,12px);overflow:hidden;border:1px solid var(--line);aspect-ratio:4/3} '
     '.photo-frame img{width:100%;height:100%;object-fit:cover;display:block}\n'
     '5) [КНОПКИ — СТРОГО 1 АКЦЕНТНАЯ + ОПЦИОНАЛЬНО .btn.ghost]: '
@@ -847,7 +888,7 @@ def _save_site_files(job) -> str:
             f.write(job.html)
         meta = {'slug': job.site_slug, 'version': job.version, 'job_id': job.job_id,
                 'updated': time.strftime('%Y-%m-%d %H:%M:%S'),
-                'prompt': (job.prompt or '')[:300]}
+                'prompt': ((getattr(job, 'base_prompt', '') or job.prompt) or '')[:300]}
         with open(os.path.join(d, 'meta.json'), 'w', encoding='utf-8') as f:
             json.dump(meta, f, ensure_ascii=False, indent=1)
         return f'/sites/{job.site_slug}/'
@@ -1453,7 +1494,8 @@ def _extract_html(raw: str) -> str:
 _SAFE_BASE_STYLE = (
     '<style data-fracs-base="1">'
     ':where(*,*::before,*::after){box-sizing:border-box}'
-    ':where(html,body){margin:0;overflow-x:hidden}'
+    ':where(html,body){margin:0;overflow-x:hidden;background:var(--bg,#fff);color:var(--text,#141416)}'
+    ':where(a){color:inherit}'
     ':where(img,svg){max-width:100%;height:auto}'
     ':where(.hero-media,.photo-frame,.media-box){overflow:hidden;margin:0}'
     ':where(.hero-media img,.photo-frame img,.media-box img){width:100%;height:100%;object-fit:cover;display:block}'
@@ -1469,6 +1511,24 @@ _SAFE_BASE_STYLE = (
     '</style>'
 )
 
+_FALLBACK_PAGE_STYLE = (
+    '<style data-fracs-fallback="1">'
+    ':root{--bg:#f7f4ee;--surface:#fffdf9;--line:rgba(28,24,20,.12);--text:#1c1814;--muted:#685f56;--accent:#b4481e;--accent-contrast:#fff;--radius-btn:8px;--radius-card:12px}'
+    'body{margin:0;background:var(--bg);color:var(--text);font:400 16px/1.65 "Manrope",system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}'
+    'a{color:inherit;text-decoration:none}'
+    'header,.topbar{border-bottom:1px solid var(--line);padding:16px 0;background:var(--bg)}'
+    'header nav,.topbar-in,.nav-links{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:18px}'
+    'h1,h2,h3{margin:0 0 14px;line-height:1.08;letter-spacing:-.02em;font-weight:600}'
+    'h1{font-size:clamp(2.2rem,5vw,4rem)}h2{font-size:clamp(1.6rem,3.2vw,2.5rem)}'
+    'p{margin:0 0 14px;color:var(--muted)}'
+    '.btn,button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:11px 22px;border-radius:var(--radius-btn);background:var(--accent);color:var(--accent-contrast);border:1px solid transparent;font:600 15px/1 inherit;cursor:pointer}'
+    '.hero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:32px;align-items:center}'
+    '.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card);padding:24px}'
+    '.rowp{display:flex;align-items:baseline;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}.rowp i{flex:1;border-bottom:1px dotted var(--line)}'
+    'footer,.footer{border-top:1px solid var(--line);padding:32px 0;color:var(--muted);font-size:14px}'
+    '</style>'
+)
+
 _SAFE_REVEAL_SCRIPT = (
     '<script data-fracs-reveal="1">(function(){'
     'function show(){document.querySelectorAll(".r,.reveal,[data-reveal],section").forEach(function(el){'
@@ -1478,18 +1538,54 @@ _SAFE_REVEAL_SCRIPT = (
     '})();</script>'
 )
 
+_EDITORIAL_PLATE_HTML = (
+    '<div class="fracs-editorial-plate" aria-hidden="true" style="'
+    'width:100%;min-height:300px;aspect-ratio:4/3;display:flex;flex-direction:column;'
+    'justify-content:space-between;padding:28px;background:var(--surface,rgba(255,255,255,.04));'
+    'border:1px solid var(--line,rgba(128,128,128,.22));border-radius:var(--radius-card,12px);color:var(--text,inherit)">'
+    '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;'
+    'letter-spacing:.12em;text-transform:uppercase;color:var(--muted,inherit)">'
+    '<span>EDITION</span><span>01</span></div>'
+    '<svg viewBox="0 0 240 120" fill="none" style="width:100%;max-width:260px;margin:auto;display:block;color:var(--accent,currentColor)">'
+    '<circle cx="120" cy="60" r="44" stroke="currentColor" stroke-width="1.5" opacity=".85"/>'
+    '<circle cx="120" cy="60" r="24" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity=".6"/>'
+    '<line x1="20" y1="60" x2="220" y2="60" stroke="currentColor" stroke-width="1" opacity=".35"/>'
+    '</svg>'
+    '<div style="height:1px;background:var(--line,rgba(128,128,128,.22))"></div></div>'
+)
 
-def _heal_generated_html(html: str) -> tuple[str, list[str]]:
-    """Детерминированная страховка: чинит незакрытые теги и добавляет 0-specificity базовые стили
-    (:where), чтобы секции и <details> никогда не падали в нестилизованный HTML."""
+
+def _has_real_css(html: str) -> bool:
+    styles = re.findall(r'<style(?![^>]*data-fracs-(?:base|fallback))[^>]*>([\s\S]*?)</style>', html or '', re.I)
+    if not styles:
+        return False
+    cleaned = re.sub(r'/\*[\s\S]*?\*/', '', '\n'.join(styles))
+    cleaned = re.sub(r'\s+', '', cleaned)
+    return len(cleaned) >= 60 and '{' in cleaned and '}' in cleaned
+
+
+def _heal_generated_html(html: str, assets: list[dict] | None = None,
+                         uploads: list[dict] | None = None,
+                         prev_html: str = '',
+                         allowed_urls: list[str] | None = None) -> tuple[str, list[str]]:
+    """Детерминированная страховка: чинит незакрытые теги, восстанавливает/добавляет CSS
+    и вычищает битые <img> (несуществующие assets/* или выдуманные внешние URL)."""
     fixes: list[str] = []
     out = html or ''
-    # Если модель оборвала <style> до </style>
+    # Если модель оборвала <style> или <script> до закрывающего тега
     open_styles = len(re.findall(r'<style\b', out, re.I))
     close_styles = len(re.findall(r'</style>', out, re.I))
     if open_styles > close_styles:
-        out += '\n</style>'
+        if '<body' in out.lower():
+            out = re.sub(r'(<body\b)', '</style>\n</head>\n\\1', out, count=1, flags=re.I)
+        else:
+            out += '\n</style>'
         fixes.append('закрыт оборванный <style>')
+    open_scripts = len(re.findall(r'<script\b', out, re.I))
+    close_scripts = len(re.findall(r'</script>', out, re.I))
+    if open_scripts > close_scripts:
+        out += '\n</script>'
+        fixes.append('закрыт оборванный <script>')
     if '</head>' not in out.lower() and '<body' in out.lower():
         out = re.sub(r'(<body\b)', '</head>\n\\1', out, count=1, flags=re.I)
     if '</body>' not in out.lower():
@@ -1498,6 +1594,103 @@ def _heal_generated_html(html: str) -> tuple[str, list[str]]:
     if '</html>' not in out.lower():
         out += '\n</html>'
         fixes.append('добавлен </html>')
+
+    # Убираем несуществующие локальные <link rel="stylesheet" href="style.css">
+    rel_css = re.compile(r'<link\b[^>]*rel=["\']stylesheet["\'][^>]*href=["\'](?!https?://)[^"\']+["\'][^>]*>', re.I)
+    if rel_css.search(out):
+        out = rel_css.sub('', out)
+        fixes.append('убран несуществующий локальный CSS-файл')
+
+    # Если при правке/сборке модель потеряла или сократила <style> — восстанавливаем из prev_html или фолбэк
+    if not _has_real_css(out):
+        rescued = ''
+        if prev_html and _has_real_css(prev_html):
+            prev_fonts = re.findall(r'<link[^>]+fonts\.googleapis\.com[^>]*>', prev_html, re.I)
+            prev_styles = re.findall(r'<style(?![^>]*data-fracs-(?:base|fallback))[^>]*>[\s\S]*?</style>', prev_html, re.I)
+            rescued = '\n'.join(prev_fonts + prev_styles)
+            if rescued:
+                fixes.append('восстановлены стили из предыдущей версии')
+        if not rescued and 'data-fracs-fallback' not in out:
+            rescued = _FALLBACK_PAGE_STYLE
+            fixes.append('добавлены базовые стили оформления')
+        if rescued:
+            if re.search(r'</head>', out, re.I):
+                out = re.sub(r'</head>', lambda _m, r=rescued: r + '\n</head>', out, count=1, flags=re.I)
+            elif re.search(r'<head[^>]*>', out, re.I):
+                out = re.sub(r'(<head[^>]*>)', lambda m, r=rescued: m.group(1) + '\n' + r, out, count=1, flags=re.I)
+
+    # Проверка всех <img>: оставляем только data:image/*, реальные assets и явные allowed_urls
+    valid_assets = {str(a.get('rel_path') or '').lstrip('./') for a in (assets or []) if a.get('rel_path')}
+    valid_urls = {str(u).strip() for u in (allowed_urls or []) if str(u).strip()}
+
+    def _is_valid_img_src(src: str) -> bool:
+        s = (src or '').strip()
+        if not s:
+            return False
+        if s.startswith('data:image/'):
+            return True
+        norm = s.lstrip('./')
+        if norm in valid_assets:
+            return True
+        if s in valid_urls:
+            return True
+        return False
+
+    img_removed = False
+
+    def _clean_hero_media(m: re.Match) -> str:
+        nonlocal img_removed
+        block = m.group(0)
+        imgs = re.findall(r'<img\b[^>]*>', block, re.I)
+        if not imgs:
+            return block
+        for tag in imgs:
+            sm = re.search(r'\bsrc\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))', tag, re.I)
+            src = (sm.group(1) or sm.group(2) or sm.group(3) or '') if sm else ''
+            if not _is_valid_img_src(src):
+                img_removed = True
+                return _EDITORIAL_PLATE_HTML
+        return block
+
+    out = re.sub(
+        r'<(figure|div)\b[^>]*class=["\'][^"\']*\bhero-media\b[^"\']*["\'][^>]*>[\s\S]*?</\1>',
+        _clean_hero_media,
+        out,
+        flags=re.I,
+    )
+
+    def _clean_photo_frame(m: re.Match) -> str:
+        nonlocal img_removed
+        block = m.group(0)
+        for tag in re.findall(r'<img\b[^>]*>', block, re.I):
+            sm = re.search(r'\bsrc\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))', tag, re.I)
+            src = (sm.group(1) or sm.group(2) or sm.group(3) or '') if sm else ''
+            if not _is_valid_img_src(src):
+                img_removed = True
+                return ''
+        return block
+
+    out = re.sub(
+        r'<(figure|div)\b[^>]*class=["\'][^"\']*\b(?:photo-frame|media-box)\b[^"\']*["\'][^>]*>[\s\S]*?</\1>',
+        _clean_photo_frame,
+        out,
+        flags=re.I,
+    )
+
+    def _clean_img_tag(m: re.Match) -> str:
+        nonlocal img_removed
+        tag = m.group(0)
+        sm = re.search(r'\bsrc\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))', tag, re.I)
+        src = (sm.group(1) or sm.group(2) or sm.group(3) or '') if sm else ''
+        if not _is_valid_img_src(src):
+            img_removed = True
+            return ''
+        return tag
+
+    out = re.sub(r'<img\b[^>]*>', _clean_img_tag, out, flags=re.I)
+    if img_removed:
+        out = re.sub(r'<div\b[^>]*class=["\'][^"\']*\bphoto-grid\b[^"\']*["\'][^>]*>\s*</div>', '', out, flags=re.I)
+        fixes.append('убраны битые теги <img>')
 
     if 'data-fracs-base' not in out:
         if re.search(r'</head>', out, re.I):
@@ -1529,6 +1722,8 @@ _SLOP_PHRASES = (
     'широкий ассортимент',
     'команда профессионалов',
     'лучшие в городе',
+    'уютная атмосфера',
+    'уютную атмосферу',
     'lorem ipsum',
 )
 
@@ -1742,6 +1937,16 @@ def _clean_brief(raw: dict, prompt: str) -> tuple[dict, list[str]]:
     b['cta'] = {'title': txt(cta.get('title'), 90), 'text': txt(cta.get('text'), 160)}
     b['avoid'] = [txt(x, 80) for x in (raw.get('avoid') if isinstance(raw.get('avoid'), list) else [])[:6]
                   if txt(x, 80)]
+    wanted_arch = _wanted_archetype(prompt)
+    if wanted_arch:
+        b['archetype'] = wanted_arch
+    neg = _extract_negative_constraints(prompt)
+    if any('БЕЗ FAQ' in c for c in neg):
+        b['faq'] = []
+    if any('БЕЗ КОНТАКТОВ' in c for c in neg):
+        b['cta'] = {'title': '', 'text': ''}
+        b['hero']['cta_secondary'] = ''
+        b['avoid'] = (b['avoid'] + ['контакты, телефон, адрес, форма связи'])[:6]
     if not b['hero'].get('h1') or not b['services']:
         raise ValueError('в брифе нет H1 или услуг')
     return b, notes
@@ -1792,7 +1997,7 @@ def _brief_block(b: dict) -> str:
         L.append(f'ФИНАЛЬНЫЙ БЛОК / CTA: «{c["title"]}» — {c.get("text", "")}')
     if b.get('avoid'):
         L.append('НЕ писать: ' + '; '.join(b['avoid']))
-    L.append('Контакты, адрес, рейтинг — строго из карточки. Используй только те секции, что есть выше (пустые не придумывай).')
+    L.append('Соблюдай все ограничения пользователя («без контактов» и др.). Используй только нужные секции выше (пустые не придумывай).')
     return '\n'.join(L)
 
 
@@ -1800,6 +2005,9 @@ def _make_brief(job_prompt: str, extra: str, uploads: list[dict],
                 direction_hint: str = '') -> dict:
     """Шаг 1 конвейера (Cohere). Возвращает {ok, brief, notes, ms} или {ok: False, error}."""
     user = job_prompt[:6000]
+    neg = _extract_negative_constraints(job_prompt)
+    if neg:
+        user += '\n\nОБЯЗАТЕЛЬНЫЕ ОГРАНИЧЕНИЯ ПОЛЬЗОВАТЕЛЯ:\n- ' + '\n- '.join(neg)
     if direction_hint:
         user += '\n\nОриентир по визуальному направлению (чтобы не повторяться с прошлыми сайтами):\n' + direction_hint
     if extra:
@@ -2012,6 +2220,8 @@ class AiJob:
     site_url: str = ''    # локальный URL для ручной проверки, /sites/<slug>/
     version: int = 0      # номер версии (1, 2, … — растёт при «Изменить макет»)
     is_edit: bool = False  # правка поверх предыдущего макета (бриф Cohere не пересобираем)
+    base_prompt: str = ''  # исходное описание бизнеса (не затирается короткими правками)
+    prev_job_id: str = ''
     brief: dict = field(default_factory=dict)   # арт-дирекшн и тексты от Cohere (конвейер Fracs AI)
     photo_urls: list[str] = field(default_factory=list)
     card_url: str = ''
@@ -2076,7 +2286,7 @@ def _extract_biz_name(prompt: str) -> str:
 
 
 _EDIT_INTENT_RE = re.compile(
-    r'\b(?:измен|поправ|передел|замен|обнов|добав|убер|удал|смен|подправ|доработ|текущ|макет|выше|правее|левее|крупнее|мельче|светлее|темнее)',
+    r'\b(?:измен|поправ|исправ|почин|передел|замен|обнов|добав|убер|удал|смен|подправ|доработ|текущ|макет|выше|правее|левее|крупнее|мельче|светлее|темнее|не\s+прогруж|не\s+загруж|сломал|биты)',
     re.I,
 )
 
@@ -2225,19 +2435,26 @@ class AiAgentManager:
                             if isinstance(u, str) and str(u).strip().startswith(('http://', 'https://'))][:_MAX_CARD_PHOTOS]
         clean_card_url = (card_url or '').strip()
         clean_ymaps_url = (ymaps_url or '').strip()
-        job = AiJob(job_id=job_id, prompt=prompt or '', model=job_model,
+        job = AiJob(job_id=job_id, prompt=prompt or '', base_prompt=prompt or '', model=job_model,
                     provider=provider or 'Z.ai', photo_urls=clean_photo_urls,
                     card_url=clean_card_url, ymaps_url=clean_ymaps_url)
         uploads = self.pop_uploads(session_id)
         if prev_job:
             prev = self.get(prev_job)
             if _should_apply_edit(prev, prompt, is_edit, clean_photo_urls, clean_card_url, clean_ymaps_url):
+                orig_prompt = (prev.base_prompt or prev.prompt or '').strip()
+                if orig_prompt:
+                    job.base_prompt = orig_prompt
+                if prev and prev.brief:
+                    job.brief = dict(prev.brief)
                 if prev and prev.assets:
                     job.assets = list(prev.assets)
                     if not job.photo_urls and prev.photo_urls:
                         job.photo_urls = list(prev.photo_urls)
                 if prev and prev.html and len(prev.html) > _MAX_PREV_HTML:
                     # раньше макет обрезался до 12К знаков посреди кода, и правки ломали страницу
+                    if orig_prompt and orig_prompt != (prompt or '').strip():
+                        job.prompt = f'{orig_prompt}\n\nДополнительные правки:\n{prompt}'
                     self._log(job, 'Макет слишком большой для правок поверх — соберу заново '
                                    'с учётом ваших пожеланий.')
                 elif prev and prev.html:
@@ -2246,13 +2463,14 @@ class AiAgentManager:
                         'mime': 'text/html', 'size': len(prev.html),
                         'content': prev.html, 'b64': ''}]
                     job.is_edit = True
+                    job.prev_job_id = prev.job_id
                     # редактирование макета: та же папка, номер версии растёт
-                    job.site_slug = prev.site_slug or _slug_from_prompt(prev.prompt, prev.job_id)
+                    job.site_slug = prev.site_slug or _slug_from_prompt(job.base_prompt or prev.prompt, prev.job_id)
                     job.version = prev.version + 1
                     self._log(job, f'Правки поверх версии v{prev.version or 1} — '
                                    f'новая будет v{job.version} в той же папке.')
         if not job.site_slug:
-            job.site_slug = _slug_from_prompt(prompt, job_id)
+            job.site_slug = _slug_from_prompt(job.base_prompt or prompt, job_id)
             job.version = 1
         job.uploads = uploads
         if uploads:
@@ -2296,8 +2514,9 @@ class AiAgentManager:
             if style and style in STYLE_PROMPTS:
                 self._log(job, f'Выбран стиль: «{style}».')
             # бесплатные референсы с 21st.dev (metadata-поиск компонентов)
+            effective_prompt = (job.base_prompt or job.prompt).strip()
             if key21st:
-                q = _21st_query_from_prompt(job.prompt)
+                q = _21st_query_from_prompt(effective_prompt)
                 self._log(job, f'Подбираю референсы на 21st.dev: «{q}»…')
                 ref = _21st_search(q, key21st, limit=3) or \
                     _21st_search('hero section landing page', key21st, limit=2)
@@ -2323,7 +2542,29 @@ class AiAgentManager:
                         self._log(job, f'В макет добавлены реальные фото: '
                                    + ', '.join(a['rel_path'] for a in job.assets) + '.')
 
+            prev_html = ''
+            for att in job.uploads:
+                if att.get('id') == 'prev' and att.get('content'):
+                    prev_html = att['content']
+                    break
+
             llm_prompt = job.prompt
+            if job.is_edit and prev_html:
+                llm_prompt = (
+                    f'РЕЖИМ ПРАВКИ ТЕКУЩЕГО МАКЕТА.\n'
+                    f'Исходная задача бизнеса: {effective_prompt}\n'
+                    f'Что нужно изменить сейчас: {job.prompt}\n\n'
+                    'ПРАВИЛА ПРАВКИ (КРИТИЧНО): возьми код из приложенного файла «текущая-версия-сайта.html», '
+                    'внеси запрошенные изменения и верни ПОЛНЫЙ, ЦЕЛИКОВЫЙ HTML-документ от <!DOCTYPE html> до </html>. '
+                    'ОБЯЗАТЕЛЬНО сохрани ВЕСЬ блок <style>...</style> (НЕ заменяй CSS комментариями /* ... */, '
+                    'не удаляй стили и не ссылайся на внешние style.css!).'
+                )
+
+            neg_rules = _extract_negative_constraints(effective_prompt + '\n' + (job.prompt if job.is_edit else ''))
+            if neg_rules:
+                llm_prompt += '\n\nКРИТИЧЕСКИЕ ОГРАНИЧЕНИЯ ПОЛЬЗОВАТЕЛЯ (нарушение = брак):\n- ' + '\n- '.join(neg_rules)
+
+            has_uploaded_imgs = any(a.get('kind') == 'image' for a in job.uploads)
             if job.assets:
                 photo_lines = [
                     '\n\nРЕАЛЬНЫЕ ФОТО БИЗНЕСА ИЗ КАРТОЧКИ (файлы уже сохранены рядом с index.html — '
@@ -2339,9 +2580,17 @@ class AiAgentManager:
                     'Никогда не делай фото шириной 50-60% под текстом!'
                 )
                 llm_prompt = llm_prompt + '\n'.join(photo_lines)
+            elif not has_uploaded_imgs:
+                llm_prompt += (
+                    '\n\nФОТОГРАФИЙ В ЗАДАНИИ НЕТ (assets пуста): СТРОГО ЗАПРЕЩЕНО вставлять <img> с путями assets/* '
+                    'или выдуманными внешними URL — они дадут битую иконку! Вместо фото оформи правый слот героя '
+                    'как выразительную редакционную композицию (карточка с меню/фактами, типографический блок или инлайн-SVG).'
+                )
 
             # Подбираем свежее визуальное направление и архетип специально под этот запуск
-            dir_style, dir_var, dir_arch = _pick_creative_direction(job.prompt, style=style, seed=job.job_id)
+            dir_seed = job.prev_job_id or job.job_id
+            dir_prompt = effective_prompt + (' ' + job.prompt if job.is_edit else '')
+            dir_style, dir_var, dir_arch = _pick_creative_direction(dir_prompt, style=style, seed=dir_seed)
             creative_recipe = _format_style_recipe(dir_style, dir_var, dir_arch)
 
             # ── конвейер Fracs AI: Cohere пишет тексты и арт-дирекшн, OpenRouter верстает ──
@@ -2353,7 +2602,7 @@ class AiAgentManager:
                 dir_hint = (
                     f'Направление «{dir_var["name"]}» (тема {dir_var["theme"]}, архетип {dir_arch["key"]}, '
                     f'акцент {dir_var["palette"]["accent"]}, шрифты {dir_var["fonts"][0]} + {dir_var["fonts"][1]}). '
-                    'Используй это или предложи свой контрастный свежий вариант под этот конкретный бизнес.'
+                    'Учитывай явные пожелания стиля/архетипа из запроса пользователя (если просили editorial — используй archetype editorial).'
                 )
                 br = _make_brief(llm_prompt, extra, job.uploads, direction_hint=dir_hint)
                 if br.get('ok'):
@@ -2369,6 +2618,8 @@ class AiAgentManager:
                 else:
                     self._log(job, 'Редактор недоступен (' + str(br.get('error') or 'ошибка')
                               + ') — собираю без брифа.')
+            elif job.is_edit and job.brief:
+                brief_block = _brief_block(job.brief)
             self._set_stage(job, 'building', 'Собираю')
             self._log(job, f'Собираю вёрстку ({dir_var["name"]}, {dir_arch["title"]})…')
             res = _call_llm(job.provider, api_key, job.model, llm_prompt, extra,
@@ -2396,7 +2647,10 @@ class AiAgentManager:
             html, font_fixes = _fix_fonts(html)
             if font_fixes:
                 self._log(job, 'Шрифты без кириллицы заменены: ' + ', '.join(font_fixes) + '.')
-            html, html_fixes = _heal_generated_html(html)
+            html, html_fixes = _heal_generated_html(
+                html, assets=job.assets, uploads=job.uploads,
+                prev_html=prev_html, allowed_urls=job.photo_urls,
+            )
             if html_fixes:
                 self._log(job, 'Автоисправление разметки: ' + ', '.join(html_fixes) + '.')
             if res.get('truncated'):
@@ -2406,7 +2660,7 @@ class AiAgentManager:
             if use_pipe:
                 self._set_stage(job, 'checking', 'Вычитываю тексты')
                 self._log(job, 'Редактор вычитывает тексты страницы…')
-                html, n_fix, perr = _polish_html(html, job.prompt)
+                html, n_fix, perr = _polish_html(html, effective_prompt)
                 if perr:
                     self._log(job, 'Вычитка пропущена: ' + perr)
                 else:
@@ -2498,7 +2752,7 @@ class AiAgentManager:
         финал. Самодостаточный файл (сайт внутри), лежит рядом с сайтом в sites/<slug>/.
         Именно эта страница открывается по QR. Не требует ffmpeg/playwright."""
         try:
-            title, sub = business_parts(job.prompt, html=job.html, brief=job.brief)
+            title, sub = business_parts(job.base_prompt or job.prompt, html=job.html, brief=job.brief)
             review_site_html = _inline_assets_html(job.html, job.assets)
             html = render_review_html(title, sub, review_site_html)
             d = (os.path.join(_SITES_DIR, job.site_slug) if job.site_url
@@ -2531,7 +2785,7 @@ class AiAgentManager:
             self._log(job, 'Открытка пропущена: не установлены Pillow/qrcode.')
             return
         try:
-            title, sub = business_parts(job.prompt, html=job.html, brief=job.brief)
+            title, sub = business_parts(job.base_prompt or job.prompt, html=job.html, brief=job.brief)
             draw_postcard(png_path, target, title, sub)
             job.png_path = png_path
         except Exception as e:
@@ -2548,7 +2802,7 @@ class AiAgentManager:
                   + assets_note +
                   'review.html     — анимированный видеообзор сайта (его открывает QR из открытки).\n'
                   'postcard.png    — открытка с QR-кодом для заказчика.\n\n'
-                  'Промт: ' + (job.prompt[:200] or '—') + '\n')
+                  'Промт: ' + ((job.base_prompt or job.prompt)[:200] or '—') + '\n')
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
             z.writestr('index.html', job.html)
             for asset in job.assets:
