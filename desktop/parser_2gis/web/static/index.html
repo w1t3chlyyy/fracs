@@ -353,31 +353,77 @@
     border-radius:14px 14px 3px 14px;white-space:pre-wrap}
   .ai-msg.bot{align-self:flex-start;width:100%;max-width:66ch;background:transparent;border:none;
     padding:4px 2px 14px;border-bottom:1px solid rgba(255,255,255,.06);border-radius:0;
-    display:flex;flex-direction:column;gap:6px}
+    display:flex;flex-direction:column;gap:8px}
   .ai-turn-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:#8e8e98}
-  .ai-turn-mark{width:7px;height:7px;border-radius:2px;background:var(--primary);flex:none}
+  .ai-turn-mark{width:8px;height:8px;border-radius:3px;background:var(--primary);flex:none;
+    transition:background .2s,box-shadow .2s}
+  .ai-msg.bot.is-working .ai-turn-mark{background:#ff8b4d;
+    box-shadow:0 0 12px rgba(242,101,34,.85),0 0 22px rgba(242,101,34,.45);
+    animation:aiMarkPulse 1.25s ease-in-out infinite}
+  .ai-msg.bot.is-done .ai-turn-mark{background:#34d399;box-shadow:0 0 10px rgba(52,211,153,.55)}
+  .ai-msg.bot.is-failed .ai-turn-mark{background:#f87171;box-shadow:0 0 10px rgba(248,113,113,.55)}
   .ai-turn-who{font-weight:650;color:#d4d4dc;letter-spacing:.01em}
-  .ai-turn-trace{color:#787882;font-size:11.5px}
+  .ai-turn-trace{color:#787882;font-size:11.5px;transition:color .2s,text-shadow .2s}
+  .ai-msg.bot.is-working .ai-turn-trace{color:#ffb380;text-shadow:0 0 12px rgba(242,101,34,.45)}
+  .ai-msg.bot.is-done .ai-turn-trace{color:#6ee7b7}
+  .ai-msg.bot.is-failed .ai-turn-trace{color:#fca5a5}
   .ai-turn-body{font-size:14.5px;line-height:1.64;color:#ececf0;white-space:pre-wrap}
-  .ai-msg.sys{align-self:stretch;max-width:100%;background:rgba(242,101,34,.065);
-    border:1px solid rgba(242,101,34,.24);border-radius:10px;padding:11px 14px;color:#f4bfa3;
-    font-size:13px;line-height:1.55;text-align:left;white-space:pre-wrap}
+  .ai-turn-body:empty{display:none}
+  .ai-msg.sys{align-self:flex-start;max-width:66ch;background:transparent;border:none;
+    padding:2px 2px;color:#8e8e9a;font-size:12.5px;line-height:1.5;text-align:left;white-space:pre-wrap}
   .ai-msg a{color:#ff8b4d;text-decoration:underline;text-underline-offset:3px}
   .ai-msg a:hover{color:#ffb085}
 
-  /* Живая лента этапов работы нейросети */
-  .ai-stage-bar{display:flex;flex-direction:column;gap:7px;padding:10px 13px;background:#0d0d10;
-    border:1px solid rgba(255,255,255,.1);border-radius:12px}
-  .ai-stages{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-  .ai-stage-tag{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:6px;
-    font-size:11.5px;font-weight:600;color:#6e6e78;background:rgba(255,255,255,.025);
-    border:1px solid rgba(255,255,255,.07);transition:color .2s,border-color .2s,background .2s}
-  .ai-stage-tag .st-dot{width:6px;height:6px;border-radius:50%;background:#4a4a52;flex:none}
-  .ai-stage-tag.is-active{color:#fff;border-color:rgba(242,101,34,.55);background:rgba(242,101,34,.14)}
-  .ai-stage-tag.is-active .st-dot{background:var(--primary);animation:pulse 1.05s infinite}
-  .ai-stage-tag.is-done{color:#34d399;border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.07)}
-  .ai-stage-tag.is-done .st-dot{background:#34d399}
-  .ai-stage-sep{color:#3f3f46;font-size:11px;user-select:none}
+  /* Светящиеся этапы и живые логи прямо внутри сообщения бота */
+  .ai-turn-progress{display:flex;flex-direction:column;gap:8px;margin-top:2px;
+    padding:10px 12px;border-radius:12px;
+    background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,.012));
+    border:1px solid rgba(255,255,255,.08);transition:border-color .25s,box-shadow .25s}
+  .ai-msg.bot.is-working .ai-turn-progress{border-color:rgba(242,101,34,.34);
+    box-shadow:0 0 24px rgba(242,101,34,.08),inset 0 1px 0 rgba(255,160,100,.08)}
+  .ai-msg.bot.is-done .ai-turn-progress{border-color:rgba(52,211,153,.22)}
+  .ai-msg.bot.is-failed .ai-turn-progress{border-color:rgba(248,113,113,.32)}
+  .ai-turn-progress[hidden]{display:none}
+  .ai-turn-stages{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .ai-turn-stage{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;
+    padding:4px 9px;border-radius:7px;font-size:11.5px;font-weight:600;
+    color:#6b6b76;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.07);
+    transition:color .22s,border-color .22s,background .22s,box-shadow .22s}
+  .ai-turn-stage .st-dot{width:6px;height:6px;border-radius:50%;background:#4a4a55;flex:none;
+    transition:background .22s,box-shadow .22s}
+  .ai-turn-stage.is-active{color:#fff3ea;border-color:rgba(242,101,34,.75);
+    background:linear-gradient(135deg,rgba(242,101,34,.26),rgba(255,139,77,.12));
+    box-shadow:0 0 14px rgba(242,101,34,.36),inset 0 0 10px rgba(242,101,34,.14);
+    text-shadow:0 0 10px rgba(255,166,107,.55)}
+  .ai-turn-stage.is-active::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.22) 50%,transparent 75%);
+    transform:translateX(-120%);animation:aiStageSheen 2.1s ease-in-out infinite}
+  .ai-turn-stage.is-active .st-dot{background:#ff9c58;box-shadow:0 0 8px #ff8b4d;
+    animation:aiMarkPulse 1.05s ease-in-out infinite}
+  .ai-turn-stage.is-done{color:#6ee7b7;border-color:rgba(52,211,153,.32);
+    background:rgba(52,211,153,.09);box-shadow:0 0 10px rgba(52,211,153,.1)}
+  .ai-turn-stage.is-done .st-dot{background:#34d399;box-shadow:0 0 6px rgba(52,211,153,.6)}
+  .ai-turn-stage.is-error{color:#fecaca;border-color:rgba(248,113,113,.55);
+    background:rgba(248,113,113,.13);box-shadow:0 0 12px rgba(248,113,113,.2)}
+  .ai-turn-stage.is-error .st-dot{background:#f87171;box-shadow:0 0 6px rgba(248,113,113,.7)}
+  .ai-turn-logs{display:flex;flex-direction:column;gap:4px;max-height:132px;overflow-y:auto;
+    padding-top:6px;border-top:1px dashed rgba(255,255,255,.07)}
+  .ai-turn-logs:empty{display:none}
+  .ai-turn-log-line{display:flex;align-items:baseline;gap:7px;font-size:12px;line-height:1.45;color:#858590}
+  .ai-turn-log-line::before{content:"›";color:#52525c;flex:none;font-weight:700}
+  .ai-turn-log-line.is-latest{color:#ffd5b8;text-shadow:0 0 10px rgba(242,101,34,.28)}
+  .ai-turn-log-line.is-latest::before{color:#ff8b4d}
+  .ai-turn-log-details{border-top:1px dashed rgba(255,255,255,.07);padding-top:6px}
+  .ai-turn-log-details summary{cursor:pointer;font-size:11.5px;font-weight:600;color:#8e8e98;
+    list-style:none;user-select:none;display:inline-flex;align-items:center;gap:6px}
+  .ai-turn-log-details summary::-webkit-details-marker{display:none}
+  .ai-turn-log-details summary::before{content:"▸";color:#71717a;transition:transform .15s}
+  .ai-turn-log-details[open] summary::before{transform:rotate(90deg)}
+  .ai-turn-log-details .ai-turn-logs{border-top:none;padding-top:6px;max-height:180px}
+  .ai-turn-error{font-size:13px;line-height:1.5;color:#fca5a5;padding-top:2px}
+  .ai-turn-error:empty{display:none}
+  @keyframes aiMarkPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(.85)}}
+  @keyframes aiStageSheen{0%{transform:translateX(-120%)}55%,100%{transform:translateX(140%)}}
 
   .ai-side{display:flex;flex-direction:column;gap:16px;border-left:1px solid rgba(255,255,255,.07);padding-left:20px;min-height:0;height:100%;overflow:auto}
   .ai-side-h{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 0 7px}
@@ -516,12 +562,7 @@
   .ai-comp-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px 10px 12px}
   .ai-comp-left{display:flex;align-items:center;gap:10px;min-width:0}
   .ai-kbd-hint{font-size:11.5px;color:#5e5e68;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ai-status{padding:0;border-radius:0;background:none;font-size:12px;color:#9a9aa4;line-height:1.4}
-  #aiStatusPill:empty{display:none}
-  .ai-status.running,.ai-status.queued,.ai-status.thinking{color:#d4d4dc}
-  .ai-status.preview,.ai-status.done{color:#34d399}
-  .ai-status.building,.ai-status.checking,.ai-status.packaging{color:#f4a26e}
-  .ai-status.failed,.ai-status.cancelled{color:#f87171}
+  .ai-kbd-hint.is-busy{color:#ff9c58}
   @media (max-width:1100px){
     .ai-side{border-left:none;padding-left:0;border-top:1px solid rgba(255,255,255,.07);padding-top:16px;height:auto;max-height:none;overflow:visible}
   }
@@ -833,18 +874,6 @@
             </div>
             <div class="ai-chat" id="aiChat" hidden></div>
             <div class="ai-dock">
-              <div class="ai-stage-bar" id="aiStageBar" hidden>
-                <div class="ai-stages" id="aiStages">
-                  <span class="ai-stage-tag" data-stage="thinking"><span class="st-dot"></span><span data-i18n="stage_thinking">Думаю</span></span>
-                  <span class="ai-stage-sep">›</span>
-                  <span class="ai-stage-tag" data-stage="building"><span class="st-dot"></span><span data-i18n="stage_building">Собираю</span></span>
-                  <span class="ai-stage-sep">›</span>
-                  <span class="ai-stage-tag" data-stage="checking"><span class="st-dot"></span><span data-i18n="stage_checking">Проверяю шедевр</span></span>
-                  <span class="ai-stage-sep">›</span>
-                  <span class="ai-stage-tag" data-stage="packaging"><span class="st-dot"></span><span data-i18n="stage_packaging">Упаковываю</span></span>
-                </div>
-                <div class="ai-status" id="aiStatusPill"></div>
-              </div>
               <div class="ai-quota-banner" id="aiQuotaBanner" hidden>
                 <div class="ai-quota-banner-info">
                   <strong id="aiQuotaBannerTitle">Дневной лимит Fracs AI исчерпан</strong>
@@ -971,7 +1000,7 @@
       settings_btn:'Settings', agent_pick:'AI Agent', agent_pick_btn:'Configure →',
       greet:'Hi! Great day,<br>to build a website', prompt_ph:'Describe the business and site you want…', ai_send_title:'Send',
       kbd_hint:'Enter — send · Shift+Enter — new line',
-      stage_thinking:'Thinking', stage_building:'Building', stage_checking:'Auditing', stage_packaging:'Packaging',
+      stage_thinking:'Thinking', stage_photos:'Finding photos', stage_brief:'Structuring', stage_building:'Building code', stage_polishing:'Polishing copy', stage_checking:'Auditing', stage_packaging:'Packaging',
       st_coffee:'Coffee shop website', st_auto:'Auto service landing', st_med:'Dental clinic site',
       ai_desc:'Set up your AI agent in a couple of minutes. The neural network builds websites from business cards or a prompt and produces a postcard with a QR code. One shared Fracs prompt protects from “neuroslop”, your ExtraPrompt is added on top.',
       files_title:'File transfer', files_agent:'Agent files', files_my:'My files (in chat)',
@@ -1015,7 +1044,7 @@
       settings_btn:'Настройки', agent_pick:'AI-агент', agent_pick_btn:'Настроить →',
       greet:'Привет! Отличный день,<br>чтобы сделать сайт', prompt_ph:'Опишите бизнес и какой сайт нужен…', ai_send_title:'Отправить',
       kbd_hint:'Enter — отправить · Shift+Enter — перенос',
-      stage_thinking:'Думаю', stage_building:'Собираю', stage_checking:'Проверяю шедевр', stage_packaging:'Упаковываю',
+      stage_thinking:'Думаю', stage_photos:'Подбираю фото', stage_brief:'Структура', stage_building:'Собираю код', stage_polishing:'Вычитка', stage_checking:'Проверяю шедевр', stage_packaging:'Упаковываю',
       st_coffee:'Сайт для кофейни в Москве', st_auto:'Лендинг автосервиса', st_med:'Сайт для клиники',
       ai_desc:'Настройте своего AI агента за пару минут. Нейросеть создаёт сайты по карточкам бизнеса или промту и выдаёт открытку с QR-кодом. Один общий промт Fracs защищает от «нейрослопа», ваш ExtraПромт добавляется поверх.',
       files_title:'Передача файлов', files_agent:'Файлы агента', files_my:'Мои файлы (в чате)',
@@ -1855,6 +1884,27 @@
     });
   }
 
+  var STAGE_ORDER=['thinking','photos','brief','building','polishing','checking','packaging'];
+  function stageLabel(st){
+    var key='stage_'+st;
+    var tr=typeof t==='function'?t(key):'';
+    if(tr&&tr!==key)return tr;
+    return {thinking:'Думаю',photos:'Подбираю фото',brief:'Структура',
+      building:'Собираю код',polishing:'Вычитка',checking:'Проверяю шедевр',
+      packaging:'Упаковываю',preview:'Превью готово',done:'Готово',failed:'Ошибка'}[st]||st;
+  }
+  function renderBotActionsHtml(actions){
+    if(!actions||!actions.length)return '';
+    return actions.map(function(a){
+      var clsBtn='ai-msg-btn'+(a.primary?' primary':'')+(a.cls?(' '+a.cls):'');
+      if(a.type==='link'){
+        var href=safePreviewHref(a.href);
+        if(!href)return '';
+        return '<a class="'+clsBtn+'" href="'+esc(href)+'" target="_blank" rel="noopener">'+esc(a.label)+'</a>';
+      }
+      return '<button type="button" class="'+clsBtn+'" data-ai-act="'+esc(a.act||'')+'">'+esc(a.label)+'</button>';
+    }).join('');
+  }
   function addMsg(cls,text,meta){
     var c=$('aiChat'),m=$('aiMascot');
     if(c&&c.hidden)c.hidden=false;
@@ -1863,21 +1913,22 @@
     msg.className='ai-msg '+cls;
     if(cls==='bot'){
       var who=(meta&&meta.who)||'Fracs AI';
-      var trace=(meta&&meta.trace)?'<span class="ai-turn-trace">· '+esc(meta.trace)+'</span>':'';
-      var actionsHtml='';
-      if(meta&&meta.actions&&meta.actions.length){
-        actionsHtml='<div class="ai-turn-actions">'+meta.actions.map(function(a){
-          var clsBtn='ai-msg-btn'+(a.primary?' primary':'')+(a.cls?(' '+a.cls):'');
-          if(a.type==='link'){
-            var href=safePreviewHref(a.href);
-            if(!href)return '';
-            return '<a class="'+clsBtn+'" href="'+esc(href)+'" target="_blank" rel="noopener">'+esc(a.label)+'</a>';
-          }
-          return '<button type="button" class="'+clsBtn+'" data-ai-act="'+esc(a.act||'')+'">'+esc(a.label)+'</button>';
-        }).join('')+'</div>';
-      }
-      msg.innerHTML='<div class="ai-turn-head"><span class="ai-turn-mark"></span><span class="ai-turn-who">'+esc(who)+'</span>'+trace+'</div>'+
-        '<div class="ai-turn-body">'+linkifySafe(text)+'</div>'+actionsHtml;
+      var traceText=(meta&&meta.trace)||'';
+      var showProgress=Boolean(meta&&meta.progress);
+      var stageTags=STAGE_ORDER.map(function(st){
+        return '<span class="ai-turn-stage" data-stage="'+st+'"><span class="st-dot"></span><span data-i18n="stage_'+st+'">'+esc(stageLabel(st))+'</span></span>';
+      }).join('');
+      msg.innerHTML=
+        '<div class="ai-turn-head"><span class="ai-turn-mark"></span><span class="ai-turn-who">'+esc(who)+'</span>'+
+        '<span class="ai-turn-trace">'+(traceText?('· '+esc(traceText)):'')+'</span></div>'+
+        '<div class="ai-turn-body">'+(text?linkifySafe(text):'')+'</div>'+
+        '<div class="ai-turn-progress"'+(showProgress?'':' hidden')+'>'+
+          '<div class="ai-turn-stages">'+stageTags+'</div>'+
+          '<div class="ai-turn-logs"></div>'+
+          '<details class="ai-turn-log-details" hidden><summary></summary><div class="ai-turn-logs"></div></details>'+
+        '</div>'+
+        '<div class="ai-turn-error"></div>'+
+        '<div class="ai-turn-actions"'+(meta&&meta.actions&&meta.actions.length?'':' hidden')+'>'+renderBotActionsHtml(meta&&meta.actions)+'</div>';
     }else if(cls==='sys'){
       msg.innerHTML=linkifySafe(text);
     }else{
@@ -1889,35 +1940,128 @@
     return msg;
   }
 
-  var STAGE_ORDER=['thinking','building','checking','packaging'];
-  function setAiStage(stage,detailText){
-    var bar=$('aiStageBar'),pill=$('aiStatusPill');
-    if(!bar)return;
-    if(!stage){
-      bar.hidden=true;
-      if(pill){pill.textContent='';pill.className='ai-status';}
-      [].forEach.call(bar.querySelectorAll('.ai-stage-tag'),function(el){el.classList.remove('is-active','is-done');});
-      return;
+  var activeBotTurn=null, lastRetryAction=null;
+  function updateBotTurn(turn,opts){
+    if(!turn||!opts)return;
+    turn.classList.remove('is-working','is-done','is-failed');
+    if(opts.state==='working')turn.classList.add('is-working');
+    else if(opts.state==='done')turn.classList.add('is-done');
+    else if(opts.state==='failed')turn.classList.add('is-failed');
+    if(opts.who!==undefined){
+      var w=turn.querySelector('.ai-turn-who');
+      if(w)w.textContent=opts.who||'Fracs AI';
     }
-    bar.hidden=false;
-    var activeIdx=STAGE_ORDER.indexOf(stage);
-    if(stage==='preview') activeIdx=3; // thinking/building/checking завершены, ждёт одобрения для packaging
-    if(stage==='done') activeIdx=4;
-    [].forEach.call(bar.querySelectorAll('.ai-stage-tag'),function(el){
-      var st=el.getAttribute('data-stage');
-      var idx=STAGE_ORDER.indexOf(st);
-      el.classList.remove('is-active','is-done');
-      if(stage==='done' || (stage==='preview' && idx<3) || (activeIdx>=0 && idx<activeIdx)){
-        el.classList.add('is-done');
-      }else if(activeIdx>=0 && idx===activeIdx && stage!=='preview'){
-        el.classList.add('is-active');
+    if(opts.trace!==undefined){
+      var tr=turn.querySelector('.ai-turn-trace');
+      if(tr)tr.textContent=opts.trace?('· '+opts.trace):'';
+    }
+    if(opts.text!==undefined){
+      var b=turn.querySelector('.ai-turn-body');
+      if(b)b.innerHTML=opts.text?linkifySafe(opts.text):'';
+    }
+    var prog=turn.querySelector('.ai-turn-progress');
+    if(prog){
+      if(opts.hideProgress){
+        prog.hidden=true;
+      }else if(opts.stage!==undefined||opts.logs!==undefined||opts.showProgress){
+        prog.hidden=false;
+        var st=opts.stage||'thinking';
+        var activeIdx=STAGE_ORDER.indexOf(st);
+        if(st==='preview')activeIdx=STAGE_ORDER.indexOf('packaging');
+        if(st==='done')activeIdx=STAGE_ORDER.length;
+        [].forEach.call(prog.querySelectorAll('.ai-turn-stage'),function(el){
+          var key=el.getAttribute('data-stage');
+          var idx=STAGE_ORDER.indexOf(key);
+          el.classList.remove('is-active','is-done','is-error');
+          if(st==='done'||(st==='preview'&&idx<STAGE_ORDER.indexOf('packaging'))||(activeIdx>=0&&idx<activeIdx)){
+            el.classList.add('is-done');
+          }else if(opts.state==='failed'&&((activeIdx>=0&&idx===activeIdx)||(activeIdx<0&&idx===0))){
+            el.classList.add('is-error');
+          }else if(activeIdx>=0&&idx===activeIdx&&st!=='preview'){
+            el.classList.add('is-active');
+          }
+        });
+        if(opts.logs!==undefined){
+          var logsList=Array.isArray(opts.logs)?opts.logs.filter(Boolean):[];
+          var liveBox=prog.children[1];
+          var detBox=prog.querySelector('.ai-turn-log-details');
+          var detLogs=detBox?detBox.querySelector('.ai-turn-logs'):null;
+          var detSum=detBox?detBox.querySelector('summary'):null;
+          var collapseLogs=Boolean(opts.collapseLogs);
+          var logHtml=logsList.map(function(line,ix){
+            var latest=(!collapseLogs&&ix===logsList.length-1)?' is-latest':'';
+            return '<div class="ai-turn-log-line'+latest+'">'+esc(line)+'</div>';
+          }).join('');
+          if(collapseLogs&&logsList.length&&detBox&&detLogs&&detSum){
+            if(liveBox)liveBox.innerHTML='';
+            detBox.hidden=false;
+            detSum.textContent='Этапы сборки ('+logsList.length+')';
+            detLogs.innerHTML=logHtml;
+          }else{
+            if(detBox)detBox.hidden=true;
+            if(liveBox){
+              liveBox.innerHTML=logHtml;
+              liveBox.scrollTop=liveBox.scrollHeight;
+            }
+          }
+        }
       }
-    });
-    if(pill){
-      pill.className='ai-status '+stage;
-      if(detailText!==undefined) pill.textContent=detailText;
+    }
+    if(opts.error!==undefined){
+      var errEl=turn.querySelector('.ai-turn-error');
+      if(errEl)errEl.innerHTML=opts.error?linkifySafe(opts.error):'';
+    }
+    if(opts.actions!==undefined){
+      var actEl=turn.querySelector('.ai-turn-actions');
+      if(actEl){
+        var html=renderBotActionsHtml(opts.actions);
+        actEl.innerHTML=html;
+        actEl.hidden=!html;
+      }
     }
     scrollAiToBottom();
+  }
+  function ensureActiveBotTurn(stage,traceText,logs){
+    if(!activeBotTurn||!activeBotTurn.isConnected){
+      activeBotTurn=addMsg('bot','',{
+        who:(currentProvider||'Fracs AI'),
+        trace:traceText||stageLabel(stage||'thinking'),
+        progress:true
+      });
+    }
+    updateBotTurn(activeBotTurn,{
+      state:'working',
+      who:(currentProvider||'Fracs AI'),
+      trace:traceText||stageLabel(stage||'thinking'),
+      stage:stage||'thinking',
+      logs:logs
+    });
+    return activeBotTurn;
+  }
+  function failActiveBotTurn(errText,allowRetry){
+    var turn=activeBotTurn&&activeBotTurn.isConnected
+      ?activeBotTurn
+      :addMsg('bot','',{who:(currentProvider||'Fracs AI'),trace:'Ошибка',progress:false});
+    var st=turn.querySelector('.ai-turn-stage.is-active');
+    var curStage=st?st.getAttribute('data-stage'):'thinking';
+    var actions=allowRetry&&lastRetryAction?[{type:'btn',act:'retry',label:'Повторить'}]:[];
+    updateBotTurn(turn,{
+      state:'failed',
+      trace:'Ошибка',
+      stage:curStage,
+      collapseLogs:false,
+      error:errText||'Не удалось выполнить запрос.',
+      actions:actions
+    });
+    activeBotTurn=null;
+  }
+
+  function setAiStage(stage,detailText){
+    if(!stage){
+      return;
+    }
+    var logs=detailText?[detailText]:undefined;
+    ensureActiveBotTurn(stage,detailText||stageLabel(stage),logs);
   }
 
   function syncComposerExtras(){
@@ -1985,11 +2129,22 @@
       if(d&&d.ok){uploads=d.files||[];renderChips();}
     }).catch(function(){});
   }
+  function setClipHint(txt,isBusy){
+    var hint=document.querySelector('.ai-kbd-hint');
+    if(!hint)return;
+    if(!txt){
+      hint.classList.remove('is-busy');
+      hint.textContent=typeof t==='function'?t('kbd_hint'):'Enter — отправить · Shift+Enter — перенос';
+      return;
+    }
+    hint.classList.toggle('is-busy',Boolean(isBusy));
+    hint.textContent=txt;
+  }
   function removeUpload(ix){
     var gone=uploads[ix];if(!gone)return;
     uploads.splice(ix,1);renderChips();
     fetch('/api/ai/uploads/'+sessionId,{method:'DELETE'}).then(refreshServerUploads).catch(function(){});
-    if(gone){addMsg('sys','Файл «'+gone.name+'» убран из вложений.');}
+    if(gone){setClipHint('Файл «'+gone.name+'» убран из вложений',false);setTimeout(function(){setClipHint('');},3000);}
   }
   function bindClip(){
     var btn=$('aiAttach'),inp=$('aiFile');
@@ -2001,16 +2156,18 @@
       if(!fs.length)return;
       var fd=new FormData();fd.append('session_id',sessionId);
       fs.forEach(function(f){fd.append('files',f,f.name);});
-      setAiStage('thinking','Загружаю вложения…');
+      setClipHint('Загружаю вложения…',true);
       fetch('/api/ai/upload',{method:'POST',body:fd})
         .then(function(r){return r.json()})
         .then(function(d){
-          setAiStage(null);
           if(d&&d.ok){
-            addMsg('sys','Приложено: '+d.files.map(function(f){return f.name;}).join(', ')+'. Отправьте сообщение — файлы уйдут в контекст.');
             refreshServerUploads();
-          }else{addMsg('sys','Не удалось загрузить файлы: '+(d&&d.error||'ошибка'));}
-        }).catch(function(){setAiStage(null);addMsg('sys','Нет связи с бэкендом при загрузке файлов.');});
+            setClipHint('Приложено: '+d.files.map(function(f){return f.name;}).join(', '),false);
+            setTimeout(function(){setClipHint('');},3500);
+          }else{
+            setClipHint('Не удалось загрузить: '+(d&&d.error||'ошибка'),true);
+          }
+        }).catch(function(){setClipHint('Нет связи при загрузке файлов',true);});
     });
   }
 
@@ -2328,7 +2485,7 @@
 
   function resetActiveBuildUi(){
     if(poller){clearInterval(poller);poller=null;}
-    currentJob=null;approvingJob='';
+    currentJob=null;approvingJob='';activeBotTurn=null;
     seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
     setEditMode(false);
     setAgentFiles([]);
@@ -2341,8 +2498,9 @@
   }
 
   function statusMsg(s){
-    return {queued:'В очереди…',thinking:'Думаю над структурой…',running:'Генерируем сайт…',
-      building:'Собираю код и стили…',checking:'Проверяю шедевр…',
+    return {queued:'В очереди…',thinking:'Думаю над структурой…',photos:'Подбираю фотографии…',
+      brief:'Продумываю структуру и шрифты…',running:'Генерируем сайт…',
+      building:'Собираю код и стили…',polishing:'Вычитываю тексты…',checking:'Проверяю шедевр…',
       preview:'Готово превью — откройте и одобрите.',
       packaging:'Собираю ZIP и открытку с QR…',done:'Шедевр готов! Файлы можно скачать справа.',
       failed:'Ошибка генерации.',cancelled:'Отменено.'}[s]||s;
@@ -2355,23 +2513,32 @@
     var apBtn=$('aiApprove'); if(apBtn)apBtn.disabled=true;
     [].forEach.call(document.querySelectorAll('#aiChat [data-ai-act="approve"]'),function(b){b.disabled=true;});
     addMsg('user','Одобряю — соберите ZIP и открытку.');
-    setAiStage('packaging','Упаковываю видеообзор, открытку с QR и ZIP…');
+    activeBotTurn=addMsg('bot','Принято — упаковываю видеообзор, открытку с QR и архив сайта.',{
+      who:(currentProvider||'Fracs AI'),
+      trace:'Упаковываю',
+      progress:true
+    });
+    updateBotTurn(activeBotTurn,{
+      state:'working',
+      stage:'packaging',
+      trace:'Упаковываю',
+      logs:['Запускаю рендер видеообзора, открытки с QR и ZIP…']
+    });
     fetch('/api/ai/approve/'+currentJob,{method:'POST'}).then(function(r){return r.json()})
       .then(function(d){
         if(!d.ok){
           approvingJob='';
           if(apBtn)apBtn.disabled=false;
-          setAiStage(null);
-          addMsg('sys',d.error||'Не удалось начать сборку.');
+          failActiveBotTurn(d.error||'Не удалось начать сборку.',false);
         }else{
-          addMsg('bot','Принято — упаковываю видеообзор, открытку с QR и архив сайта.',{who:(currentProvider||'Fracs AI'),trace:'Упаковываю'});
+          if(!poller){poller=setInterval(poll,1100);}
+          poll();
         }
       })
       .catch(function(){
         approvingJob='';
         if(apBtn)apBtn.disabled=false;
-        setAiStage(null);
-        addMsg('sys','Нет связи.');
+        failActiveBotTurn('Нет связи с сервером.',false);
       });
   }
 
@@ -2387,9 +2554,14 @@
   function poll(){
     if(!currentJob)return;
     fetch('/api/ai/status/'+currentJob).then(function(r){return r.json()}).then(function(d){
-      if(!d.ok){addMsg('sys',d.error||'Ошибка статуса');clearInterval(poller);poller=null;setAiStage(null);return;}
+      if(!d.ok){
+        clearInterval(poller);poller=null;
+        failActiveBotTurn(d.error||'Ошибка статуса',true);
+        return;
+      }
       var logs=d.logs||[];
-      var detail=logs.length?logs[logs.length-1]:statusMsg(d.stage||d.status);
+      var st=d.stage||d.status||'thinking';
+      var detail=logs.length?logs[logs.length-1]:statusMsg(st);
       seenLogs=logs.length;
       var files=d.files||[];
       var hasZip=files.some(function(f){return f.type==='zip';});
@@ -2402,15 +2574,27 @@
         syncComposerExtras();
         if(!previewMsgShown){
           previewMsgShown=true;
-          addMsg('bot','Превью готово — откройте макет кнопкой ниже и проверьте вёрстку. Если всё устраивает, нажмите «Одобрить и собрать» для создания открытки с QR, видеообзора и архива.',{
-            who:(currentProvider||'Fracs AI'),
-            trace:'Думаю · Собираю · Проверяю шедевр',
-            actions:[
-              {type:'link',label:'Открыть превью',href:previewTarget,primary:true},
-              {type:'btn',act:'approve',label:'Одобрить и собрать',cls:'approve'},
-              {type:'btn',act:'edit',label:'Изменить макет'}
-            ]
-          });
+          var previewText='Превью готово — откройте макет кнопкой ниже и проверьте вёрстку. Если всё устраивает, нажмите «Одобрить и собрать» для создания открытки с QR, видеообзора и архива.';
+          var previewActions=[
+            {type:'link',label:'Открыть превью',href:previewTarget,primary:true},
+            {type:'btn',act:'approve',label:'Одобрить и собрать',cls:'approve'},
+            {type:'btn',act:'edit',label:'Изменить макет'}
+          ];
+          if(activeBotTurn&&activeBotTurn.isConnected){
+            updateBotTurn(activeBotTurn,{
+              state:'done',
+              trace:'Превью готово',
+              text:previewText,
+              stage:'preview',
+              logs:logs,
+              collapseLogs:true,
+              error:'',
+              actions:previewActions
+            });
+          }else{
+            var pt=addMsg('bot',previewText,{who:(currentProvider||'Fracs AI'),trace:'Превью готово',progress:true,actions:previewActions});
+            updateBotTurn(pt,{state:'done',stage:'preview',logs:logs,collapseLogs:true});
+          }
           refreshAiUsage();
         }
       }
@@ -2424,29 +2608,43 @@
         clearInterval(poller);poller=null;approvingJob='';
         var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=false;runBtn.textContent='Запустить';}
         if(d.status==='done'){
-          setAiStage('done','Шедевр готов');
           if(!doneShown){
             doneShown=true;
-            addMsg('bot','Готово: ZIP со всем сайтом, открытка с QR и видеообзор — справа в «Передача файлов». QR на открытке открывает видеообзор — можно пересылать заказчику.',{
-              who:(currentProvider||'Fracs AI'),
-              trace:'Упаковано в релиз'
-            });
+            var doneText='Готово: ZIP со всем сайтом, открытка с QR и видеообзор — справа в «Передача файлов». QR на открытке открывает видеообзор — можно пересылать заказчику.';
+            if(activeBotTurn&&activeBotTurn.isConnected){
+              updateBotTurn(activeBotTurn,{
+                state:'done',
+                trace:'Упаковано в релиз',
+                text:doneText,
+                stage:'done',
+                logs:logs,
+                collapseLogs:true,
+                error:''
+              });
+            }else{
+              var dt=addMsg('bot',doneText,{who:(currentProvider||'Fracs AI'),trace:'Упаковано в релиз',progress:true});
+              updateBotTurn(dt,{state:'done',stage:'done',logs:logs,collapseLogs:true});
+            }
           }
-          setTimeout(function(){if(!poller)setAiStage(null);},3500);
+          activeBotTurn=null;
         }else if(d.status==='failed'){
-          setAiStage(null);
-          addMsg('sys','Генерация не удалась: '+(d.error||''));
+          if(activeBotTurn&&activeBotTurn.isConnected&&logs.length){
+            updateBotTurn(activeBotTurn,{stage:st,logs:logs});
+          }
+          failActiveBotTurn('Генерация не удалась: '+(d.error||'неизвестная ошибка'),true);
           handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
           var ap=$('aiApprove');if(ap)ap.style.display='none';
           var op=$('aiOpenPreview');if(op)op.style.display='none';
           syncComposerExtras();
         }else{
-          setAiStage(null);
+          activeBotTurn=null;
         }
         refreshAiUsage();
         return;
       }
-      setAiStage(d.stage||d.status, detail);
+      if(!previewShown||d.stage==='packaging'||approvingJob===currentJob){
+        ensureActiveBotTurn(st,stageLabel(st),logs.length?logs:[detail]);
+      }
     }).catch(function(){});
   }
 
@@ -2463,18 +2661,21 @@
 
   var pendingCardMeta=null;
   function startAgent(prompt,silent,cardMeta,isEditFlag){
-    if(!silent)addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
-    setAiStage('thinking','Думаю над задачей…');
+    if(!silent){
+      addMsg('user',prompt||'Сгенерируй сайт по карточкам бизнеса');
+      activeBotTurn=null;
+    }
+    lastRetryAction={kind:'start',prompt:prompt,cardMeta:cardMeta||null,isEditFlag:isEditFlag};
+    ensureActiveBotTurn('thinking','Думаю над задачей',['Анализирую задачу и параметры макета…']);
     resolveReadyProvider(false).then(function(info){
       var key=activeKey();
       if(info.pro_only&&!info.allowed){
-        setAiStage(null);
-        addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
+        failActiveBotTurn('Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).',false);
         return;
       }
       var needKey=!info.pro_only&&info.needs_key!==false;
-      if(needKey&&!key){setAiStage(null);addMsg('sys','Введите API-ключ в настройках агента («Настроить →») и сохраните его.');return;}
-      if(info.pro_only&&info.configured===false){setAiStage(null);addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
+      if(needKey&&!key){failActiveBotTurn('Введите API-ключ в настройках агента («Настроить →») и сохраните его.',false);return;}
+      if(info.pro_only&&info.configured===false){failActiveBotTurn('Fracs AI временно недоступен. Попробуйте позже.',true);return;}
       var cm=cardMeta||pendingCardMeta;
       if(cm&&!cardMeta&&cm.name&&String(prompt||'').indexOf(cm.name)===-1){cm=null;}
       pendingCardMeta=null;
@@ -2495,15 +2696,14 @@
       fetch('/api/ai/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
         .then(function(r){return r.json()}).then(function(d){
           if(!d.ok){
-            setAiStage(null);
-            addMsg('sys',(d.error==='pro_required'?'Fracs AI доступен только на тарифе Ultra.':(d.error||'Не удалось запустить агент.')));
+            failActiveBotTurn((d.error==='pro_required'?'Fracs AI доступен только на тарифе Ultra.':(d.error||'Не удалось запустить агент.')),d.error!=='pro_required');
             handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
             if(d.pro_required){loadProviders();}
             return;}
           currentJob=d.job_id;approvingJob='';
           seenLogs=0;previewShown=false;previewMsgShown=false;doneShown=false;
           if(!wantEdit){setAgentFiles([]);}
-          setAiStage('thinking','Запускаю сборку…');
+          ensureActiveBotTurn('thinking','Запускаю сборку',['Запускаю генерацию макета…']);
           var runBtn=$('aiRun'); if(runBtn){runBtn.disabled=true;runBtn.textContent='Работает…';}
           var ap=$('aiApprove');if(ap){ap.style.display='none';ap.disabled=false;}
           var op=$('aiOpenPreview');if(op)op.style.display='none';
@@ -2511,21 +2711,22 @@
           var ex=$('aiExport');if(ex)ex.style.display='none';
           syncComposerExtras();
           if(poller)clearInterval(poller);poller=setInterval(poll,1100);poll();
-        }).catch(function(e){setAiStage(null);addMsg('sys','Нет связи с бэкендом: '+e);});
+        }).catch(function(e){failActiveBotTurn('Нет связи с бэкендом: '+e,true);});
     });
   }
 
   /* Отправка из чата: модель отвечает, а при маркере [BUILD] запускает сборку (новую или правку). */
   function aiChatSend(v,forceNew){
-    setAiStage('thinking','Думаю над ответом…');
+    lastRetryAction={kind:'chat',v:v,forceNew:Boolean(forceNew)};
+    activeBotTurn=null;
+    ensureActiveBotTurn('thinking','Думаю',['Думаю над запросом…']);
     resolveReadyProvider(false).then(function(info){
       if(info.pro_only&&!info.allowed){
-        setAiStage(null);
-        addMsg('sys','Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).');
+        failActiveBotTurn('Fracs AI доступен только на тарифе Ultra. Оформите Ultra в кабинете или выберите своего провайдера (доступно на PRO).',false);
         return;
       }
       var key=activeKey();
-      if(info.pro_only&&info.configured===false){setAiStage(null);addMsg('sys','Fracs AI временно недоступен. Попробуйте позже.');return;}
+      if(info.pro_only&&info.configured===false){failActiveBotTurn('Fracs AI временно недоступен. Попробуйте позже.',true);return;}
       var model=currentModel();
       var isEditingNow=Boolean(editMode&&currentJob&&!forceNew);
       var hasActiveJob=Boolean(currentJob&&!forceNew);
@@ -2538,8 +2739,10 @@
           refreshAiUsage();
           if(d&&d.ok){
             var reply=d.reply||'…';
-            addMsg('bot',reply,{who:(currentProvider||'Fracs AI'),trace:d.build?'Думаю → Собираю':'Думаю'});
             if(d.build){
+              if(activeBotTurn&&activeBotTurn.isConnected){
+                updateBotTurn(activeBotTurn,{state:'working',text:reply,trace:'Думаю → Собираю',stage:'thinking'});
+              }
               var wantEdit=Boolean(!forceNew&&currentJob&&(isEditingNow||d.is_edit===true));
               var fullBrief=wantEdit?v:(currentJob?v:buildPromptFromThread(v));
               if(!wantEdit){
@@ -2549,16 +2752,20 @@
               }
               startAgent(fullBrief,true,null,wantEdit);
             }else{
+              if(activeBotTurn&&activeBotTurn.isConnected){
+                updateBotTurn(activeBotTurn,{state:'done',text:reply,trace:'Готово',hideProgress:true});
+                activeBotTurn=null;
+              }else{
+                addMsg('bot',reply,{who:(currentProvider||'Fracs AI'),trace:'Готово'});
+              }
               chatHistory.push({role:'user',content:v},{role:'assistant',content:reply});
-              setAiStage(null);
             }
             return;
           }
-          setAiStage(null);
-          if(d&&d.error==='no_api_key'){addMsg('sys','API-ключ не задан — откройте «Настроить →», вставьте ключ и сохраните.');return;}
+          if(d&&d.error==='no_api_key'){failActiveBotTurn('API-ключ не задан — откройте «Настроить →», вставьте ключ и сохраните.',false);return;}
           /* если модель отклонила запрос из-за квоты — честно показываем ошибку и включаем таймер/докупку */
           if(d&&(d.reset_at||/лимит|токен|сложност|quota|бюджет/i.test(d.error||''))){
-            addMsg('sys',d.error||'Лимит исчерпан.');
+            failActiveBotTurn(d.error||'Лимит исчерпан.',false);
             handleAiQuotaError(d.error||'',d.reset_at||0,d.error_code||'');
             return;
           }
@@ -2570,10 +2777,9 @@
             startAgent(fbPrompt,true,null,fbEdit);
             return;
           }
-          addMsg('bot','Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни в Москве» — и я соберу демо.',{who:(currentProvider||'Fracs AI')});
+          failActiveBotTurn('Модель сейчас не отвечает ('+((d&&d.error)||'ошибка')+'). Опишите задачу текстом — например: «Сделай сайт для кофейни в Москве» — и я соберу демо.',true);
         })
         .catch(function(e){
-          setAiStage(null);
           var looksLikePureQ=/^\s*(?:почему|где|зачем|что\s+(?:за|такое|это)|как\s+так)\b/i.test(v)&&!/\b(?:сделай|создай|сгенерируй|собери|измени|поменяй|переделай|почини|добавь|убери|удали)\b/i.test(v);
           if(!looksLikePureQ&&/сделай|создай|сгенерируй|собери|измени|правк|сайт|лендинг|макет|карточк/i.test(v)){
             var fbEdit=Boolean(isEditingNow&&currentJob&&!/сайт\s+(для|под)\s+|лендинг\s+(для|под)\s+|новый сайт/i.test(v));
@@ -2581,7 +2787,7 @@
             startAgent(fbPrompt,true,null,fbEdit);
             return;
           }
-          addMsg('sys','Нет связи с бэкендом: '+e);
+          failActiveBotTurn('Нет связи с бэкендом: '+e,true);
         });
     });
   }
@@ -2613,6 +2819,12 @@
       var act=actBtn.getAttribute('data-ai-act');
       if(act==='approve') approveCurrentJob(actBtn);
       else if(act==='edit') enterEditMode();
+      else if(act==='retry'&&lastRetryAction){
+        actBtn.disabled=true;
+        var a=lastRetryAction;
+        if(a.kind==='chat') aiChatSend(a.v,a.forceNew);
+        else if(a.kind==='start') startAgent(a.prompt,true,a.cardMeta,a.isEditFlag);
+      }
     });
   }
   var starters=$('aiStarters');

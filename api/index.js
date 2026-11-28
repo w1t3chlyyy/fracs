@@ -3239,7 +3239,7 @@ function buildFallbackModels(primaryModel, imageCount) {
     if (primaryModel === COHERE_MODEL) {
       list.push(FRACS_FAST_MODEL, "glm-5.3-flash");
     } else if (primaryModel === FRACS_BUILD_MODEL) {
-      const olFallbacks = config.openrouterApiKey ? [imageCount > 0 ? "deepseek-v4.1-flash:1017" : "deepseek-v4-pro:0813"] : imageCount > 0 ? ["deepseek-v4.1-flash:1017", "glm-5.3-flash", "mistral-large-4"] : ["deepseek-v4-pro:0813", "deepseek-v4.1-flash:1017", "glm-5.3"];
+      const olFallbacks = config.openrouterApiKey ? ["deepseek-v4.1-flash:1017", ...imageCount > 0 ? [] : ["deepseek-v4-pro:0813"]] : imageCount > 0 ? ["deepseek-v4.1-flash:1017", "glm-5.3-flash", "mistral-large-4"] : ["deepseek-v4.1-flash:1017", "glm-5.3-flash", "deepseek-v4-pro:0813", "glm-5.3"];
       list.push(...olFallbacks);
     } else if (primaryModel === FRACS_FAST_MODEL) {
       list.push("glm-5.3-flash", "gemma4:31b", "minimax-m3.1-flash");
@@ -3251,7 +3251,7 @@ function buildFallbackModels(primaryModel, imageCount) {
     } else if (primaryModel === FRACS_FAST_MODEL || primaryModel === "deepseek/deepseek-chat") {
       list.push("deepseek/deepseek-chat", "google/gemini-2.5-flash", "openai/gpt-4o-mini", "anthropic/claude-3.5-haiku");
     } else {
-      list.push(...imageCount > 0 ? ["anthropic/claude-sonnet-4", "google/gemini-2.5-flash", "anthropic/claude-3.5-sonnet", "openai/gpt-4o-mini"] : ["anthropic/claude-sonnet-4", "google/gemini-2.5-flash", "deepseek/deepseek-chat", "anthropic/claude-3.5-sonnet", "openai/gpt-4o-mini"]);
+      list.push(...imageCount > 0 ? ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o-mini"] : ["google/gemini-2.5-flash", "deepseek/deepseek-chat", "anthropic/claude-sonnet-4", "anthropic/claude-3.5-sonnet", "openai/gpt-4o-mini"]);
     }
   }
   return Array.from(new Set(list));
@@ -3514,15 +3514,131 @@ appRouter.post("/ai", h2(async (req, res) => {
     return void res.status(429).json({ ok: false, error: "quota_budget", resetAt: nextUtcMidnight.getTime(), message: "\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043B\u0438\u043C\u0438\u0442 Fracs AI \u043F\u043E \u043E\u0431\u044A\u0451\u043C\u0443 \u0433\u0435\u043D\u0435\u0440\u0430\u0446\u0438\u0438 \u0438\u0441\u0447\u0435\u0440\u043F\u0430\u043D. \u041E\u043D \u043E\u0431\u043D\u043E\u0432\u0438\u0442\u0441\u044F \u0437\u0430\u0432\u0442\u0440\u0430 \u0438\u043B\u0438 \u043F\u043E\u0441\u043B\u0435 \u043F\u043E\u043A\u0443\u043F\u043A\u0438 \u043F\u0430\u043A\u0435\u0442\u0430 \u0442\u043E\u043A\u0435\u043D\u043E\u0432." });
   }
   try {
-    const callUpstream = (u, timeoutMs) => fetch(u.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${u.key}` },
-      body: JSON.stringify(u.body),
-      signal: AbortSignal.timeout(timeoutMs)
-    });
+    const callUpstreamSmart = async (u, overallTimeoutMs, firstTokenTimeoutMs, useStream) => {
+      const ac = new AbortController();
+      let timerReason = "";
+      const overallTimer = setTimeout(() => {
+        timerReason = "overall_timeout";
+        ac.abort();
+      }, overallTimeoutMs);
+      let firstTokenTimer = null;
+      let idleTimer = null;
+      const clearTimers = () => {
+        clearTimeout(overallTimer);
+        if (firstTokenTimer) {
+          clearTimeout(firstTokenTimer);
+          firstTokenTimer = null;
+        }
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
+      };
+      const reqBody = useStream ? { ...u.body, stream: true } : u.body;
+      if (useStream && firstTokenTimeoutMs < overallTimeoutMs) {
+        firstTokenTimer = setTimeout(() => {
+          timerReason = "first_token_timeout";
+          ac.abort();
+        }, firstTokenTimeoutMs);
+      }
+      try {
+        const r = await fetch(u.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${u.key}` },
+          body: JSON.stringify(reqBody),
+          signal: ac.signal
+        });
+        const ctype = (r.headers.get("content-type") || "").toLowerCase();
+        if (!r.ok || !useStream || !ctype.includes("text/event-stream") || !r.body) {
+          const rawText = await r.text();
+          return { status: r.status, rawText };
+        }
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        let content = "";
+        let finishReason = "stop";
+        let usageObj = null;
+        let gotContent = false;
+        const resetIdle = () => {
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => {
+            timerReason = "stream_idle_timeout";
+            ac.abort();
+          }, 2e4);
+        };
+        resetIdle();
+        let sawReasoning = false;
+        const consumeLine = (line) => {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data:")) return;
+          const payload = trimmed.slice(5).trim();
+          if (payload === "[DONE]") return;
+          let ev = null;
+          try {
+            ev = JSON.parse(payload);
+          } catch {
+            return;
+          }
+          if (ev?.error && !content) {
+            throw new Error(`stream_error:${ev.error?.message || ev.error?.code || "upstream"}`);
+          }
+          if (ev?.usage) usageObj = ev.usage;
+          const ch = ev?.choices?.[0];
+          if (!ch) return;
+          if (ch.finish_reason) finishReason = ch.finish_reason;
+          const delta = ch.delta;
+          if (typeof delta?.content === "string" && delta.content.length > 0) {
+            content += delta.content;
+            if (!gotContent) {
+              gotContent = true;
+              if (firstTokenTimer) {
+                clearTimeout(firstTokenTimer);
+                firstTokenTimer = null;
+              }
+            }
+          } else if (!gotContent && !sawReasoning && (typeof delta?.reasoning === "string" && delta.reasoning.length > 0 || typeof delta?.reasoning_content === "string" && delta.reasoning_content.length > 0)) {
+            sawReasoning = true;
+            if (firstTokenTimer) {
+              clearTimeout(firstTokenTimer);
+              firstTokenTimer = setTimeout(() => {
+                timerReason = "first_content_timeout";
+                ac.abort();
+              }, Math.min(overallTimeoutMs, 24e3));
+            }
+          }
+        };
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          resetIdle();
+          buf += decoder.decode(value, { stream: true });
+          let nl = buf.indexOf("\n");
+          while (nl !== -1) {
+            consumeLine(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+            nl = buf.indexOf("\n");
+          }
+        }
+        buf += decoder.decode();
+        if (buf.trim()) consumeLine(buf);
+        const parsed = {
+          id: `fracs-${Date.now()}`,
+          object: "chat.completion",
+          choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: finishReason }],
+          ...usageObj ? { usage: usageObj } : {}
+        };
+        return { status: r.status, rawText: "", parsed };
+      } catch (err) {
+        if (timerReason) throw new Error(timerReason);
+        throw err;
+      } finally {
+        clearTimers();
+      }
+    };
     const candidates = buildFallbackModels(body.model, imageCount);
     const isVercel = Boolean(process.env.VERCEL);
-    const deadline = Date.now() + (isVercel ? 53e3 : 155e3);
+    const deadline = Date.now() + (isVercel ? 55e3 : 155e3);
     let okUpstream = null;
     let lastStatus = 502;
     for (let idx = 0; idx < candidates.length; idx++) {
@@ -3530,7 +3646,8 @@ appRouter.post("/ai", h2(async (req, res) => {
       if (remaining <= 3e3) break;
       const candidate = candidates[idx];
       const hasMore = idx + 1 < candidates.length;
-      const timeoutMs = isVercel ? Math.min(remaining, idx === 0 && hasMore ? 32e3 : 2e4) : Math.min(remaining, idx === 0 && hasMore ? 55e3 : 35e3);
+      const overallMs = isVercel ? remaining : Math.min(remaining, hasMore ? 75e3 : remaining);
+      const firstTokMs = isVercel ? hasMore ? Math.min(remaining - 2e3, idx === 0 ? 15e3 : 13e3) : remaining : hasMore ? 22e3 : remaining;
       const attempts = [];
       const u1 = resolveUpstream(body, false, candidate, false);
       if (u1) attempts.push(u1);
@@ -3539,37 +3656,48 @@ appRouter.post("/ai", h2(async (req, res) => {
         if (uOr) attempts.push(uOr);
       }
       for (const route of attempts) {
+        const canStream = route.via === "openrouter" || route.via === "ollama";
         try {
-          let r = await callUpstream(route, timeoutMs);
-          let rawText = await r.text();
-          if (r.status === 400 && (route.body.temperature !== void 0 || route.body.reasoning !== void 0 || route.body.usage !== void 0)) {
-            const stripped = resolveUpstream(body, route.via === "openrouter" && candidate === COHERE_MODEL, candidate, true);
+          let resUp = await callUpstreamSmart(route, overallMs, Math.max(4e3, firstTokMs), canStream);
+          if (resUp.status === 400 || resUp.status === 422) {
+            const safeMaxTok = Math.min(Number(route.body.max_tokens) || 8192, 8192);
+            const stripped = resolveUpstream(
+              { ...body, max_tokens: safeMaxTok },
+              route.via === "openrouter" && candidate === COHERE_MODEL,
+              candidate,
+              true
+            );
             if (stripped) {
-              r = await callUpstream(stripped, timeoutMs);
-              rawText = await r.text();
+              const rem2 = Math.max(4e3, deadline - Date.now());
+              resUp = await callUpstreamSmart(stripped, rem2, Math.min(rem2, firstTokMs), canStream);
             }
           }
-          if (r.status === 402 && !hasMore && (Number(route.body.max_tokens) || 0) > 8192) {
-            const capped = resolveUpstream({ ...body, max_tokens: 8192 }, route.via === "openrouter" && candidate === COHERE_MODEL, candidate, true);
+          if (resUp.status === 402 && !hasMore && (Number(route.body.max_tokens) || 0) > 6144) {
+            const capped = resolveUpstream(
+              { ...body, max_tokens: 6144 },
+              route.via === "openrouter" && candidate === COHERE_MODEL,
+              candidate,
+              true
+            );
             if (capped) {
-              r = await callUpstream(capped, timeoutMs);
-              rawText = await r.text();
+              const rem2 = Math.max(4e3, deadline - Date.now());
+              resUp = await callUpstreamSmart(capped, rem2, rem2, canStream);
             }
           }
-          lastStatus = r.status;
-          if (r.ok) {
+          lastStatus = resUp.status;
+          if (resUp.status >= 200 && resUp.status < 300) {
             try {
-              const parsed = JSON.parse(rawText);
+              const parsed = resUp.parsed ?? JSON.parse(resUp.rawText);
               if (hasNonEmptyCompletion(parsed)) {
-                okUpstream = { status: r.status, parsed, model: candidate };
+                okUpstream = { status: resUp.status, parsed, model: candidate };
                 break;
               }
-              console.error("[ai] upstream empty completion:", candidate, rawText.slice(0, 240));
+              console.error("[ai] upstream empty completion:", candidate, String(resUp.rawText).slice(0, 240));
             } catch (parseErr) {
               console.error("[ai] upstream invalid json:", candidate, parseErr);
             }
           } else {
-            console.error("[ai] upstream error:", candidate, route.via, r.status, rawText.slice(0, 300));
+            console.error("[ai] upstream error:", candidate, route.via, resUp.status, String(resUp.rawText).slice(0, 300));
           }
         } catch (err) {
           console.error("[ai] upstream fetch failed:", candidate, route.via, err?.message || err);

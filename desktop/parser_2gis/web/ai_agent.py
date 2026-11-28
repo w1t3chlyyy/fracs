@@ -1575,28 +1575,31 @@ def _call_llm(provider: str, api_key: str, model: str, prompt: str, extra: str =
     max_proxy_tries = 2 if (via_proxy and (task == 'build' or system is _SYSTEM_PROMPT)) else 1
     for cand_idx, cand_model in enumerate(direct_candidates):
         for proxy_try in range(max_proxy_tries):
+            attempt_started = time.time()
             cur_max_tok = max_tokens
-            if proxy_try > 0 and isinstance(max_tokens, (int, float)) and int(max_tokens) > 10000:
-                cur_max_tok = 10000
+            if proxy_try > 0 and isinstance(max_tokens, (int, float)) and int(max_tokens) > 8192:
+                cur_max_tok = 8192
             body = _make_req_body(cand_model)
             body['max_tokens'] = int(cur_max_tok or 4096)
             try:
                 r = requests.post(url, headers=headers, json=body, timeout=req_timeout)
-                if r.status_code == 400 and not via_proxy and 'temperature' in body:
-                    r = requests.post(url, headers=headers, json=_make_req_body(cand_model, strip_temp=True), timeout=req_timeout)
+                if r.status_code in (400, 422) and not via_proxy:
+                    stripped = _make_req_body(cand_model, strip_temp=True)
+                    stripped['max_tokens'] = min(int(stripped.get('max_tokens') or 8192), 8192)
+                    r = requests.post(url, headers=headers, json=stripped, timeout=req_timeout)
             except requests.RequestException as e:
                 last_req_err = e
                 r = None
-                if via_proxy and proxy_try + 1 < max_proxy_tries:
-                    time.sleep(1.0)
+                if via_proxy and proxy_try + 1 < max_proxy_tries and _ms(attempt_started) < 18000:
+                    time.sleep(0.8)
                     continue
                 if cand_idx + 1 < len(direct_candidates):
                     break
                 if provider == 'Fracs AI':
                     return {'ok': False, 'error': _FRACS_DOWN, 'ms': _ms(started), 'skipped_images': skipped}
                 return {'ok': False, 'error': f'network: {e}', 'ms': _ms(started), 'skipped_images': skipped}
-            if r.status_code >= 500 and via_proxy and proxy_try + 1 < max_proxy_tries:
-                time.sleep(1.0)
+            if r.status_code >= 500 and via_proxy and proxy_try + 1 < max_proxy_tries and _ms(attempt_started) < 18000:
+                time.sleep(0.8)
                 continue
             break
         if r is not None and (r.status_code < 400 or via_proxy or cand_idx + 1 >= len(direct_candidates)):
@@ -2872,12 +2875,14 @@ class AiAgentManager:
                         if du not in urls_to_fetch:
                             urls_to_fetch.append(du)
                 if urls_to_fetch:
+                    self._set_stage(job, 'photos', 'Подбираю фото')
                     self._log(job, f'Загружаю фотографии бизнеса ({len(urls_to_fetch)} шт.)…')
                     job.assets = _fetch_card_photos(urls_to_fetch, limit=4)
                     if job.assets:
                         self._log(job, 'В макет добавлены реальные фото: '
                                    + ', '.join(a['rel_path'] for a in job.assets) + '.')
                 if not job.assets and not _wants_no_photos(effective_prompt + '\n' + job.prompt):
+                    self._set_stage(job, 'photos', 'Подбираю фото')
                     self._log(job, 'Подбираю проверенные тематические фотографии для макета…')
                     stock_urls = _discover_stock_photos(
                         effective_prompt,
@@ -2947,8 +2952,8 @@ class AiAgentManager:
             use_pipe = _PIPELINE_ON and job.provider == 'Fracs AI'
             brief_block = ''
             if use_pipe and not job.is_edit:
-                self._set_stage(job, 'thinking', 'Пишу тексты и концепцию')
-                self._log(job, 'Редактор пишет тексты и подбирает палитру и шрифты под бизнес…')
+                self._set_stage(job, 'brief', 'Продумываю структуру')
+                self._log(job, 'Арт-директор пишет тексты, подбирает шрифты и структуру блоков…')
                 dir_hint = (
                     f'Направление «{dir_var["name"]}» (тема {dir_var["theme"]}, архетип {dir_arch["key"]}, '
                     f'акцент {dir_var["palette"]["accent"]}, шрифты {dir_var["fonts"][0]} + {dir_var["fonts"][1]}). '
@@ -2960,18 +2965,18 @@ class AiAgentManager:
                     brief_block = _brief_block(job.brief)
                     if not style:
                         style = job.brief.get('style_key', '')
-                    self._log(job, f'Бриф готов за {br.get("ms", 0)} мс: композиция «{job.brief.get("archetype") or style or dir_style}»'
+                    self._log(job, f'Структура готова за {br.get("ms", 0)} мс: «{job.brief.get("archetype") or style or dir_style}»'
                                    + (f', шрифты {job.brief["fonts"]["display"]} + {job.brief["fonts"]["text"]}'
                                       if job.brief.get('fonts') else '') + '.')
                     for note in br.get('notes', []):
                         self._log(job, 'Редактор: ' + note)
                 else:
                     self._log(job, 'Редактор недоступен (' + str(br.get('error') or 'ошибка')
-                              + ') — собираю без брифа.')
+                              + ') — собираю по дизайн-рецепту.')
             elif job.is_edit and job.brief:
                 brief_block = _brief_block(job.brief)
-            self._set_stage(job, 'building', 'Собираю')
-            self._log(job, f'Собираю вёрстку ({dir_var["name"]}, {dir_arch["title"]})…')
+            self._set_stage(job, 'building', 'Собираю код')
+            self._log(job, f'Собираю вёрстку и стили ({dir_var["name"]}, {dir_arch["title"]})…')
             res = _call_llm(job.provider, api_key, job.model, llm_prompt, extra,
                             base_url=base_url, uploads=job.uploads,
                             temperature=temperature, max_tokens=max_tokens,
@@ -3032,14 +3037,15 @@ class AiAgentManager:
             if res.get('truncated'):
                 self._log(job, 'Внимание: модель достигла лимита токенов — проверьте нижние блоки в превью.')
             if use_pipe:
-                self._set_stage(job, 'checking', 'Вычитываю тексты')
-                self._log(job, 'Редактор вычитывает тексты страницы…')
+                self._set_stage(job, 'polishing', 'Вычитываю тексты')
+                self._log(job, 'Вычитываю тексты и убираю клише…')
                 html, n_fix, perr = _polish_html(html, effective_prompt)
                 if perr:
                     self._log(job, 'Вычитка пропущена: ' + perr)
                 else:
                     self._log(job, f'Вычитка: исправлено текстов — {n_fix}.' if n_fix
                               else 'Вычитка: замечаний нет.')
+            self._set_stage(job, 'checking', 'Проверяю шедевр')
             audit_summary, audit_notes = _audit_generated_html(html)
             self._log(job, audit_summary)
             for note in audit_notes + _design_flags(html):

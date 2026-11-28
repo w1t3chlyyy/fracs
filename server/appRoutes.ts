@@ -320,12 +320,13 @@ function buildFallbackModels(primaryModel: string, imageCount: number): string[]
     if (primaryModel === COHERE_MODEL) {
       list.push(FRACS_FAST_MODEL, 'glm-5.3-flash');
     } else if (primaryModel === FRACS_BUILD_MODEL) {
-      // Если одновременно задан OpenRouter — ограничиваем Ollama 2 попытками, чтобы успеть перейти к OpenRouter.
+      // Быстрая проверенная модель идёт сразу вторым номером, чтобы при сбое/зависании первой
+      // не сжечь весь бюджет времени на ещё одну тяжёлую модель.
       const olFallbacks = config.openrouterApiKey
-        ? [imageCount > 0 ? 'deepseek-v4.1-flash:1017' : 'deepseek-v4-pro:0813']
+        ? ['deepseek-v4.1-flash:1017', ...(imageCount > 0 ? [] : ['deepseek-v4-pro:0813'])]
         : (imageCount > 0
           ? ['deepseek-v4.1-flash:1017', 'glm-5.3-flash', 'mistral-large-4']
-          : ['deepseek-v4-pro:0813', 'deepseek-v4.1-flash:1017', 'glm-5.3']);
+          : ['deepseek-v4.1-flash:1017', 'glm-5.3-flash', 'deepseek-v4-pro:0813', 'glm-5.3']);
       list.push(...olFallbacks);
     } else if (primaryModel === FRACS_FAST_MODEL) {
       list.push('glm-5.3-flash', 'gemma4:31b', 'minimax-m3.1-flash');
@@ -338,8 +339,8 @@ function buildFallbackModels(primaryModel: string, imageCount: number): string[]
       list.push('deepseek/deepseek-chat', 'google/gemini-2.5-flash', 'openai/gpt-4o-mini', 'anthropic/claude-3.5-haiku');
     } else {
       list.push(...(imageCount > 0
-        ? ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']
-        : ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'deepseek/deepseek-chat', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']));
+        ? ['google/gemini-2.5-flash', 'anthropic/claude-sonnet-4', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']
+        : ['google/gemini-2.5-flash', 'deepseek/deepseek-chat', 'anthropic/claude-sonnet-4', 'anthropic/claude-3.5-sonnet', 'openai/gpt-4o-mini']));
     }
   }
   return Array.from(new Set(list));
@@ -636,16 +637,119 @@ appRouter.post('/ai', h(async (req, res) => {
   }
 
   try {
-    const callUpstream = (u: Upstream, timeoutMs: number) => fetch(u.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u.key}` },
-      body: JSON.stringify(u.body),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const callUpstreamSmart = async (
+      u: Upstream,
+      overallTimeoutMs: number,
+      firstTokenTimeoutMs: number,
+      useStream: boolean,
+    ): Promise<{ status: number; rawText: string; parsed?: any }> => {
+      const ac = new AbortController();
+      let timerReason = '';
+      const overallTimer = setTimeout(() => { timerReason = 'overall_timeout'; ac.abort(); }, overallTimeoutMs);
+      let firstTokenTimer: ReturnType<typeof setTimeout> | null = null;
+      let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      const clearTimers = () => {
+        clearTimeout(overallTimer);
+        if (firstTokenTimer) { clearTimeout(firstTokenTimer); firstTokenTimer = null; }
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      };
+      const reqBody = useStream ? { ...u.body, stream: true } : u.body;
+      if (useStream && firstTokenTimeoutMs < overallTimeoutMs) {
+        firstTokenTimer = setTimeout(() => { timerReason = 'first_token_timeout'; ac.abort(); }, firstTokenTimeoutMs);
+      }
+      try {
+        const r = await fetch(u.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${u.key}` },
+          body: JSON.stringify(reqBody),
+          signal: ac.signal,
+        });
+        const ctype = (r.headers.get('content-type') || '').toLowerCase();
+        if (!r.ok || !useStream || !ctype.includes('text/event-stream') || !r.body) {
+          const rawText = await r.text();
+          return { status: r.status, rawText };
+        }
+
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        let content = '';
+        let finishReason = 'stop';
+        let usageObj: any = null;
+        let gotContent = false;
+        const resetIdle = () => {
+          if (idleTimer) clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => { timerReason = 'stream_idle_timeout'; ac.abort(); }, 20_000);
+        };
+        resetIdle();
+
+        let sawReasoning = false;
+        const consumeLine = (line: string) => {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data:')) return;
+          const payload = trimmed.slice(5).trim();
+          if (payload === '[DONE]') return;
+          let ev: any = null;
+          try { ev = JSON.parse(payload); } catch { return; }
+          if (ev?.error && !content) {
+            throw new Error(`stream_error:${ev.error?.message || ev.error?.code || 'upstream'}`);
+          }
+          if (ev?.usage) usageObj = ev.usage;
+          const ch = ev?.choices?.[0];
+          if (!ch) return;
+          if (ch.finish_reason) finishReason = ch.finish_reason;
+          const delta = ch.delta;
+          if (typeof delta?.content === 'string' && delta.content.length > 0) {
+            content += delta.content;
+            if (!gotContent) {
+              gotContent = true;
+              if (firstTokenTimer) { clearTimeout(firstTokenTimer); firstTokenTimer = null; }
+            }
+          } else if (!gotContent && !sawReasoning && (
+            (typeof delta?.reasoning === 'string' && delta.reasoning.length > 0) ||
+            (typeof delta?.reasoning_content === 'string' && delta.reasoning_content.length > 0)
+          )) {
+            sawReasoning = true;
+            if (firstTokenTimer) {
+              clearTimeout(firstTokenTimer);
+              firstTokenTimer = setTimeout(() => { timerReason = 'first_content_timeout'; ac.abort(); }, Math.min(overallTimeoutMs, 24_000));
+            }
+          }
+        };
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          resetIdle();
+          buf += decoder.decode(value, { stream: true });
+          let nl = buf.indexOf('\n');
+          while (nl !== -1) {
+            consumeLine(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+            nl = buf.indexOf('\n');
+          }
+        }
+        buf += decoder.decode();
+        if (buf.trim()) consumeLine(buf);
+
+        const parsed = {
+          id: `fracs-${Date.now()}`,
+          object: 'chat.completion',
+          choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: finishReason }],
+          ...(usageObj ? { usage: usageObj } : {}),
+        };
+        return { status: r.status, rawText: '', parsed };
+      } catch (err: any) {
+        if (timerReason) throw new Error(timerReason);
+        throw err;
+      } finally {
+        clearTimers();
+      }
+    };
 
     const candidates = buildFallbackModels(body.model, imageCount);
     const isVercel = Boolean(process.env.VERCEL);
-    const deadline = Date.now() + (isVercel ? 53_000 : 155_000);
+    const deadline = Date.now() + (isVercel ? 55_000 : 155_000);
     let okUpstream: { status: number; parsed: any; model: string } | null = null;
     let lastStatus = 502;
 
@@ -654,9 +758,12 @@ appRouter.post('/ai', h(async (req, res) => {
       if (remaining <= 3_000) break;
       const candidate = candidates[idx];
       const hasMore = idx + 1 < candidates.length;
-      const timeoutMs = isVercel
-        ? Math.min(remaining, idx === 0 && hasMore ? 32_000 : 20_000)
-        : Math.min(remaining, idx === 0 && hasMore ? 55_000 : 35_000);
+      const overallMs = isVercel
+        ? remaining
+        : Math.min(remaining, hasMore ? 75_000 : remaining);
+      const firstTokMs = isVercel
+        ? (hasMore ? Math.min(remaining - 2_000, idx === 0 ? 15_000 : 13_000) : remaining)
+        : (hasMore ? 22_000 : remaining);
       const attempts: Upstream[] = [];
       const u1 = resolveUpstream(body, false, candidate, false);
       if (u1) attempts.push(u1);
@@ -666,40 +773,50 @@ appRouter.post('/ai', h(async (req, res) => {
       }
 
       for (const route of attempts) {
+        const canStream = route.via === 'openrouter' || route.via === 'ollama';
         try {
-          let r = await callUpstream(route, timeoutMs);
-          let rawText = await r.text();
-          // На HTTP 400 пробуем один раз без лишних параметров (temperature / reasoning / usage).
-          if (r.status === 400 && (route.body.temperature !== undefined || route.body.reasoning !== undefined || route.body.usage !== undefined)) {
-            const stripped = resolveUpstream(body, route.via === 'openrouter' && candidate === COHERE_MODEL, candidate, true);
+          let resUp = await callUpstreamSmart(route, overallMs, Math.max(4_000, firstTokMs), canStream);
+          // На HTTP 400/422 пробуем один раз без лишних параметров и с безопасным max_tokens <= 8192.
+          if (resUp.status === 400 || resUp.status === 422) {
+            const safeMaxTok = Math.min(Number(route.body.max_tokens) || 8192, 8192);
+            const stripped = resolveUpstream(
+              { ...body, max_tokens: safeMaxTok },
+              route.via === 'openrouter' && candidate === COHERE_MODEL,
+              candidate,
+              true,
+            );
             if (stripped) {
-              r = await callUpstream(stripped, timeoutMs);
-              rawText = await r.text();
+              const rem2 = Math.max(4_000, deadline - Date.now());
+              resUp = await callUpstreamSmart(stripped, rem2, Math.min(rem2, firstTokMs), canStream);
             }
           }
-          // На HTTP 402 не урезаем модель до 4096 токенов, пока есть более дешёвые фолбэки (4096 режет сайт до 1 блока).
-          // Понижаем лимит (8192) только на последнем кандидате, чтобы не оборвать верстку.
-          if (r.status === 402 && !hasMore && (Number(route.body.max_tokens) || 0) > 8192) {
-            const capped = resolveUpstream({ ...body, max_tokens: 8192 }, route.via === 'openrouter' && candidate === COHERE_MODEL, candidate, true);
+          // На HTTP 402 на последнем кандидате пробуем с пониженным лимитом токенов.
+          if (resUp.status === 402 && !hasMore && (Number(route.body.max_tokens) || 0) > 6144) {
+            const capped = resolveUpstream(
+              { ...body, max_tokens: 6144 },
+              route.via === 'openrouter' && candidate === COHERE_MODEL,
+              candidate,
+              true,
+            );
             if (capped) {
-              r = await callUpstream(capped, timeoutMs);
-              rawText = await r.text();
+              const rem2 = Math.max(4_000, deadline - Date.now());
+              resUp = await callUpstreamSmart(capped, rem2, rem2, canStream);
             }
           }
-          lastStatus = r.status;
-          if (r.ok) {
+          lastStatus = resUp.status;
+          if (resUp.status >= 200 && resUp.status < 300) {
             try {
-              const parsed = JSON.parse(rawText);
+              const parsed = resUp.parsed ?? JSON.parse(resUp.rawText);
               if (hasNonEmptyCompletion(parsed)) {
-                okUpstream = { status: r.status, parsed, model: candidate };
+                okUpstream = { status: resUp.status, parsed, model: candidate };
                 break;
               }
-              console.error('[ai] upstream empty completion:', candidate, rawText.slice(0, 240));
+              console.error('[ai] upstream empty completion:', candidate, String(resUp.rawText).slice(0, 240));
             } catch (parseErr) {
               console.error('[ai] upstream invalid json:', candidate, parseErr);
             }
           } else {
-            console.error('[ai] upstream error:', candidate, route.via, r.status, rawText.slice(0, 300));
+            console.error('[ai] upstream error:', candidate, route.via, resUp.status, String(resUp.rawText).slice(0, 300));
           }
         } catch (err: any) {
           console.error('[ai] upstream fetch failed:', candidate, route.via, err?.message || err);
